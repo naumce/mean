@@ -1,7 +1,18 @@
+# Rust
 target/
-node_modules/
-dist/
-out/
-*.node
+**/target/
+
+# Recordings produced by the dump_wav example
+*.wav
+
+# Secrets
 .env
-.env.local
+
+# Speech recognition models, downloaded not committed
+models/
+*.bin
+
+# OS
+Thumbs.db
+desktop.ini
+.DS_Store

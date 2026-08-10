@@ -1,0 +1,12 @@
+[package]
+name = "copilot-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+cpal = "0.15"
+ringbuf = "0.4"
+
+[dev-dependencies]
+hound = "3"
