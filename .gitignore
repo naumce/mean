@@ -1,0 +1,7 @@
+target/
+node_modules/
+dist/
+out/
+*.node
+.env
+.env.local

@@ -1,0 +1,8 @@
+[package]
+name = "audio-probe"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cpal = "0.15"
+anyhow = "1"
