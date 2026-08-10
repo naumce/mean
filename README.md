@@ -10,8 +10,8 @@ Educational project. The design and the reasoning behind each choice are in
 
 ## Status
 
-Phase 4 of 5 complete: it knows which questions to answer. It cannot answer
-them yet.
+All five phases built. Answers need credit on an API account before they
+produce anything.
 
 | Phase | | |
 |---|---|---|
@@ -19,7 +19,7 @@ them yet.
 | 2 | Whisper, transcript in a terminal | **done** |
 | 3 | Tauri window and UI | **done** |
 | 4 | Turn detection | **done** |
-| 5 | Streaming answers from Claude | next |
+| 5 | Streaming answers | **built**, needs API credit |
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -243,5 +243,35 @@ For `--features cuda`, additionally:
   runtime DLLs there from `bin`; without it the binary exits immediately with
   `0xC0000135`, no message.
 
-For phase 5, an Anthropic API key from console.anthropic.com. A Claude Code
-subscription is **not** an API key — the API is billed separately.
+## Answers
+
+Set a key in the environment or in a gitignored `.env` beside the project.
+`OPENAI_API_KEY` and `CHAT_GPT` are both accepted.
+
+```sh
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini        # optional
+OPENAI_BASE_URL=...             # optional, any OpenAI-compatible endpoint
+```
+
+Check it works without involving audio at all:
+
+```sh
+cargo run -p copilot-core --example ask -- "how would you handle a thundering herd?"
+```
+
+That separates the two halves of the system. If `ask` works and the app does
+not, the problem is upstream in audio or turn detection; if `ask` fails, it is
+the key, the network, or the account.
+
+Note that a Claude Code or ChatGPT subscription is **not** an API key — API
+access is billed separately, and a key with no credit fails with `429 You have
+no credits remaining` rather than anything resembling a code problem.
+
+Because `OPENAI_BASE_URL` is configurable, any OpenAI-compatible server works,
+including a local one. On a 3090, Ollama serving a mid-sized model at
+`http://localhost:11434/v1` makes the whole pipeline free and offline.
+
+The key is read in this process and never reaches the webview. Anything the
+interface can see ships to whoever has the app — which is why a real product
+has a backend mint short-lived tokens instead of embedding one.

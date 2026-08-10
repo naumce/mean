@@ -39,6 +39,16 @@ impl Lane {
     }
 }
 
+/// How an answer finished.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Ending {
+    Complete,
+    /// A newer question came along and this one was abandoned.
+    Cancelled,
+    Failed,
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum Event {
@@ -86,6 +96,21 @@ pub enum Event {
         /// The question, including anything folded in from before a pause.
         text: String,
     },
+
+    /// An answer is starting. Arrives before any text, so the interface can
+    /// make room for it rather than having it appear all at once.
+    #[serde(rename_all = "camelCase")]
+    AnswerStart { for_id: u64, model: String },
+
+    /// The next fragment of an answer. Fragments are whatever size the model
+    /// sends — often part of a word — so they must be appended, never treated
+    /// as lines.
+    #[serde(rename_all = "camelCase")]
+    AnswerDelta { for_id: u64, text: String },
+
+    /// An answer stopped, for the given reason.
+    #[serde(rename_all = "camelCase")]
+    AnswerEnd { for_id: u64, reason: Ending },
 
     /// Samples the capture thread had to discard. Nonzero means a hole in the
     /// audio, and therefore in the transcript.

@@ -8,6 +8,8 @@ anyhow = "1"
 cpal = "0.15"
 ringbuf = "0.4"
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = "2"
 # `log_backend` routes whisper.cpp's internal chatter through the `log` crate.
 # Nothing installs a logger, so it goes nowhere instead of onto stderr in the
 # middle of the transcript.

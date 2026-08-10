@@ -225,11 +225,34 @@ main {
 
 .answer {
   margin-top: 6px;
-  padding: 6px 9px;
+  padding: 8px 10px;
   border-radius: 6px;
-  background: color-mix(in srgb, var(--good) 12%, transparent);
-  color: var(--good);
-  font-size: 12px;
+  background: color-mix(in srgb, var(--good) 10%, transparent);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.answer.waiting,
+.answer.cancelled {
+  color: var(--dim);
+  font-style: italic;
+}
+
+.answer.failed {
+  color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 10%, transparent);
+}
+
+/* Which model wrote it, appended once the answer completes. */
+.by {
+  display: block;
+  margin-top: 6px;
+  color: var(--dim);
+  font-size: 10px;
+  letter-spacing: 0.04em;
 }
 
 /* A lane that is mid-utterance, before any text exists for it. */

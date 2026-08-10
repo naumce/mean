@@ -115,26 +115,79 @@ function showLevel(event) {
   bar.style.width = `${Math.max(0, Math.min(1, fraction)) * 100}%`;
 }
 
-function showTurn(event) {
-  // The turn is tied to the utterance that completed the question, which may
-  // not be the last line if the transcript kept moving. Falls back to the end
-  // so the decision is always visible somewhere.
+/// Finds or creates the answer block belonging to a question.
+///
+/// The answer is attached to the utterance that completed the question, which
+/// may not be the last line if the transcript kept moving while the model was
+/// thinking. Falls back to the end so an answer is never rendered nowhere.
+function answerBlockFor(id) {
   const line =
-    transcript.querySelector(`.line[data-uid="them-${event.id}"]`) ??
+    transcript.querySelector(`.line[data-uid="them-${id}"]`) ??
     transcript.lastElementChild;
-  if (!line || !line.classList) return;
+  if (!line || !line.classList) return null;
 
-  const wasAtBottom = atBottom();
   line.classList.add("turn");
 
   const body = line.lastElementChild;
-  if (!body.querySelector(".answer")) {
-    const answer = document.createElement("div");
+  let answer = body.querySelector(".answer");
+  if (!answer) {
+    answer = document.createElement("div");
     answer.className = "answer";
-    answer.textContent = "would answer this";
     body.append(answer);
   }
+  return answer;
+}
+
+function showTurn(event) {
+  const wasAtBottom = atBottom();
+  const answer = answerBlockFor(event.id);
+  if (answer && !answer.textContent) {
+    answer.textContent = "thinking…";
+    answer.classList.add("waiting");
+  }
   scrollIfFollowing(wasAtBottom);
+}
+
+function startAnswer(event) {
+  const wasAtBottom = atBottom();
+  const answer = answerBlockFor(event.forId);
+  if (!answer) return;
+
+  answer.textContent = "";
+  answer.classList.remove("waiting", "failed", "cancelled");
+  answer.dataset.model = event.model;
+  scrollIfFollowing(wasAtBottom);
+}
+
+function appendAnswer(event) {
+  const answer = answerBlockFor(event.forId);
+  if (!answer) return;
+
+  const wasAtBottom = atBottom();
+  answer.classList.remove("waiting");
+  // Deltas are whatever size the model sends, often part of a word, so they
+  // are appended as text rather than treated as lines.
+  answer.append(document.createTextNode(event.text));
+  scrollIfFollowing(wasAtBottom);
+}
+
+function endAnswer(event) {
+  const answer = answerBlockFor(event.forId);
+  if (!answer) return;
+
+  answer.classList.remove("waiting");
+  if (event.reason === "cancelled") {
+    answer.classList.add("cancelled");
+    if (!answer.textContent) answer.textContent = "superseded";
+  } else if (event.reason === "failed") {
+    answer.classList.add("failed");
+    if (!answer.textContent) answer.textContent = "could not answer";
+  } else if (answer.dataset.model) {
+    const tag = document.createElement("span");
+    tag.className = "by";
+    tag.textContent = answer.dataset.model;
+    answer.append(tag);
+  }
 }
 
 function warn(message) {
@@ -169,6 +222,18 @@ function handle(event) {
 
     case "turn":
       showTurn(event);
+      break;
+
+    case "answerStart":
+      startAnswer(event);
+      break;
+
+    case "answerDelta":
+      appendAnswer(event);
+      break;
+
+    case "answerEnd":
+      endAnswer(event);
       break;
 
     case "dropped":

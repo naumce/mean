@@ -8,6 +8,8 @@ pub mod audio;
 pub mod capture;
 pub mod config;
 pub mod event;
+pub mod llm;
+pub mod secrets;
 pub mod session;
 pub mod stt;
 pub mod turn;

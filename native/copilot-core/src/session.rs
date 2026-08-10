@@ -23,7 +23,7 @@
 //! so turn detection sees them in the order they happened.
 
 use anyhow::{Context, Result};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
@@ -31,7 +31,8 @@ use std::time::{Duration, Instant};
 
 use crate::audio::vad::frame_db;
 use crate::capture::{Lane as CaptureLane, Source};
-use crate::event::{Event, Lane};
+use crate::event::{Ending, Event, Lane};
+use crate::llm::{prompt, ContextLine, Question, Responder};
 use crate::stt::{Segmenter, SegmenterConfig, Transcriber, Utterance};
 use crate::turn::{Signal, TurnConfig, TurnDetector};
 
@@ -61,6 +62,21 @@ enum Work {
     Utterance { lane: Lane, utterance: Utterance, at_ms: u64 },
 }
 
+/// How much transcript is kept for context. Bounded so a long meeting does
+/// not grow the process; the request window is smaller again.
+const HISTORY_LIMIT: usize = 200;
+
+/// A question handed to the answering thread.
+///
+/// The generation is what makes cancellation work: the answerer compares the
+/// one it started with against the current count, and stops as soon as a
+/// newer question exists. On a live call a superseded answer is not merely
+/// wasted, it is text on screen that is actively misleading.
+struct Ask {
+    generation: u64,
+    question: Question,
+}
+
 pub struct Session {
     stop: Arc<AtomicBool>,
     worker: Option<JoinHandle<()>>,
@@ -72,7 +88,11 @@ impl Session {
     /// The transcriber is supplied rather than constructed here, so this
     /// module never needs to know whether recognition is whisper, a mock, or
     /// something not written yet.
-    pub fn start(transcriber: Box<dyn Transcriber>, sink: EventSink) -> Result<Session> {
+    pub fn start(
+        transcriber: Box<dyn Transcriber>,
+        responder: Option<Box<dyn Responder>>,
+        sink: EventSink,
+    ) -> Result<Session> {
         let stop = Arc::new(AtomicBool::new(false));
         let (ready_tx, ready_rx) = mpsc::channel();
 
@@ -81,7 +101,7 @@ impl Session {
             .spawn({
                 let stop = Arc::clone(&stop);
                 let sink = Arc::clone(&sink);
-                move || run(transcriber, sink, stop, ready_tx)
+                move || run(transcriber, responder, sink, stop, ready_tx)
             })
             .context("could not start the session thread")?;
 
@@ -188,6 +208,7 @@ impl LaneWorker {
 
 fn run(
     transcriber: Box<dyn Transcriber>,
+    responder: Option<Box<dyn Responder>>,
     sink: EventSink,
     stop: Arc<AtomicBool>,
     ready: mpsc::Sender<Result<()>>,
@@ -213,12 +234,39 @@ fn run(
     let started = Instant::now();
     let elapsed_ms = move || started.elapsed().as_millis() as u64;
 
+    // Answering runs on a third thread of its own. A model can take seconds,
+    // and neither capture nor recognition may wait on it.
+    let (ask_tx, ask_rx) = mpsc::channel::<Ask>();
+    let generation = Arc::new(AtomicU64::new(0));
+
+    let answering = responder.map(|responder| {
+        thread::Builder::new()
+            .name("copilot-answers".into())
+            .spawn({
+                let sink = Arc::clone(&sink);
+                let generation = Arc::clone(&generation);
+                move || answer(responder, sink, ask_rx, generation)
+            })
+    });
+
+    let answering = match answering {
+        Some(Ok(handle)) => Some(handle),
+        Some(Err(err)) => {
+            sink(Event::Error {
+                message: format!("could not start the answering thread: {err}"),
+            });
+            None
+        }
+        None => None,
+    };
+
     let (work_tx, work_rx) = mpsc::channel::<Work>();
     let recognition = thread::Builder::new()
         .name("copilot-recognition".into())
         .spawn({
             let sink = Arc::clone(&sink);
-            move || recognize(transcriber, sink, work_rx, elapsed_ms)
+            let generation = Arc::clone(&generation);
+            move || recognize(transcriber, sink, work_rx, elapsed_ms, ask_tx, generation)
         });
 
     let recognition = match recognition {
@@ -280,8 +328,12 @@ fn run(
     }
 
     // Dropping the sender is what tells recognition there is no more work.
+    // Recognition in turn drops its own sender, ending the answering thread.
     drop(work_tx);
     let _ = recognition.join();
+    if let Some(answering) = answering {
+        let _ = answering.join();
+    }
 }
 
 /// Transcribes utterances and decides when a question has been finished.
@@ -293,8 +345,14 @@ fn recognize(
     sink: EventSink,
     work: mpsc::Receiver<Work>,
     elapsed_ms: impl Fn() -> u64,
+    ask: mpsc::Sender<Ask>,
+    generation: Arc<AtomicU64>,
 ) {
     let mut detector = TurnDetector::new(TurnConfig::default());
+
+    // The conversation so far. Kept here because this is the thread that sees
+    // every transcript, in order.
+    let mut history: Vec<ContextLine> = Vec::new();
 
     loop {
         // A timeout rather than a plain receive: turn detection fires on
@@ -305,9 +363,6 @@ fn recognize(
                 active,
                 at_ms,
             }) => {
-                #[cfg(debug_assertions)]
-                eprintln!("[turn] {at_ms:>6} speech {lane:?} active={active}");
-
                 let signal = if active {
                     Signal::SpeechStarted { lane }
                 } else {
@@ -322,8 +377,13 @@ fn recognize(
                 at_ms,
             }) => {
                 if let Some(text) = transcribe(&mut transcriber, &sink, lane, &utterance) {
-                    #[cfg(debug_assertions)]
-                    eprintln!("[turn] {at_ms:>6} text   {lane:?} {text:?}");
+                    history.push(ContextLine {
+                        lane,
+                        text: text.clone(),
+                    });
+                    if history.len() > HISTORY_LIMIT {
+                        history.drain(..history.len() - HISTORY_LIMIT);
+                    }
 
                     detector.observe(
                         Signal::Transcript {
@@ -343,9 +403,71 @@ fn recognize(
         if let Some(turn) = detector.poll(elapsed_ms()) {
             sink(Event::Turn {
                 id: turn.id,
-                text: turn.text,
+                text: turn.text.clone(),
+            });
+
+            // Incremented before sending, so an answer already streaming sees
+            // that it has been superseded and stops.
+            let mine = generation.fetch_add(1, Ordering::SeqCst) + 1;
+            let _ = ask.send(Ask {
+                generation: mine,
+                question: Question {
+                    id: turn.id,
+                    text: turn.text,
+                    context: prompt::recent(&history, prompt::CONTEXT_LINES),
+                },
             });
         }
+    }
+}
+
+/// Streams an answer for each question, abandoning one the moment a newer
+/// question exists.
+fn answer(
+    mut responder: Box<dyn Responder>,
+    sink: EventSink,
+    asks: mpsc::Receiver<Ask>,
+    generation: Arc<AtomicU64>,
+) {
+    let model = responder.name();
+
+    while let Ok(Ask {
+        generation: mine,
+        question,
+    }) = asks.recv()
+    {
+        // Already stale before it started — a faster conversation than this
+        // model can keep up with.
+        if generation.load(Ordering::SeqCst) != mine {
+            continue;
+        }
+
+        let for_id = question.id;
+        sink(Event::AnswerStart {
+            for_id,
+            model: model.clone(),
+        });
+
+        let superseded = || generation.load(Ordering::SeqCst) != mine;
+        let mut on_delta = |text: &str| {
+            sink(Event::AnswerDelta {
+                for_id,
+                text: text.to_string(),
+            });
+        };
+
+        let reason = match responder.respond(&question, &mut on_delta, &superseded) {
+            Ok(crate::llm::Ending::Complete) => Ending::Complete,
+            Ok(crate::llm::Ending::Cancelled) => Ending::Cancelled,
+            Err(err) => {
+                sink(Event::Error {
+                    message: format!("{err:#}"),
+                });
+                Ending::Failed
+            }
+        };
+
+        sink(Event::AnswerEnd { for_id, reason });
     }
 }
 

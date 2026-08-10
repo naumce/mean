@@ -12,6 +12,8 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+use copilot_core::llm::openai::OpenAiResponder;
+use copilot_core::llm::Responder;
 use copilot_core::session::{EventSink, Session};
 use copilot_core::stt::whisper::WhisperTranscriber;
 use copilot_core::Event;
@@ -80,7 +82,21 @@ fn open_session(sink: EventSink) -> anyhow::Result<Session> {
     })?;
 
     let transcriber = WhisperTranscriber::load(&model.to_string_lossy(), None)?;
-    Session::start(Box::new(transcriber), sink)
+
+    // Answering is optional. Without a key the app is still a live transcript
+    // with turn detection, which is worth having on its own — and far better
+    // than refusing to start over a missing setting.
+    let responder: Option<Box<dyn Responder>> = match OpenAiResponder::from_env() {
+        Ok(responder) => Some(Box::new(responder)),
+        Err(err) => {
+            sink(Event::Error {
+                message: format!("answers are off: {err:#}"),
+            });
+            None
+        }
+    };
+
+    Session::start(Box::new(transcriber), responder, sink)
 }
 
 /// Looks for the model beside the executable and above it, then from the
