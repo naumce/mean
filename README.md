@@ -10,16 +10,30 @@ Educational project. The design and the reasoning behind each choice are in
 
 ## Status
 
-Phase 2 of 5 complete: both sides of a conversation transcribed live, in a
-terminal.
+Phase 3 of 5 complete: both sides of a conversation transcribed live, in a
+window.
 
 | Phase | | |
 |---|---|---|
 | 1 | Capture to clean 16 kHz mono | **done** |
 | 2 | Whisper, transcript in a terminal | **done** |
-| 3 | Tauri window and UI | next |
-| 4 | Turn detection | |
+| 3 | Tauri window and UI | **done** |
+| 4 | Turn detection | next |
 | 5 | Streaming answers from Claude | |
+
+```
+┌──────────────────────────────────────────────────────────┐
+│ ● meeting copilot                            ggml-base.en│
+│   YOU  ▁▃▅▂░░░░░░  Microphone (3- GXT 450 Gaming Headset) │
+│   THEM ▁▁▁▁░░░░░░  27G2G5 (NVIDIA High Definition Audio)  │
+├──────────────────────────────────────────────────────────┤
+│  THEM   So, walk me through how you would design a rate  │
+│         limiter.                                         │
+│  THEM   What happens when the cache is cold?             │
+├──────────────────────────────────────────────────────────┤
+│  3 lines                                                 │
+└──────────────────────────────────────────────────────────┘
+```
 
 ## What's proven
 
@@ -76,8 +90,9 @@ Recognition latency, measured on this machine with `base.en`:
 ```sh
 cd native
 
-cargo test -p copilot-core                        # 55 tests, no model needed
-cargo run -p copilot-core --example live_transcript   # both lanes, live
+cargo run -p copilot-tauri                        # the app
+cargo test -p copilot-core                        # 58 tests, no model needed
+cargo run -p copilot-core --example live_transcript   # same thing, terminal
 cargo run -p copilot-core --example dump_wav      # record 10 s of both lanes
 
 cargo run -p audio-probe                          # the original level meters
@@ -114,9 +129,30 @@ native/
       whisper.rs       whisper.cpp, optional behind a feature
       hallucination.rs filtering text whisper invented
       mock.rs          a scripted transcriber, so tests need no model
+    src/event.rs       the Event enum - the whole UI contract
+    src/session.rs     runs both lanes on a thread, emits events
     examples/dump_wav.rs
     examples/live_transcript.rs
+  copilot-tauri/     the window. ~100 lines of Rust plus plain HTML/CSS/JS.
+    src/main.rs
+    capabilities/    what the window is permitted to do
+    ui/              no framework, no build step, no dependencies
 ```
+
+The engine never learns that a UI exists. `Event` is the only thing that
+crosses out of it, which is what keeps the shell replaceable — the same
+`ui/` files would work unchanged against a WebSocket instead of Tauri.
+
+Two things about Tauri worth knowing before the first run, because both fail
+silently in ways that look like the audio is broken:
+
+- **Nothing is permitted by default.** Without `capabilities/default.json`
+  the interface cannot even subscribe to its own event channel, and the only
+  sign is a permissions message where the transcript should be.
+- **Events emitted during `setup()` are dropped**, because the webview has
+  not attached a listener yet. So the interface calls `start` once it *is*
+  listening, rather than the backend starting on its own and hoping. That
+  also means a startup failure is visible instead of lost.
 
 The capture callback runs on a realtime thread with a deadline of a few
 milliseconds, so it does exactly one thing: copy samples into the ring. No

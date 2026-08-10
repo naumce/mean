@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>meeting copilot</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <div class="title">
+        <span class="dot" id="health" data-state="starting"></span>
+        <h1>meeting copilot</h1>
+        <span class="model" id="model">starting…</span>
+      </div>
+
+      <div class="meters">
+        <div class="meter" data-lane="you">
+          <span class="tag">YOU</span>
+          <div class="bar"><i id="level-you"></i></div>
+          <span class="device" id="device-you">—</span>
+        </div>
+        <div class="meter" data-lane="them">
+          <span class="tag">THEM</span>
+          <div class="bar"><i id="level-them"></i></div>
+          <span class="device" id="device-them">—</span>
+        </div>
+      </div>
+    </header>
+
+    <main id="transcript">
+      <p class="empty" id="empty">
+        Listening. Say something, or play something with speech in it — lines
+        appear a beat after each person stops talking.
+      </p>
+    </main>
+
+    <footer>
+      <span id="status">—</span>
+      <span id="warning" class="warning" hidden></span>
+    </footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>

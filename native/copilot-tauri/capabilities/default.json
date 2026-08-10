@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "What the window is allowed to do. Tauri v2 denies everything not listed here, so without this the interface cannot even subscribe to its own event channel.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

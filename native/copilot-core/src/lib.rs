@@ -7,4 +7,9 @@
 pub mod audio;
 pub mod capture;
 pub mod config;
+pub mod event;
+pub mod session;
 pub mod stt;
+
+pub use event::{Event, Lane};
+pub use session::{EventSink, Session};
