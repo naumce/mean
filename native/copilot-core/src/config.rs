@@ -36,4 +36,27 @@ pub const SILENCE_DB: f32 = -90.0;
 ///
 /// Below roughly 200 ms this cuts words in half at natural pauses. Above
 /// roughly 500 ms every utterance carries the delay as dead air.
-pub const VAD_HANGOVER_MS: u32 = 300;
+///
+/// Measured rather than guessed: at 300 ms, "Great, that makes sense to me"
+/// split into two utterances at the comma. Every such split is also a place
+/// turn detection could fire early, so the extra 100 ms buys more than
+/// tidiness.
+pub const VAD_HANGOVER_MS: u32 = 400;
+
+/// Audio kept from *before* speech was detected.
+///
+/// Detection fires on the frame that crosses the threshold, but the word
+/// began earlier — a leading consonant is quieter than the vowel behind it.
+/// Without this, "start" is transcribed as "art", unrecoverably.
+pub const PREROLL_MS: u32 = 250;
+
+/// Longest an utterance may run before being cut regardless of pauses.
+///
+/// Someone talking without a break must still produce text along the way.
+pub const MAX_UTTERANCE_MS: u32 = 15_000;
+
+/// Least voiced audio an utterance must contain to be worth transcribing.
+///
+/// A door closing or a key press trips an energy detector. Below this it is
+/// discarded rather than sent off for whisper to invent words over.
+pub const MIN_VOICED_MS: u32 = 200;

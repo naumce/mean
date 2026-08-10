@@ -7,6 +7,20 @@ edition = "2021"
 anyhow = "1"
 cpal = "0.15"
 ringbuf = "0.4"
+# `log_backend` routes whisper.cpp's internal chatter through the `log` crate.
+# Nothing installs a logger, so it goes nowhere instead of onto stderr in the
+# middle of the transcript.
+whisper-rs = { version = "0.16", optional = true, features = ["log_backend"] }
 
 [dev-dependencies]
 hound = "3"
+
+[features]
+default = ["whisper"]
+
+# Speech recognition. Off, everything still builds and tests against the mock
+# transcriber, with no cmake and no model file needed.
+whisper = ["dep:whisper-rs"]
+
+# Run recognition on the GPU. Needs the CUDA Toolkit, not just the driver.
+cuda = ["whisper", "whisper-rs/cuda"]
