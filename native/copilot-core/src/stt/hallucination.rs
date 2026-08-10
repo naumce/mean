@@ -23,6 +23,10 @@ const INVENTED: &[&str] = &[
     "thanks for watching",
     "thank you for watching",
     "thanks for watching and i'll see you in the next video",
+    "i'll see you in the next video",
+    "i will see you in the next video",
+    "see you in the next video",
+    "see you next time",
     "please subscribe",
     "please subscribe to my channel",
     "like and subscribe",
@@ -45,22 +49,69 @@ const INVENTED: &[&str] = &[
 /// `(silence)`.
 pub fn keep(text: &str) -> Option<String> {
     let trimmed = text.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    let normalized = normalize(trimmed);
-    if normalized.is_empty() {
-        return None;
-    }
-    if INVENTED.contains(&normalized.as_str()) {
+    if trimmed.is_empty() || normalize(trimmed).is_empty() {
         return None;
     }
     if is_only_sound_description(trimmed) {
         return None;
     }
 
-    Some(trimmed.to_string())
+    // Filtered sentence by sentence rather than whole. Observed in a real
+    // run: "Thank you for watching. I will see you in the next video." is two
+    // stock phrases stuck together, and matching the whole utterance misses
+    // it. Working per sentence also means a real sentence sitting next to an
+    // invented one survives instead of being thrown out with it.
+    let kept: Vec<&str> = sentences(trimmed)
+        .into_iter()
+        .filter(|sentence| {
+            let normalized = normalize(sentence);
+            !normalized.is_empty() && !INVENTED.contains(&normalized.as_str())
+        })
+        .collect();
+
+    if kept.is_empty() {
+        return None;
+    }
+
+    Some(kept.join(" "))
+}
+
+/// Splits on sentence terminators, keeping each terminator with the sentence
+/// it ended.
+///
+/// A terminator only ends a sentence when whitespace or the end of the text
+/// follows it. Without that check "Amara.org" becomes two sentences and
+/// "THANK YOU!!!" becomes three, and neither matches anything.
+fn sentences(text: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut start = 0;
+
+    for (at, character) in text.char_indices() {
+        if !matches!(character, '.' | '!' | '?') {
+            continue;
+        }
+
+        let end = at + character.len_utf8();
+        let ends_here = text[end..]
+            .chars()
+            .next()
+            .is_none_or(|next| next.is_whitespace());
+        if !ends_here {
+            continue;
+        }
+
+        let sentence = text[start..end].trim();
+        if !sentence.is_empty() {
+            out.push(sentence);
+        }
+        start = end;
+    }
+
+    let tail = text[start..].trim();
+    if !tail.is_empty() {
+        out.push(tail);
+    }
+    out
 }
 
 /// Lowercases, strips punctuation, and collapses whitespace, so that
@@ -133,6 +184,35 @@ mod tests {
         assert_eq!(keep("Thanks for watching!"), None);
         assert_eq!(keep("thank you"), None);
         assert_eq!(keep("  Thank you!  "), None);
+    }
+
+    /// Observed in a real run. Two stock phrases stuck together match
+    /// neither one on their own.
+    #[test]
+    fn stock_phrases_glued_together_are_dropped() {
+        assert_eq!(
+            keep("Thank you for watching. I will see you in the next video."),
+            None
+        );
+        assert_eq!(keep("Thanks for watching! See you next time."), None);
+    }
+
+    /// The reason for filtering per sentence rather than dropping the line:
+    /// real speech next to an invented phrase has to survive.
+    #[test]
+    fn real_speech_beside_an_invented_phrase_survives() {
+        assert_eq!(
+            keep("Thank you. So how would you shard that?").as_deref(),
+            Some("So how would you shard that?")
+        );
+    }
+
+    #[test]
+    fn multiple_real_sentences_come_back_intact() {
+        assert_eq!(
+            keep("Yes. That works for reads.").as_deref(),
+            Some("Yes. That works for reads.")
+        );
     }
 
     #[test]

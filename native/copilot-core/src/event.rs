@@ -73,6 +73,20 @@ pub enum Event {
         transcribe_ms: u64,
     },
 
+    /// The other side finished asking something worth answering.
+    ///
+    /// Emitted on its own rather than folded into `Transcript`, because the
+    /// decision is separate from the text and lands later — the delay that
+    /// confirms they have actually stopped has to pass first.
+    #[serde(rename_all = "camelCase")]
+    Turn {
+        /// The utterance that completed the question, so an answer can be
+        /// attached to the right line.
+        id: u64,
+        /// The question, including anything folded in from before a pause.
+        text: String,
+    },
+
     /// Samples the capture thread had to discard. Nonzero means a hole in the
     /// audio, and therefore in the transcript.
     #[serde(rename_all = "camelCase")]

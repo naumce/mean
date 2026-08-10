@@ -216,6 +216,22 @@ main {
   opacity: 1;
 }
 
+/* A question the copilot decided to answer. */
+.line.turn {
+  border-left: 2px solid var(--good);
+  margin-left: -10px;
+  padding-left: 8px;
+}
+
+.answer {
+  margin-top: 6px;
+  padding: 6px 9px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--good) 12%, transparent);
+  color: var(--good);
+  font-size: 12px;
+}
+
 /* A lane that is mid-utterance, before any text exists for it. */
 .line.pending .text {
   color: var(--dim);

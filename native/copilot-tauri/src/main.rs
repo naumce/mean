@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use copilot_core::session::{EventSink, Session};
 use copilot_core::stt::whisper::WhisperTranscriber;
 use copilot_core::Event;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 
 /// The channel the webview listens on.
 const CHANNEL: &str = "copilot";

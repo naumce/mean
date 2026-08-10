@@ -10,16 +10,16 @@ Educational project. The design and the reasoning behind each choice are in
 
 ## Status
 
-Phase 3 of 5 complete: both sides of a conversation transcribed live, in a
-window.
+Phase 4 of 5 complete: it knows which questions to answer. It cannot answer
+them yet.
 
 | Phase | | |
 |---|---|---|
 | 1 | Capture to clean 16 kHz mono | **done** |
 | 2 | Whisper, transcript in a terminal | **done** |
 | 3 | Tauri window and UI | **done** |
-| 4 | Turn detection | next |
-| 5 | Streaming answers from Claude | |
+| 4 | Turn detection | **done** |
+| 5 | Streaming answers from Claude | next |
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -78,6 +78,23 @@ from the microphone lane.
 [00:11] THEM  Great, that makes sense to me.                             (3.9s audio, 266ms to transcribe)
 ```
 
+**It picks the right moment to answer.** Four decisions from one run, all
+correct:
+
+```
+THEM  So, walk me through how you would design a rate limiter.
+        → would answer this
+THEM  Right.
+THEM  And what I am wondering is.
+THEM  How would you handle a thundering herd?
+        → would answer this
+          "And what I am wondering is. How would you handle a thundering herd?"
+```
+
+The question fires. "Right." does not — backchannel. The unfinished fragment
+does not fire on its own, and is folded into the question that completed it,
+so the answer sees the whole thought rather than half of one.
+
 Recognition latency, measured on this machine with `base.en`:
 
 | | per utterance |
@@ -129,8 +146,11 @@ native/
       whisper.rs       whisper.cpp, optional behind a feature
       hallucination.rs filtering text whisper invented
       mock.rs          a scripted transcriber, so tests need no model
+    src/turn/
+      mod.rs           when to answer. pure function, no clock, no I/O
+      question.rs      whether something is worth answering
     src/event.rs       the Event enum - the whole UI contract
-    src/session.rs     runs both lanes on a thread, emits events
+    src/session.rs     two threads: capture must never wait for recognition
     examples/dump_wav.rs
     examples/live_transcript.rs
   copilot-tauri/     the window. ~100 lines of Rust plus plain HTML/CSS/JS.
@@ -142,6 +162,20 @@ native/
 The engine never learns that a UI exists. `Event` is the only thing that
 crosses out of it, which is what keeps the shell replaceable — the same
 `ui/` files would work unchanged against a WebSocket instead of Tauri.
+
+**Capture never waits for recognition.** They are separate threads, and that
+was measured rather than assumed: with recognition inline, the first CUDA call
+took 1901 ms warming up and capture reported 3840 discarded samples — a real
+hole in the audio, caused entirely by making the wrong thread wait.
+
+**Turn detection takes no clock and does no I/O.** Signals go in with a
+timestamp, decisions come out, and every behaviour is a unit test. It is the
+part of the system most likely to need tuning, so it is the part that can be
+tuned in a second rather than by holding a conversation with a laptop. Two
+bugs were found that way, and both had the same shape: expiry that only ran
+inside `poll`, passing a test that jumped straight to the interesting moment
+instead of walking time forward the way the caller does. The test helper now
+polls every 50 ms, as the session actually does.
 
 Two things about Tauri worth knowing before the first run, because both fail
 silently in ways that look like the audio is broken:

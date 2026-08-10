@@ -60,3 +60,28 @@ pub const MAX_UTTERANCE_MS: u32 = 15_000;
 /// A door closing or a key press trips an energy detector. Below this it is
 /// discarded rather than sent off for whisper to invent words over.
 pub const MIN_VOICED_MS: u32 = 200;
+
+/// How long after the other side stops before an answer is triggered.
+///
+/// The whole product lives in this number. Too short and it answers a
+/// thinking pause halfway through the question. Too long and there is dead
+/// air on the call while everyone waits. Measured from when speech ended,
+/// not from when the transcript arrived, so recognition time is spent inside
+/// this window rather than added to it.
+pub const TURN_FIRE_DELAY_MS: u64 = 700;
+
+/// How long an unfinished fragment is remembered, waiting to be folded into
+/// whatever is said next.
+///
+/// Longer than the fire delay on purpose. Firing early is expensive, so that
+/// delay is kept tight; holding a few words in memory costs nothing, so this
+/// is generous. Measured: "And what I am wondering is." and the question that
+/// completed it were 900 ms apart once the detection hangover is counted,
+/// which a 700 ms window drops on the floor.
+pub const TURN_CARRY_TTL_MS: u64 = 2_500;
+
+/// Fewest words an utterance needs before it is worth answering.
+///
+/// This is what silences backchannel — "mhm", "right", "got it" — which
+/// otherwise triggers an answer to nothing.
+pub const TURN_MIN_WORDS: usize = 3;

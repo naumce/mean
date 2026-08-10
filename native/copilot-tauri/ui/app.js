@@ -64,6 +64,9 @@ function showTranscript(event) {
   const placeholder = pending[event.lane];
   const { line, body, text } = makeLine(event.lane);
   text.textContent = event.text;
+  // So a turn decision, which arrives later and separately, can find the
+  // line it belongs to.
+  line.dataset.uid = `${event.lane}-${event.id}`;
 
   const meta = document.createElement("div");
   meta.className = "meta";
@@ -112,6 +115,28 @@ function showLevel(event) {
   bar.style.width = `${Math.max(0, Math.min(1, fraction)) * 100}%`;
 }
 
+function showTurn(event) {
+  // The turn is tied to the utterance that completed the question, which may
+  // not be the last line if the transcript kept moving. Falls back to the end
+  // so the decision is always visible somewhere.
+  const line =
+    transcript.querySelector(`.line[data-uid="them-${event.id}"]`) ??
+    transcript.lastElementChild;
+  if (!line || !line.classList) return;
+
+  const wasAtBottom = atBottom();
+  line.classList.add("turn");
+
+  const body = line.lastElementChild;
+  if (!body.querySelector(".answer")) {
+    const answer = document.createElement("div");
+    answer.className = "answer";
+    answer.textContent = "would answer this";
+    body.append(answer);
+  }
+  scrollIfFollowing(wasAtBottom);
+}
+
 function warn(message) {
   const warning = el("warning");
   warning.textContent = message;
@@ -140,6 +165,10 @@ function handle(event) {
 
     case "transcript":
       showTranscript(event);
+      break;
+
+    case "turn":
+      showTurn(event);
       break;
 
     case "dropped":
