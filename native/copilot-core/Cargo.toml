@@ -5,8 +5,14 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1"
+base64 = "0.23"
 cpal = "0.15"
 ringbuf = "0.4"
+xcap = "0.9"
+# xcap brings `image` in without the JPEG encoder. Depending on it directly at
+# the same version turns that feature on for the whole graph, so the screenshot
+# encoder exists and only one copy of the crate is built.
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ureq = "2"

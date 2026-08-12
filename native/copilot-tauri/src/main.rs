@@ -1,9 +1,9 @@
 //! A window around the engine.
 //!
-//! Everything hard lives in `copilot-core`. This opens a window, starts a
-//! session, and forwards each event to the webview. That thinness is the
-//! point — the shell is the part most likely to be replaced, so it should be
-//! the part that holds the least.
+//! Everything hard lives in `copilot-core`. This opens a window, exposes five
+//! commands, and forwards each event to the webview. That thinness is the
+//! point — the shell is the part most likely to be replaced, so it should hold
+//! the least.
 
 // Stops a console window appearing behind the app in release builds, while
 // leaving it in place during development where the output is wanted.
@@ -12,15 +12,22 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use copilot_core::llm::openai::OpenAiResponder;
-use copilot_core::llm::Responder;
+use copilot_core::capture::screen;
+use copilot_core::documents;
+use copilot_core::llm::Brief;
 use copilot_core::session::{EventSink, Session};
 use copilot_core::stt::whisper::WhisperTranscriber;
 use copilot_core::Event;
+use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
 /// The channel the webview listens on.
 const CHANNEL: &str = "copilot";
+
+/// Used when the screenshot button is pressed with nothing typed. Vague on
+/// purpose — the picture is the question.
+const SCREENSHOT_PROMPT: &str =
+    "Here is my screen. Answer whatever it is asking, or explain what I am looking at.";
 
 /// Holds the running session so it lives as long as the window. Dropping it
 /// stops capture and releases the devices.
@@ -30,20 +37,43 @@ struct Running(Mutex<Option<Session>>);
 fn main() {
     tauri::Builder::default()
         .manage(Running::default())
-        .invoke_handler(tauri::generate_handler![start])
+        .invoke_handler(tauri::generate_handler![
+            list_documents,
+            start,
+            stop,
+            ask
+        ])
         .run(tauri::generate_context!())
         .expect("could not start the window");
 }
 
-/// Starts listening. Called by the interface once it has attached its event
-/// listener.
-///
-/// The interface asks rather than being told, because there is no moment
-/// during setup when the webview is known to be listening yet — anything
-/// emitted before then is silently dropped, including the failure that would
-/// have explained why nothing happened.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Folder {
+    path: String,
+    exists: bool,
+    entries: Vec<documents::Entry>,
+}
+
+/// Everything in the documents folder, for the setup screen.
 #[tauri::command]
-fn start(app: AppHandle, running: State<'_, Running>) -> Result<(), String> {
+fn list_documents() -> Folder {
+    let path = documents::folder();
+    Folder {
+        exists: path.is_dir(),
+        entries: documents::list(&path),
+        path: path.display().to_string(),
+    }
+}
+
+/// Starts listening.
+///
+/// Called by the interface once it has attached its event listener, because
+/// there is no moment during setup when the webview is known to be listening —
+/// anything emitted before then is silently dropped, including the failure
+/// that would have explained why nothing happened.
+#[tauri::command]
+fn start(app: AppHandle, running: State<'_, Running>, brief: String) -> Result<(), String> {
     let mut slot = running.0.lock().map_err(|_| "session lock poisoned")?;
     if slot.is_some() {
         return Ok(());
@@ -58,7 +88,7 @@ fn start(app: AppHandle, running: State<'_, Running>) -> Result<(), String> {
         let _ = app.emit(CHANNEL, event);
     });
 
-    match open_session(Arc::clone(&sink)) {
+    match open_session(brief, Arc::clone(&sink)) {
         Ok(session) => {
             *slot = Some(session);
             Ok(())
@@ -73,7 +103,42 @@ fn start(app: AppHandle, running: State<'_, Running>) -> Result<(), String> {
     }
 }
 
-fn open_session(sink: EventSink) -> anyhow::Result<Session> {
+/// Stops listening and releases the microphone.
+#[tauri::command]
+fn stop(running: State<'_, Running>) -> Result<(), String> {
+    let mut slot = running.0.lock().map_err(|_| "session lock poisoned")?;
+    // Dropping the session stops every thread and hands the capture devices
+    // back to the OS, so the recording indicator actually goes away.
+    slot.take();
+    Ok(())
+}
+
+/// Asks a question that was typed rather than spoken, optionally with the
+/// screen attached.
+#[tauri::command]
+fn ask(running: State<'_, Running>, text: String, screenshot: bool) -> Result<(), String> {
+    let slot = running.0.lock().map_err(|_| "session lock poisoned")?;
+    let session = slot.as_ref().ok_or("no session is running")?;
+
+    let image = if screenshot {
+        Some(screen::primary().map_err(|err| format!("{err:#}"))?)
+    } else {
+        None
+    };
+
+    let text = text.trim();
+    if text.is_empty() && image.is_none() {
+        return Err("nothing to ask".into());
+    }
+
+    session.ask(
+        if text.is_empty() { SCREENSHOT_PROMPT } else { text },
+        image,
+    );
+    Ok(())
+}
+
+fn open_session(brief_text: String, sink: EventSink) -> anyhow::Result<Session> {
     let model = find_model().ok_or_else(|| {
         anyhow::anyhow!(
             "could not find models/ggml-base.en.bin. Download it from \
@@ -81,13 +146,19 @@ fn open_session(sink: EventSink) -> anyhow::Result<Session> {
         )
     })?;
 
+    // Documents resolve before anything starts, so a brief that references a
+    // renamed file fails here — on the setup screen, with the name in the
+    // error — rather than silently answering without it.
+    let folder = documents::folder();
+    let documents = documents::resolve(&folder, &brief_text)?;
+
     let transcriber = WhisperTranscriber::load(&model.to_string_lossy(), None)?;
 
     // Answering is optional. Without a key the app is still a live transcript
-    // with turn detection, which is worth having on its own — and far better
+    // with turn detection, which is worth having on its own and far better
     // than refusing to start over a missing setting.
-    let responder: Option<Box<dyn Responder>> = match OpenAiResponder::from_env() {
-        Ok(responder) => Some(Box::new(responder)),
+    let responder = match copilot_core::llm::from_env() {
+        Ok(responder) => Some(responder),
         Err(err) => {
             sink(Event::Error {
                 message: format!("answers are off: {err:#}"),
@@ -96,7 +167,15 @@ fn open_session(sink: EventSink) -> anyhow::Result<Session> {
         }
     };
 
-    Session::start(Box::new(transcriber), responder, sink)
+    Session::start(
+        Box::new(transcriber),
+        responder,
+        Brief {
+            text: brief_text,
+            documents,
+        },
+        sink,
+    )
 }
 
 /// Looks for the model beside the executable and above it, then from the
@@ -104,7 +183,9 @@ fn open_session(sink: EventSink) -> anyhow::Result<Session> {
 /// built binary.
 fn find_model() -> Option<PathBuf> {
     let starts = [
-        std::env::current_exe().ok().and_then(|p| p.parent().map(PathBuf::from)),
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(PathBuf::from)),
         std::env::current_dir().ok(),
     ];
 

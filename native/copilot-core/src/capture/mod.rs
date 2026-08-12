@@ -11,6 +11,8 @@
 //! costs real time — downmixing, resampling — happens on whichever thread
 //! calls [`Lane::read`], where being late costs nothing.
 
+pub mod screen;
+
 use anyhow::{anyhow, bail, Context, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, SampleFormat, Stream, StreamConfig, SupportedStreamConfig};

@@ -11,17 +11,12 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-/// Names checked, in order. The first that holds something wins.
-const KEY_NAMES: &[&str] = &[
-    "OPENAI_API_KEY",
-    "CHAT_GPT",
-    "CHATGPT_TOKEN",
-    "OPENAI_TOKEN",
-];
-
-/// The API key, from the environment or from `.env`.
-pub fn api_key() -> Option<String> {
-    for name in KEY_NAMES {
+/// The first of `names` that holds something, from the environment or `.env`.
+///
+/// Several names per provider, because the one already sitting in someone's
+/// `.env` is rarely the one a library expects.
+pub fn find(names: &[&str]) -> Option<String> {
+    for name in names {
         if let Ok(value) = std::env::var(name) {
             if !value.trim().is_empty() {
                 return Some(value.trim().to_string());
@@ -30,7 +25,7 @@ pub fn api_key() -> Option<String> {
     }
 
     let file = dotenv()?;
-    KEY_NAMES
+    names
         .iter()
         .find_map(|name| file.get(*name))
         .map(|value| value.trim().to_string())

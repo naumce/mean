@@ -6,7 +6,7 @@
 
 use anyhow::Result;
 
-use super::{Ending, Question, Responder};
+use super::{Brief, Ending, Question, Responder};
 
 pub struct MockResponder {
     reply: String,
@@ -29,6 +29,7 @@ impl Responder for MockResponder {
     fn respond(
         &mut self,
         _question: &Question,
+        _brief: &Brief,
         on_delta: &mut dyn FnMut(&str),
         cancelled: &dyn Fn() -> bool,
     ) -> Result<Ending> {
@@ -54,17 +55,18 @@ mod tests {
     use super::*;
 
     fn question() -> Question {
-        Question {
-            id: 0,
-            text: "Why?".into(),
-            context: Vec::new(),
-        }
+        Question::typed("Why?", Vec::new())
     }
 
     fn collect(responder: &mut MockResponder, cancelled: &dyn Fn() -> bool) -> (String, Ending) {
         let mut got = String::new();
         let ending = responder
-            .respond(&question(), &mut |delta| got.push_str(delta), cancelled)
+            .respond(
+                &question(),
+                &Brief::default(),
+                &mut |delta| got.push_str(delta),
+                cancelled,
+            )
             .unwrap();
         (got, ending)
     }
@@ -83,7 +85,12 @@ mod tests {
         let mut responder = MockResponder::new("one two three four");
         let mut pieces = 0;
         responder
-            .respond(&question(), &mut |_| pieces += 1, &|| false)
+            .respond(
+                &question(),
+                &Brief::default(),
+                &mut |_| pieces += 1,
+                &|| false,
+            )
             .unwrap();
 
         assert!(pieces > 1, "answer arrived as a single lump");

@@ -55,7 +55,13 @@ pub enum Event {
     /// Once at startup, so the interface can show what it is actually using.
     #[serde(rename_all = "camelCase")]
     Ready {
+        /// The speech recognition model.
         model: String,
+        /// The answering model, or `None` when no API key was found — in
+        /// which case this is a live transcript and nothing more.
+        answers: Option<String>,
+        /// How many documents the brief resolved.
+        documents: usize,
         you_device: String,
         them_device: String,
     },
@@ -100,7 +106,13 @@ pub enum Event {
     /// An answer is starting. Arrives before any text, so the interface can
     /// make room for it rather than having it appear all at once.
     #[serde(rename_all = "camelCase")]
-    AnswerStart { for_id: u64, model: String },
+    AnswerStart {
+        for_id: u64,
+        model: String,
+        /// What is being answered. A typed question has no transcript line to
+        /// sit under, so the interface needs the text to show one.
+        question: String,
+    },
 
     /// The next fragment of an answer. Fragments are whatever size the model
     /// sends — often part of a word — so they must be appended, never treated

@@ -7,6 +7,7 @@
 pub mod audio;
 pub mod capture;
 pub mod config;
+pub mod documents;
 pub mod event;
 pub mod llm;
 pub mod secrets;

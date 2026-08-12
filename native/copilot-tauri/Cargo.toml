@@ -8,6 +8,7 @@ description = "Window around the meeting copilot engine"
 tauri-build = "2"
 
 [dependencies]
+serde = { version = "1", features = ["derive"] }
 anyhow = "1"
 copilot-core = { path = "../copilot-core" }
 tauri = "2"

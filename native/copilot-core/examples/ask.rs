@@ -6,40 +6,65 @@
 //! is upstream in audio or turn detection, and the other way round.
 //!
 //!     cargo run --example ask -- "how would you handle a thundering herd?"
+//!     cargo run --example ask -- --brief "Answer only in Rust. @cv.md" "what should I emphasise?"
+//!     cargo run --example ask -- --shot                 # capture the screen and solve what is on it
 
 use anyhow::Result;
-use copilot_core::event::Lane;
-use copilot_core::llm::openai::OpenAiResponder;
-use copilot_core::llm::{ContextLine, Ending, Question, Responder};
+use copilot_core::capture::screen;
+use copilot_core::documents;
+use copilot_core::llm::{Brief, Question};
 use std::io::Write;
 use std::time::Instant;
 
+/// Used with `--shot` and nothing typed. Vague on purpose — the picture is
+/// the question.
+const SCREENSHOT_PROMPT: &str =
+    "Here is my screen. Answer whatever it is asking, or explain what I am looking at.";
+
 fn main() -> Result<()> {
-    let text = std::env::args()
-        .skip(1)
-        .collect::<Vec<_>>()
-        .join(" ")
-        .trim()
-        .to_string();
+    let (brief_text, text) = parse_args();
+    let shot = std::env::args().any(|arg| arg == "--shot");
 
-    let text = if text.is_empty() {
-        "How would you handle a thundering herd?".to_string()
-    } else {
+    let text = if !text.trim().is_empty() {
         text
+    } else if shot {
+        SCREENSHOT_PROMPT.to_string()
+    } else {
+        "How would you handle a thundering herd?".to_string()
     };
 
-    let mut responder = OpenAiResponder::from_env()?;
+    let folder = documents::folder();
+    let documents = documents::resolve(&folder, &brief_text)?;
+
+    let brief = Brief {
+        text: brief_text,
+        documents,
+    };
+
+    let mut responder = copilot_core::llm::from_env()?;
+
     println!("\n  model     {}", responder.name());
-    println!("  question  {text}\n");
+    if !brief.documents.is_empty() {
+        let names: Vec<&str> = brief.documents.iter().map(|d| d.name.as_str()).collect();
+        println!("  documents {} ({})", brief.documents.len(), names.join(", "));
+    }
+    println!("  question  {text}");
 
-    let question = Question {
-        id: 0,
-        text,
-        context: vec![ContextLine {
-            lane: Lane::Them,
-            text: "So walk me through how you would design a rate limiter.".into(),
-        }],
-    };
+    let mut question = Question::typed(text, Vec::new());
+
+    if shot {
+        let began = Instant::now();
+        let image = screen::primary()?;
+        // Base64 inflates by four thirds, so the wire size is what this
+        // reports rather than the encoder's output.
+        println!(
+            "  screen    captured in {} ms, {} KB on the wire",
+            began.elapsed().as_millis(),
+            image.base64.len() / 1024
+        );
+        question.image = Some(image);
+    }
+    println!();
 
     let began = Instant::now();
     let mut first_token = None;
@@ -47,6 +72,7 @@ fn main() -> Result<()> {
 
     let ending = responder.respond(
         &question,
+        &brief,
         &mut |delta| {
             // Time to *first* token is the number a person on a call feels.
             // Everything after it arrives while they are still reading.
@@ -66,10 +92,24 @@ fn main() -> Result<()> {
         ),
         None => println!("  no answer produced ({ending:?})"),
     }
-
-    if ending == Ending::Cancelled {
-        println!("  (cancelled)");
-    }
     println!();
     Ok(())
+}
+
+/// Returns `(brief, question)`. Everything after `--brief` up to the next
+/// argument is the brief; the rest is the question.
+fn parse_args() -> (String, String) {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+
+    let args: Vec<String> = args.into_iter().filter(|arg| arg != "--shot").collect();
+
+    match args.iter().position(|arg| arg == "--brief") {
+        Some(at) => {
+            let brief = args.get(at + 1).cloned().unwrap_or_default();
+            let mut rest: Vec<String> = args[..at].to_vec();
+            rest.extend_from_slice(&args[(at + 2).min(args.len())..]);
+            (brief, rest.join(" ").trim().to_string())
+        }
+        None => (String::new(), args.join(" ").trim().to_string()),
+    }
 }

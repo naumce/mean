@@ -7,38 +7,136 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <header>
-      <div class="title">
-        <span class="dot" id="health" data-state="starting"></span>
+    <!-- ============================ SETUP ============================ -->
+    <section class="screen" id="setup">
+      <header class="head">
+        <span class="dot" id="health" data-state="idle"></span>
         <h1>meeting copilot</h1>
-        <span class="model" id="model">starting…</span>
+      </header>
+
+      <div class="scroll">
+        <div class="field">
+          <span class="label">What kind of session is this?</span>
+          <div class="presets" id="presets">
+            <button class="preset" type="button" aria-pressed="true" data-preset="coding">
+              Coding challenge
+              <small>Full runnable code</small>
+            </button>
+            <button class="preset" type="button" aria-pressed="false" data-preset="deep">
+              Technical deep-dive
+              <small>Answer first, then why</small>
+            </button>
+            <button class="preset" type="button" aria-pressed="false" data-preset="notes">
+              Meeting notes
+              <small>Transcript, no answers</small>
+            </button>
+            <button class="preset" type="button" aria-pressed="false" data-preset="custom">
+              Custom
+              <small>Write your own</small>
+            </button>
+          </div>
+        </div>
+
+        <div class="field">
+          <span class="label">Brief &mdash; this shapes every answer</span>
+          <textarea id="brief" spellcheck="false"></textarea>
+          <div class="refs" id="refs"></div>
+        </div>
+
+        <div class="field">
+          <span class="label">
+            Documents
+            <span class="path" id="docs-path">&hellip;</span>
+            <button class="linky" type="button" id="refresh">refresh</button>
+          </span>
+          <div class="docs" id="docs"></div>
+        </div>
+
+        <div class="field">
+          <span class="label">Audio</span>
+          <div class="meters">
+            <div class="meter" data-lane="you">
+              <span class="tag">YOU</span>
+              <div class="bar"><i id="level-you"></i></div>
+              <span class="device" id="device-you">checked when the session starts</span>
+            </div>
+            <div class="meter" data-lane="them">
+              <span class="tag">THEM</span>
+              <div class="bar"><i id="level-them"></i></div>
+              <span class="device" id="device-them">&nbsp;</span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div class="meters">
+      <footer class="bar">
+        <span class="status" id="setup-status"></span>
+        <button class="btn btn-go" type="button" id="start">
+          <svg width="11" height="11" viewBox="0 0 11 11" aria-hidden="true">
+            <circle cx="5.5" cy="5.5" r="4.5" fill="currentColor"></circle>
+          </svg>
+          Start session
+        </button>
+      </footer>
+    </section>
+
+    <!-- ============================ LIVE ============================= -->
+    <section class="screen" id="live" hidden>
+      <header class="head live">
+        <span class="dot" data-state="running"></span>
+        <span class="what" id="live-what">Listening</span>
+        <span class="models" id="live-models"></span>
+        <span class="elapsed" id="elapsed">00:00</span>
+      </header>
+
+      <div class="meters compact">
         <div class="meter" data-lane="you">
           <span class="tag">YOU</span>
-          <div class="bar"><i id="level-you"></i></div>
-          <span class="device" id="device-you">—</span>
+          <div class="bar"><i id="level-you-live"></i></div>
         </div>
         <div class="meter" data-lane="them">
           <span class="tag">THEM</span>
-          <div class="bar"><i id="level-them"></i></div>
-          <span class="device" id="device-them">—</span>
+          <div class="bar"><i id="level-them-live"></i></div>
         </div>
       </div>
-    </header>
 
-    <main id="transcript">
-      <p class="empty" id="empty">
-        Listening. Say something, or play something with speech in it — lines
-        appear a beat after each person stops talking.
-      </p>
-    </main>
+      <main class="transcript" id="transcript">
+        <p class="empty" id="empty">
+          Listening. Lines appear a beat after each person stops talking &mdash;
+          or type a question below.
+        </p>
+      </main>
 
-    <footer>
-      <span id="status">—</span>
-      <span id="warning" class="warning" hidden></span>
-    </footer>
+      <div class="composer">
+        <input
+          type="text"
+          id="compose"
+          autocomplete="off"
+          placeholder="Type a question instead of asking it out loud…"
+          aria-label="Ask a question"
+        />
+        <button class="btn" type="button" id="send">Ask</button>
+      </div>
+
+      <footer class="bar">
+        <button class="btn" type="button" id="shot">
+          <svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true">
+            <path d="M1 3.6h2.6L4.7 1.8h4.6l1.1 1.8H13v6.6H1z" stroke-linejoin="round"></path>
+            <circle cx="7" cy="6.6" r="2.1"></circle>
+          </svg>
+          Screenshot
+        </button>
+        <span class="status" id="live-status"></span>
+        <button class="btn btn-stop" type="button" id="stop">
+          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+            <rect width="10" height="10" rx="1.5" fill="currentColor"></rect>
+          </svg>
+          Stop
+        </button>
+      </footer>
+    </section>
+
+    <div class="toast" id="toast" hidden></div>
 
     <script src="app.js"></script>
   </body>

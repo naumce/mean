@@ -8,6 +8,10 @@ target/
 # Secrets
 .env
 
+# Reference material — CVs, job descriptions, notes. Personal by nature.
+documents/*
+!documents/README.md
+
 # Speech recognition models, downloaded not committed
 models/
 *.bin
