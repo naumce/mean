@@ -54,15 +54,18 @@ fn main() -> Result<()> {
 
     if shot {
         let began = Instant::now();
-        let image = screen::primary()?;
-        // Base64 inflates by four thirds, so the wire size is what this
-        // reports rather than the encoder's output.
+        let captured = screen::capture(screen::Target::Active)?;
+        // Which screen, because following the active window is a guess about
+        // intent and this is the only place it becomes visible. Base64 inflates
+        // by four thirds, so the wire size is what this reports rather than the
+        // encoder's output.
         println!(
-            "  screen    captured in {} ms, {} KB on the wire",
+            "  screen    {} — captured in {} ms, {} KB on the wire",
+            captured.monitor,
             began.elapsed().as_millis(),
-            image.base64.len() / 1024
+            captured.image.base64.len() / 1024
         );
-        question.image = Some(image);
+        question.image = Some(captured.image);
     }
     println!();
 

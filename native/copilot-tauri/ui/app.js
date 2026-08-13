@@ -195,6 +195,34 @@ async function loadDocs() {
 
 el("refresh").addEventListener("click", loadDocs);
 
+/* Following the window you were last in is the default because it is right by
+ * construction: it cannot be made stale by moving a window, and it is the only
+ * rule that excludes this app — which is otherwise always in front the moment
+ * the screenshot button is pressed. The list is for pinning it deliberately. */
+async function loadMonitors() {
+  const select = el("monitor");
+  try {
+    const found = await invoke("monitors");
+
+    // Rebuild below the default rather than replacing it.
+    while (select.options.length > 1) select.remove(1);
+
+    for (const monitor of found) {
+      const option = document.createElement("option");
+      option.value = String(monitor.index);
+      option.textContent =
+        `${monitor.name} · ${monitor.width}×${monitor.height}` +
+        (monitor.primary ? " · primary" : "");
+      select.append(option);
+    }
+
+    // One screen means there is nothing to choose between.
+    el("monitor").parentElement.hidden = found.length < 2;
+  } catch (err) {
+    say("setup-status", String(err), true);
+  }
+}
+
 /* ------------------------------------------------------------------ *
  * Transcript rendering
  * ------------------------------------------------------------------ */
@@ -530,6 +558,8 @@ async function stopSession() {
   }
   showLive(false);
   loadDocs();
+  // Monitors can be plugged in or unplugged between sessions.
+  loadMonitors();
 }
 
 async function send(withScreenshot) {
@@ -541,8 +571,19 @@ async function send(withScreenshot) {
   el("send").disabled = true;
   el("shot").disabled = true;
 
+  const pinned = el("monitor").value;
+
   try {
-    await invoke("ask", { text, screenshot: withScreenshot });
+    // `null` follows the window last in use; an index pins a screen.
+    const captured = await invoke("ask", {
+      text,
+      screenshot: withScreenshot,
+      monitor: pinned === "" ? null : Number(pinned),
+    });
+
+    // Say which screen went out. Following the active window is a guess, and
+    // an unseen guess cannot be corrected.
+    if (captured) toast(`sent ${captured}`);
   } catch (err) {
     toast(String(err));
     input.value = text;
@@ -581,7 +622,7 @@ if (!tauri?.event?.listen || !invoke) {
   // events, including a startup failure, are dropped before arrival.
   tauri.event
     .listen("copilot", (message) => handle(message.payload))
-    .then(loadDocs)
+    .then(() => Promise.all([loadDocs(), loadMonitors()]))
     .catch((err) => {
       el("health").dataset.state = "error";
       say("setup-status", String(err), true);

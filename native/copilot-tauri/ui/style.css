@@ -236,6 +236,29 @@ textarea::placeholder, input::placeholder { color: var(--ink-faint); }
 
 /* ---------- documents ---------- */
 
+.select {
+  width: 100%;
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.5rem 0.6rem;
+  color: var(--ink);
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.select:focus-visible { outline: 2px solid var(--you); outline-offset: 1px; }
+
+/* Explains a default rather than labelling a control, so it sits under the
+   thing it is about and stays quiet. */
+.note {
+  margin: 0.45rem 0 0;
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: var(--ink-faint);
+}
+
 .docs { border: 1px solid var(--line-soft); border-radius: 7px; overflow: hidden; }
 
 .docs .none {

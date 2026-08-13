@@ -50,6 +50,7 @@ fn main() {
         .manage(Running::default())
         .invoke_handler(tauri::generate_handler![
             list_documents,
+            monitors,
             start,
             stop,
             ask
@@ -162,15 +163,30 @@ fn stop(running: State<'_, Running>) -> Result<(), String> {
 /// Asks a question that was typed rather than spoken, optionally with the
 /// screen attached.
 #[tauri::command]
-fn ask(running: State<'_, Running>, text: String, screenshot: bool) -> Result<(), String> {
+fn ask(
+    running: State<'_, Running>,
+    text: String,
+    screenshot: bool,
+    monitor: Option<usize>,
+) -> Result<Option<String>, String> {
     let slot = running.session.lock().map_err(|_| "session lock poisoned")?;
     let session = slot.as_ref().ok_or("no session is running")?;
 
-    let image = if screenshot {
-        Some(screen::primary().map_err(|err| format!("{err:#}"))?)
+    // `None` means follow the window last in use, which is the default and
+    // almost always what is wanted. An index pins it instead.
+    let target = match monitor {
+        Some(index) => screen::Target::Monitor(index),
+        None => screen::Target::Active,
+    };
+
+    let shot = if screenshot {
+        Some(screen::capture(target).map_err(|err| format!("{err:#}"))?)
     } else {
         None
     };
+
+    let captured = shot.as_ref().map(|shot| shot.monitor.clone());
+    let image = shot.map(|shot| shot.image);
 
     let text = text.trim();
     if text.is_empty() && image.is_none() {
@@ -181,7 +197,15 @@ fn ask(running: State<'_, Running>, text: String, screenshot: bool) -> Result<()
         if text.is_empty() { SCREENSHOT_PROMPT } else { text },
         image,
     );
-    Ok(())
+    // Which screen was sent, so the interface can say so rather than leaving
+    // you to infer it from an answer about the wrong thing.
+    Ok(captured)
+}
+
+/// Every monitor, for the setup screen's override.
+#[tauri::command]
+fn monitors() -> Vec<screen::MonitorInfo> {
+    screen::monitors()
 }
 
 fn open_session(brief_text: String, sink: EventSink) -> anyhow::Result<Session> {
