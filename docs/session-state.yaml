@@ -1,0 +1,258 @@
+# Machine-readable handoff for the meeting-copilot build.
+# Written so a fresh session can resume without re-deriving anything or
+# re-litigating decisions that are already settled.
+
+meta:
+  project: meeting-copilot
+  purpose: >
+    Windows desktop app. Captures both sides of a conversation (microphone +
+    WASAPI loopback), transcribes locally with whisper.cpp, decides when the
+    other side has finished asking something, and streams an answer from a
+    cloud LLM. Also answers typed questions and screenshots.
+  repo: E:\meeting-copilot
+  branch: master
+  head: 1cd984a
+  tests: 140 passing (`cargo test -p copilot-core --no-default-features`)
+  working_tree: clean
+  scope_note: >
+    Built as a visible/consensual copilot. A request for a hidden
+    interview-cheating tool was declined earlier in the session; the audio,
+    STT, turn-detection and LLM layers were built instead. Do not add
+    screen-capture-evasion (SetWindowDisplayAffinity / content protection).
+
+status:
+  summary: >
+    Every layer is built and verified EXCEPT the live API call. The blocker is
+    an account balance, not code.
+  blocked_on:
+    what: No usable API key.
+    detail: >
+      .env contains only CHAT_GPT (an OpenAI sk-proj- key) whose account
+      returns `429: You have no credits remaining`. No ANTHROPIC_API_KEY is
+      set anywhere.
+    fix_options:
+      - Add ~$5 credit at platform.openai.com/settings/organization/billing
+      - Add `ANTHROPIC_API_KEY=sk-ant-...` to E:\meeting-copilot\.env
+        (auto-detected and preferred over OpenAI)
+    note: >
+      A Claude Code / ChatGPT subscription is NOT an API key. API access is
+      billed separately.
+
+verified:
+  - claim: Both audio lanes capture simultaneously
+    evidence: >
+      WASAPI loopback of the render endpoint gives system audio with no
+      virtual cable, driver, or elevation. Confirmed live.
+  - claim: 48kHz stereo -> 16kHz mono conversion is correct
+    evidence: >
+      Played a 1000 Hz tone at 48kHz stereo; it came back out of the pipeline
+      at 1000 Hz, 16kHz mono. Pitch preserved exactly, so the rate conversion
+      is right rather than merely plausible.
+  - claim: Transcription works on real-world audio
+    evidence: >
+      A YouTube video playing through the speakers was transcribed verbatim
+      via the loopback lane, correctly separated from the microphone lane.
+  - claim: Turn detection makes the right call
+    evidence: >
+      One run, four decisions all correct - fired on a question, stayed
+      silent on "Right." (backchannel), stayed silent on an unfinished
+      fragment, and fired on the completing question with the fragment
+      folded in.
+  - claim: Screen capture works
+    evidence: "918 ms to capture, 790 KB base64 JPEG on the wire (1080p)."
+  - claim: The request is built and sent correctly
+    evidence: >
+      Reaches the provider and returns a well-formed 429 with the billing
+      message surfaced verbatim. Everything up to the API boundary is proven.
+  - claim: The setup screen renders correctly
+    evidence: >
+      Screenshotted running. Presets, brief, documents list (real folder path
+      + README.md with insert button), meters, Start button. Light theme
+      resolved correctly.
+
+never_verified:
+  - claim: The microphone lane against a real human voice
+    why: >
+      The assistant cannot speak. Loopback was verified repeatedly with
+      played audio; the YOU lane is proven structurally but has only ever
+      seen room noise. USER SHOULD TEST THIS.
+  - claim: Any successful LLM response
+    why: No credits. See status.blocked_on.
+
+measurements:
+  whisper_base_en_cpu: 960-1070 ms per utterance (Ryzen 7 3700X, 14 threads)
+  whisper_base_en_cuda: 180-460 ms per utterance (RTX 3090)
+  screen_capture: 918 ms, 790 KB on the wire
+  turn_fire_delay_ms: 700
+  vad_hangover_ms: 400
+
+architecture:
+  principle: >
+    The engine knows nothing about a UI. A single `Event` enum is the only
+    thing that crosses out of it, so the shell stays replaceable - the same
+    ui/ files would work against a WebSocket instead of Tauri.
+  crates:
+    native/audio-probe: Original spike. Left alone as a known-good reference.
+    native/copilot-core: The engine. No window, no HTTP server, no Tauri.
+    native/copilot-tauri: The window. ~200 lines of Rust plus plain HTML/CSS/JS.
+  threads:
+    capture: >
+      Drains both lanes, cuts them into utterances. Must never do anything
+      slow. Exists as a thread because a cpal Stream cannot move between
+      threads on Windows - which is also why startup errors return over a
+      channel rather than being returned directly.
+    recognition: whisper, then turn detection. Owns the transcript history.
+    answering: Talks to the model. Neither other thread may wait on it.
+  core_modules:
+    audio/ring.rs: Lock-free SPSC handoff off the realtime thread. Drops are counted, never blocking.
+    audio/resample.rs: Windowed-sinc low-pass then decimate. 48k -> 16k.
+    audio/vad.rs: Energy + hysteresis + hangover.
+    stt/segmenter.rs: Where one utterance ends. Pre-roll, length cap, voiced floor.
+    stt/hallucination.rs: Filters invented text, per sentence not per utterance.
+    turn/: When to answer. Pure function, no clock, no I/O. Fully unit tested.
+    llm/prompt.rs: Builds the request. Brief REPLACES the answer contract.
+    llm/anthropic.rs: Raw HTTP Messages API client.
+    llm/openai.rs: Raw HTTP chat completions client.
+    documents.rs: Watched folder + @mention resolution.
+    capture/screen.rs: Whole-screen JPEG capture for vision.
+    session.rs: Wires the three threads together, fans out events.
+
+decisions_settled:
+  - id: brief-replaces-contract
+    decision: >
+      The session brief REPLACES the default answer contract rather than
+      adding to it.
+    why: >
+      A live conversation wants "one sentence, then three bullets"; a coding
+      challenge wants fifty lines of runnable code. Those contradict. One app
+      cannot serve both if the brief only appends.
+    enforced_by: llm/prompt.rs test `a_brief_replaces_the_answer_contract_rather_than_adding_to_it`
+  - id: documents-cached-first
+    decision: Documents go at the front of the request behind a cache breakpoint.
+    why: >
+      Documents are stable for the session; the transcript grows. Stable-first
+      means the first question writes the cache and every one after reads it
+      at ~0.1x. Reversed, a CV is re-billed on every single question.
+    enforced_by: llm/prompt.rs test `documents_live_in_the_system_prompt_not_the_conversation`
+  - id: mention-only
+    decision: Only documents the brief @mentions are read and sent.
+    why: A file in the folder costs nothing until referenced.
+  - id: two-screens
+    decision: Setup screen and live screen, not one screen.
+    why: >
+      Before a session you have unlimited time; during one you have about a
+      second. Everything adjustable belongs before. Live screen has three
+      controls: type, screenshot, stop.
+  - id: text-formats-only
+    decision: PDF and DOCX are listed but greyed out; export to .md/.txt.
+    why: >
+      Native PDF ties documents to Anthropic; local extraction returns nothing
+      from a scanned CV and fails silently. Deferred deliberately.
+  - id: whole-screen-screenshot
+    decision: No region selection. One click captures everything.
+    why: A second step costs more attention mid-call than the ambiguity saves.
+  - id: recognition-off-capture-thread
+    decision: Recognition runs on its own thread.
+    why: >
+      MEASURED, not assumed. Inline, the first CUDA call took 1901 ms warming
+      up and capture reported 3840 discarded samples - a real hole in audio.
+  - id: turn-detection-is-pure
+    decision: No clock, no I/O. Signals in with a timestamp, decisions out.
+    why: >
+      It is the part most likely to need tuning. Tuning against unit tests
+      beats tuning by talking at a laptop.
+  - id: dangling-word-rule
+    decision: A sentence ending on a dangling function word is not finished.
+    why: >
+      Observed live - "And what I am wondering is." opens like a question and
+      is half of one. A silence timer cannot tell; the last word can. Words
+      that CAN end a real question (do/did/would) are deliberately excluded.
+
+gotchas:
+  build_environment:
+    note: >
+      These are not on PATH by default in a fresh shell and each one cost
+      real time to diagnose. Set all of them before building.
+    required:
+      - 'C:\Program Files\CMake\bin on PATH (builds whisper.cpp)'
+      - 'LIBCLANG_PATH=C:\Program Files\LLVM\bin (bindgen needs libclang.dll;
+         Visual Studio does not ship one)'
+    cuda_only:
+      - 'CUDA_PATH and CUDA_PATH_V13_3 must BOTH be set. MSBuild reads the
+         versioned one; without it the build fails with
+         "The CUDA Toolkit directory '''' does not exist"'
+      - 'CUDA\v13.3\bin\x64 on PATH at RUNTIME. CUDA 13 moved the runtime
+         DLLs there from bin. Without it the binary exits instantly with
+         0xC0000135 and no message.'
+    working_powershell_prelude: |
+      $cuda = 'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.3'
+      $env:CUDA_PATH = $cuda; $env:CUDA_PATH_V13_3 = $cuda
+      $env:PATH = "C:\Program Files\CMake\bin;C:\Program Files\LLVM\bin;$cuda\bin\x64;$cuda\bin;$env:PATH"
+      $env:LIBCLANG_PATH = "C:\Program Files\LLVM\bin"
+  tauri:
+    - 'Nothing is permitted by default. Without capabilities/default.json the
+       interface cannot subscribe to its own event channel, and the only sign
+       is a permissions message where the transcript should be.'
+    - 'Events emitted during setup() are dropped - the webview has not
+       attached a listener yet. The UI therefore calls `start` once it IS
+       listening. This also makes startup failures visible instead of lost.'
+  testing:
+    - 'Tests that walk time forward MUST poll the way the caller does. Two
+       separate turn-detection bugs hid in exactly that gap - expiry that only
+       ran inside poll(), passing a test that jumped straight to the
+       interesting moment. Use the tick_to() helper.'
+    - 'PowerShell here-strings break on embedded double quotes when passed to
+       git. Use `git commit -F <file>` instead.'
+  environment_noise:
+    - 'Loopback captures EVERYTHING the machine plays. A YouTube video playing
+       in the background was transcribed into the THEM lane and initially
+       looked like model hallucination. Pause other audio before testing.'
+    - 'Continuous background audio means the THEM lane never falls silent, so
+       utterances hit the 15s cap and turn detection correctly refuses to fire.'
+
+known_gaps:
+  - Speaker bleed - if the far side plays through speakers the mic picks it up and both lanes transcribe the same words. Use headphones.
+  - Device following - both lanes bind to whatever is default at startup. Unplugging a headset mid-session kills the stream rather than migrating.
+  - Clock drift - the two endpoints run on independent hardware clocks; over a long session the lanes drift.
+  - Only whole-number sample-rate conversion. 44.1kHz devices are rejected with a clear error.
+  - Per-process capture by PID is not implemented (needs ActivateAudioInterfaceAsync, which cpal does not expose).
+  - No persistence. Everything lives in the window until Stop.
+
+commands:
+  test: cargo test -p copilot-core --no-default-features
+  test_with_whisper: cargo test -p copilot-core
+  run_app: cargo run -p copilot-tauri --features cuda --release
+  screenshot_to_answer: cargo run -p copilot-core --example ask -- --shot
+  ask_text: cargo run -p copilot-core --example ask -- "your question"
+  ask_with_brief: cargo run -p copilot-core --example ask -- --brief "Answer in Rust. @cv.md" "what should I emphasise?"
+  live_transcript_terminal: cargo run -p copilot-core --example live_transcript
+  record_wavs: cargo run -p copilot-core --example dump_wav
+
+next_steps:
+  immediate:
+    - id: unblock-key
+      what: Add API credit or an Anthropic key. Nothing else can proceed without this.
+      owner: user
+    - id: verify-mic
+      what: >
+        Run the app and speak. The YOU lane has never been tested against a
+        real human voice.
+      owner: user
+  offered_not_built:
+    - id: global-hotkey
+      what: >
+        Press a key combination anywhere -> screenshot captured and sent ->
+        answer appears. Removes the alt-tab. Tauri global-shortcut plugin,
+        roughly 20 minutes.
+      status: offered, user said "ok" without confirming; not started
+  deferred_deliberately:
+    - PDF and DOCX reading
+    - Region selection on screenshots
+    - Saved sessions / transcript persistence
+    - Answer-mode toggle separate from stop/start
+
+design_artifact:
+  url: https://claude.ai/code/artifact/76fbbfb8-4c81-470b-bd1f-fc07b99ee373
+  what: >
+    Interactive two-screen mockup used to confirm the interface before
+    building. Click through setup -> live. Matches what was shipped.
