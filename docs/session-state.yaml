@@ -11,8 +11,8 @@ meta:
     cloud LLM. Also answers typed questions and screenshots.
   repo: E:\meeting-copilot
   branch: master
-  head: 1cd984a
-  tests: 140 passing (`cargo test -p copilot-core --no-default-features`)
+  head: 62c13e8
+  tests: 148 passing (`cargo test -p copilot-core --no-default-features`)
   working_tree: clean
   scope_note: >
     Built as a visible/consensual copilot. A request for a hidden
@@ -22,21 +22,21 @@ meta:
 
 status:
   summary: >
-    Every layer is built and verified EXCEPT the live API call. The blocker is
-    an account balance, not code.
-  blocked_on:
-    what: No usable API key.
-    detail: >
-      .env contains only CHAT_GPT (an OpenAI sk-proj- key) whose account
-      returns `429: You have no credits remaining`. No ANTHROPIC_API_KEY is
-      set anywhere.
-    fix_options:
-      - Add ~$5 credit at platform.openai.com/settings/organization/billing
-      - Add `ANTHROPIC_API_KEY=sk-ant-...` to E:\meeting-copilot\.env
-        (auto-detected and preferred over OpenAI)
+    Working end to end. The account was funded, the API answers, Stop no
+    longer hangs, and screenshots follow the screen being used. Nothing is
+    blocked.
+  provider:
+    current: OpenAI, gpt-4o-mini, via CHAT_GPT in .env
     note: >
-      A Claude Code / ChatGPT subscription is NOT an API key. API access is
-      billed separately.
+      A ChatGPT Plus subscription is NOT API access - platform.openai.com is
+      metered against prepaid credit and billed separately. Same on the other
+      side: Claude Pro/Max does not cover console.anthropic.com. Dropping
+      ANTHROPIC_API_KEY into .env switches provider with no code change.
+    worth_revisiting: >
+      gpt-4o-mini is the weakest vision model available and it is being asked
+      to read small code text off a 1080p screenshot. If an answer misreads a
+      requirement, suspect the model before the pipeline - raise QUALITY in
+      capture/screen.rs or move to a stronger model.
 
 verified:
   - claim: Both audio lanes capture simultaneously
@@ -60,10 +60,20 @@ verified:
       folded in.
   - claim: Screen capture works
     evidence: "918 ms to capture, 790 KB base64 JPEG on the wire (1080p)."
-  - claim: The request is built and sent correctly
+  - claim: The whole answer path works, live
     evidence: >
-      Reaches the provider and returns a well-formed 429 with the billing
-      message surfaced verbatim. Everything up to the API boundary is proven.
+      `ask` example against the funded account: first token after 907 ms,
+      complete in 1.1 s, Ending::Complete. This was the last unproven link.
+  - claim: Stop releases the session instead of hanging
+    evidence: >
+      `stop` example - real devices, all three threads, an answer in flight -
+      returns in 26 ms. Before the fix it never returned at all. Both
+      regression tests were confirmed failing against the old code first.
+  - claim: Screenshots follow the screen being used
+    evidence: >
+      `screens` example reports both monitors by hardware name and picks the
+      one holding the active window. The choosing rule has six unit tests,
+      including our own window losing while focused and in front.
   - claim: The setup screen renders correctly
     evidence: >
       Screenshotted running. Presets, brief, documents list (real folder path
@@ -76,8 +86,10 @@ never_verified:
       The assistant cannot speak. Loopback was verified repeatedly with
       played audio; the YOU lane is proven structurally but has only ever
       seen room noise. USER SHOULD TEST THIS.
-  - claim: Any successful LLM response
-    why: No credits. See status.blocked_on.
+  - claim: The Stop button, pressed in the actual window
+    why: >
+      The deadlock is fixed and proven against a real session, but nobody has
+      yet clicked the button in the running app. USER SHOULD CONFIRM.
 
 measurements:
   whisper_base_en_cpu: 960-1070 ms per utterance (Ryzen 7 3700X, 14 threads)
@@ -196,7 +208,20 @@ gotchas:
     - 'Events emitted during setup() are dropped - the webview has not
        attached a listener yet. The UI therefore calls `start` once it IS
        listening. This also makes startup failures visible instead of lost.'
+  shutdown:
+    - 'A channel receiver ends when every sender is gone, and `Session` holds
+       one itself. Any future shutdown path that joins threads must release
+       that sender BEFORE joining, or it waits on itself. This froze the whole
+       window once; the answering thread now also ends on the stop flag so the
+       mistake cannot be made again from somewhere new.'
+    - 'Nothing slow may run in a synchronous Tauri command. They execute on the
+       main thread, so a join there freezes the webview with no error anywhere.
+       Teardown runs on its own thread and `start` collects it.'
   testing:
+    - 'Copy-Item preserves the SOURCE timestamp, so restoring a file from a
+       backup can leave it looking older than the build cargo already
+       fingerprinted - it then reuses the stale artifact and the tests appear
+       to still fail after a correct restore. Touch the file afterwards.'
     - 'Tests that walk time forward MUST poll the way the caller does. Two
        separate turn-detection bugs hid in exactly that gap - expiry that only
        ran inside poll(), passing a test that jumped straight to the
@@ -219,7 +244,10 @@ known_gaps:
   - No persistence. Everything lives in the window until Stop.
 
 commands:
+  note: run from the native/ directory, or pass --manifest-path native/Cargo.toml
   test: cargo test -p copilot-core --no-default-features
+  which_screen: cargo run -p copilot-core --example screens --no-default-features
+  prove_stop_works: cargo run -p copilot-core --example stop --no-default-features
   test_with_whisper: cargo test -p copilot-core
   run_app: cargo run -p copilot-tauri --features cuda --release
   screenshot_to_answer: cargo run -p copilot-core --example ask -- --shot
@@ -230,8 +258,8 @@ commands:
 
 next_steps:
   immediate:
-    - id: unblock-key
-      what: Add API credit or an Anthropic key. Nothing else can proceed without this.
+    - id: confirm-stop
+      what: Press Stop in the running window. The fix is proven; the click is not.
       owner: user
     - id: verify-mic
       what: >
