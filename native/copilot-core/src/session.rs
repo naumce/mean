@@ -46,6 +46,13 @@ const LEVEL_INTERVAL: Duration = Duration::from_millis(50);
 /// deciding condition is elapsed time, so something has to ask.
 const TURN_TICK: Duration = Duration::from_millis(50);
 
+/// How often the answering thread looks up from its channel to ask whether the
+/// session is over.
+///
+/// It is otherwise blocked waiting for a question, and shutdown must not depend
+/// on one arriving — see the note on `answer`.
+const SHUTDOWN_TICK: Duration = Duration::from_millis(50);
+
 /// How much transcript is kept for context. Bounded so a long meeting does not
 /// grow the process; the request window is smaller again.
 const HISTORY_LIMIT: usize = 200;
@@ -82,8 +89,13 @@ struct Ask {
 pub struct Session {
     stop: Arc<AtomicBool>,
     worker: Option<JoinHandle<()>>,
-    /// Held so a typed question can be injected from outside the threads.
-    ask: mpsc::Sender<Ask>,
+    /// Held so a typed question can be injected from outside the threads, and
+    /// released before they are joined.
+    ///
+    /// Optional purely so `stop` can drop it while the session itself is still
+    /// alive. A sender living here is a sender the answering thread is waiting
+    /// on, and shutdown cannot wait for something only shutdown can release.
+    ask: Option<mpsc::Sender<Ask>>,
     generation: Arc<AtomicU64>,
     history: History,
 }
@@ -135,7 +147,7 @@ impl Session {
             Ok(Ok(())) => Ok(Session {
                 stop,
                 worker: Some(worker),
-                ask: ask_tx,
+                ask: Some(ask_tx),
                 generation,
                 history,
             }),
@@ -164,16 +176,24 @@ impl Session {
         question.image = image;
 
         let mine = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
-        let _ = self.ask.send(Ask {
-            generation: mine,
-            question,
-        });
+        if let Some(ask) = &self.ask {
+            let _ = ask.send(Ask {
+                generation: mine,
+                question,
+            });
+        }
     }
 
     /// Stops the session and waits for the thread to finish, so capture
     /// devices are released before this returns.
     pub fn stop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
+
+        // Before joining, not after. The answering thread ends when every
+        // sender is gone, and this is one of them — keeping it here would mean
+        // waiting for a sender that only this function can release.
+        self.ask.take();
+
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
         }
@@ -300,7 +320,8 @@ fn run(
             .spawn({
                 let sink = Arc::clone(&sink);
                 let generation = Arc::clone(&generation);
-                move || answer(responder, brief, sink, ask_rx, generation)
+                let stop = Arc::clone(&stop);
+                move || answer(responder, brief, sink, ask_rx, generation, stop)
             })
     });
 
@@ -493,21 +514,38 @@ fn recognize(
 }
 
 /// Streams an answer for each question, abandoning one the moment a newer
-/// question exists.
+/// question exists or the session ends.
+///
+/// The stop flag is checked as well as the channel, and that is load-bearing
+/// rather than belt-and-braces. Waiting purely for every sender to drop once
+/// froze the whole window: `Session` holds a sender of its own, so shutdown
+/// blocked on a sender that only shutdown could release. Ending on the flag
+/// means no future sender, held anywhere by anyone, can reintroduce that.
 fn answer(
     mut responder: Box<dyn Responder>,
     brief: Brief,
     sink: EventSink,
     asks: mpsc::Receiver<Ask>,
     generation: Arc<AtomicU64>,
+    stop: Arc<AtomicBool>,
 ) {
     let model = responder.name();
 
-    while let Ok(Ask {
-        generation: mine,
-        question,
-    }) = asks.recv()
-    {
+    loop {
+        if stop.load(Ordering::Relaxed) {
+            return;
+        }
+
+        let Ask {
+            generation: mine,
+            question,
+        } = match asks.recv_timeout(SHUTDOWN_TICK) {
+            Ok(ask) => ask,
+            // Nothing asked yet; go back and re-check the flag.
+            Err(mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(mpsc::RecvTimeoutError::Disconnected) => return,
+        };
+
         // Already stale before it started — a faster conversation than this
         // model can keep up with.
         if generation.load(Ordering::SeqCst) != mine {
@@ -521,7 +559,12 @@ fn answer(
             question: question.text.clone(),
         });
 
-        let superseded = || generation.load(Ordering::SeqCst) != mine;
+        // Stop counts as superseded. Otherwise ending a session while an
+        // answer is streaming waits for the whole response to arrive before
+        // anything shuts down — a Stop button that works, eventually.
+        let superseded = || {
+            generation.load(Ordering::SeqCst) != mine || stop.load(Ordering::Relaxed)
+        };
         let mut on_delta = |text: &str| {
             sink(Event::AnswerDelta {
                 for_id,
@@ -581,5 +624,106 @@ fn transcribe(
             });
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::llm::mock::MockResponder;
+
+    /// How long a shutdown is allowed to take before the test calls it a hang.
+    /// Generous: the thread should leave within one `SHUTDOWN_TICK`.
+    const PATIENCE: Duration = Duration::from_secs(2);
+
+    fn nowhere() -> EventSink {
+        Arc::new(|_| {})
+    }
+
+    /// The bug this exists to prevent froze the entire window.
+    ///
+    /// Pressing Stop joined the answering thread, which was parked in `recv()`
+    /// waiting for every sender to drop — while `Session` still held one, and
+    /// could only release it after the join it was blocking. A sender is alive
+    /// for the whole of this test on purpose; that is the condition that used
+    /// to hang, so the test is worthless without it.
+    #[test]
+    fn the_answering_thread_leaves_even_while_a_sender_is_still_alive() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let (ask_tx, ask_rx) = mpsc::channel::<Ask>();
+
+        let answering = thread::spawn({
+            let stop = Arc::clone(&stop);
+            move || {
+                answer(
+                    Box::new(MockResponder::new("anything")),
+                    Brief::default(),
+                    nowhere(),
+                    ask_rx,
+                    Arc::new(AtomicU64::new(0)),
+                    stop,
+                )
+            }
+        });
+
+        stop.store(true, Ordering::Relaxed);
+
+        let deadline = Instant::now() + PATIENCE;
+        while !answering.is_finished() {
+            assert!(
+                Instant::now() < deadline,
+                "the answering thread never noticed the session had stopped"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+
+        answering.join().expect("answering thread panicked");
+        drop(ask_tx);
+    }
+
+    /// Stopping mid-answer must abandon it rather than politely wait for the
+    /// model to finish talking. Deterministic rather than timing-based: the
+    /// sink presses Stop the instant the first delta arrives, and the mock
+    /// checks for cancellation between chunks.
+    #[test]
+    fn pressing_stop_abandons_an_answer_that_is_still_streaming() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let endings: Arc<Mutex<Vec<Ending>>> = Arc::new(Mutex::new(Vec::new()));
+        let (ask_tx, ask_rx) = mpsc::channel::<Ask>();
+
+        let sink: EventSink = Arc::new({
+            let stop = Arc::clone(&stop);
+            let endings = Arc::clone(&endings);
+            move |event| match event {
+                Event::AnswerDelta { .. } => stop.store(true, Ordering::Relaxed),
+                Event::AnswerEnd { reason, .. } => {
+                    endings.lock().expect("endings lock").push(reason)
+                }
+                _ => {}
+            }
+        });
+
+        ask_tx
+            .send(Ask {
+                generation: 1,
+                question: Question::typed("Why?", Vec::new()),
+            })
+            .expect("should queue the question");
+        drop(ask_tx);
+
+        answer(
+            Box::new(MockResponder::new("one two three four five six seven")),
+            Brief::default(),
+            sink,
+            ask_rx,
+            Arc::new(AtomicU64::new(1)),
+            stop,
+        );
+
+        assert_eq!(
+            endings.lock().expect("endings lock").as_slice(),
+            &[Ending::Cancelled],
+            "kept streaming after the session was stopped"
+        );
     }
 }

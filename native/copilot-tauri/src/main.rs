@@ -11,6 +11,7 @@
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::thread::{self, JoinHandle};
 
 use copilot_core::capture::screen;
 use copilot_core::documents;
@@ -32,7 +33,17 @@ const SCREENSHOT_PROMPT: &str =
 /// Holds the running session so it lives as long as the window. Dropping it
 /// stops capture and releases the devices.
 #[derive(Default)]
-struct Running(Mutex<Option<Session>>);
+struct Running {
+    session: Mutex<Option<Session>>,
+    /// The teardown of the previous session, still finishing.
+    ///
+    /// Shutting down joins three threads and can legitimately take a moment —
+    /// a final whisper flush, an HTTP stream winding down. That wait cannot
+    /// happen on the main thread without freezing the window, and it cannot be
+    /// skipped either, or a quick Stop-then-Start would race the old session
+    /// for the capture devices. So it waits here, and `start` collects it.
+    teardown: Mutex<Option<JoinHandle<()>>>,
+}
 
 fn main() {
     tauri::Builder::default()
@@ -74,9 +85,22 @@ fn list_documents() -> Folder {
 /// that would have explained why nothing happened.
 #[tauri::command]
 fn start(app: AppHandle, running: State<'_, Running>, brief: String) -> Result<(), String> {
-    let mut slot = running.0.lock().map_err(|_| "session lock poisoned")?;
+    let mut slot = running.session.lock().map_err(|_| "session lock poisoned")?;
     if slot.is_some() {
         return Ok(());
+    }
+
+    // The previous session may still be releasing the microphone. Waiting here
+    // rather than in `stop` puts the delay where one is already expected and
+    // visible — the interface says "starting…" — instead of on a Stop button
+    // that should feel instant.
+    if let Some(teardown) = running
+        .teardown
+        .lock()
+        .map_err(|_| "teardown lock poisoned")?
+        .take()
+    {
+        let _ = teardown.join();
     }
 
     let sink: EventSink = Arc::new(move |event: Event| {
@@ -104,12 +128,34 @@ fn start(app: AppHandle, running: State<'_, Running>, brief: String) -> Result<(
 }
 
 /// Stops listening and releases the microphone.
+///
+/// Returns as soon as the session has been handed off, rather than when it has
+/// finished shutting down. Dropping it here would block Tauri's main thread
+/// and freeze the window for as long as teardown took.
 #[tauri::command]
 fn stop(running: State<'_, Running>) -> Result<(), String> {
-    let mut slot = running.0.lock().map_err(|_| "session lock poisoned")?;
+    let session = {
+        let mut slot = running.session.lock().map_err(|_| "session lock poisoned")?;
+        slot.take()
+    };
+
+    let Some(session) = session else {
+        return Ok(());
+    };
+
     // Dropping the session stops every thread and hands the capture devices
-    // back to the OS, so the recording indicator actually goes away.
-    slot.take();
+    // back to the OS, so the recording indicator actually goes away. `start`
+    // waits for this before opening the devices again.
+    let handle = thread::Builder::new()
+        .name("copilot-teardown".into())
+        .spawn(move || drop(session))
+        .map_err(|err| format!("could not start teardown: {err}"))?;
+
+    let mut pending = running.teardown.lock().map_err(|_| "teardown lock poisoned")?;
+    // Any earlier teardown has been waited on by `start` already; if one is
+    // somehow still here, let it finish in the background rather than leaking
+    // the handle silently.
+    *pending = Some(handle);
     Ok(())
 }
 
@@ -117,7 +163,7 @@ fn stop(running: State<'_, Running>) -> Result<(), String> {
 /// screen attached.
 #[tauri::command]
 fn ask(running: State<'_, Running>, text: String, screenshot: bool) -> Result<(), String> {
-    let slot = running.0.lock().map_err(|_| "session lock poisoned")?;
+    let slot = running.session.lock().map_err(|_| "session lock poisoned")?;
     let session = slot.as_ref().ok_or("no session is running")?;
 
     let image = if screenshot {
