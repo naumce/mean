@@ -169,8 +169,13 @@ fn choose(candidates: &[Candidate], ours: u32) -> Option<usize> {
         .or_else(|| candidates.iter().position(|c| usable(&c)))
 }
 
-/// The monitor holding the window last actually in use.
-fn active_monitor() -> Option<xcap::Monitor> {
+/// The window you were last actually using.
+///
+/// Public because two different questions need the same answer: which screen
+/// to photograph, and which file you have open. Both mean "the window in front
+/// that is not us", and they must agree — a screenshot of one editor paired
+/// with the source of another would be worse than either alone.
+pub fn active_window() -> Option<xcap::Window> {
     let ours = std::process::id();
     // `Window::all` enumerates top-level windows in z order, frontmost first,
     // so position in this list is how far forward a window is.
@@ -187,10 +192,17 @@ fn active_monitor() -> Option<xcap::Monitor> {
         })
         .collect();
 
-    windows
-        .get(choose(&candidates, ours)?)?
-        .current_monitor()
-        .ok()
+    windows.get(choose(&candidates, ours)?).cloned()
+}
+
+/// The title bar of that window, which is where editors say what is open.
+pub fn active_title() -> Option<String> {
+    active_window()?.title().ok().filter(|t| !t.trim().is_empty())
+}
+
+/// The monitor holding the window last actually in use.
+fn active_monitor() -> Option<xcap::Monitor> {
+    active_window()?.current_monitor().ok()
 }
 
 fn encode(frame: image::RgbaImage) -> Result<Image> {

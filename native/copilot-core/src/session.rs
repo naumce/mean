@@ -507,6 +507,9 @@ fn recognize(
                     text: turn.text,
                     context,
                     image: None,
+                    // Nothing attaches source yet. The repo module exists but
+                    // no caller populates it; this stays empty until it does.
+                    files: Vec::new(),
                 },
             });
         }

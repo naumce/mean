@@ -15,7 +15,7 @@ pub mod openai;
 pub mod prompt;
 
 pub use mock::MockResponder;
-pub use prompt::{Brief, ContextLine, Document, Image, Question, Request};
+pub use prompt::{Brief, ContextLine, Document, Image, Question, Repo, Request, SourceFile};
 
 use anyhow::{anyhow, Result};
 

@@ -243,6 +243,9 @@ fn open_session(brief_text: String, sink: EventSink) -> anyhow::Result<Session> 
         Brief {
             text: brief_text,
             documents,
+            // No folder picker in the setup screen yet, so nothing can point
+            // the session at a codebase from here.
+            repo: None,
         },
         sink,
     )

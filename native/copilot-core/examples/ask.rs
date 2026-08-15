@@ -39,6 +39,7 @@ fn main() -> Result<()> {
     let brief = Brief {
         text: brief_text,
         documents,
+        repo: None,
     };
 
     let mut responder = copilot_core::llm::from_env()?;

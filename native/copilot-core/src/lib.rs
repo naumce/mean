@@ -10,6 +10,7 @@ pub mod config;
 pub mod documents;
 pub mod event;
 pub mod llm;
+pub mod repo;
 pub mod secrets;
 pub mod session;
 pub mod stt;

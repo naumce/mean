@@ -240,6 +240,7 @@ mod tests {
                 text: "So how would you design a rate limiter?".into(),
             }],
             image: None,
+            files: Vec::new(),
         }
     }
 

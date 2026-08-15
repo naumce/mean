@@ -13,6 +13,10 @@ xcap = "0.9"
 # the same version turns that feature on for the whole graph, so the screenshot
 # encoder exists and only one copy of the crate is built.
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
+# Walks a repository the way ripgrep does — .gitignore honoured, hidden files
+# skipped. Without it, pointing at any JS project walks straight into
+# node_modules and finds forty thousand files nobody wants to send.
+ignore = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ureq = "2"
