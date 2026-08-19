@@ -108,3 +108,91 @@ model RevokedToken {
   jti       String   @id
   expiresAt DateTime
 }
+
+model Conversation {
+  id        String    @id @default(uuid())
+  driverId  String
+  tripId    String?
+  createdAt DateTime  @default(now())
+  messages  Message[]
+  @@index([driverId])
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  conversationId String
+  senderType     String       // "driver" for anything this API creates; dispatcher side arrives in BE-4
+  text           String?
+  attachmentUrl  String?
+  readAt         DateTime?
+  createdAt      DateTime     @default(now())
+  @@index([conversationId])
+}
+
+model Notification {
+  id        String    @id @default(uuid())
+  driverId  String
+  type      String
+  title     String?
+  body      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  @@index([driverId, readAt])
+}
+
+model DriverSession {
+  id             String    @id @default(uuid())
+  driverId       String
+  startedAt      DateTime  @default(now())
+  endedAt        DateTime?
+  status         String    @default("active") // active | on_break | ended
+  totalBreakMs   Int       @default(0)
+  breakStartedAt DateTime?
+  @@index([driverId])
+}
+
+model SafetyAlert {
+  id          String   @id @default(uuid())
+  driverId    String
+  kind        String   // "panic" | "emergency"
+  latitude    Float?
+  longitude   Float?
+  description String?
+  reason      String?
+  status      String   @default("open")
+  createdAt   DateTime @default(now())
+  @@index([driverId])
+}
+
+model FuelLog {
+  id        String   @id @default(uuid())
+  driverId  String
+  vehicleId String?
+  amount    Float?
+  cost      Float?
+  odometer  Int?
+  createdAt DateTime @default(now())
+}
+
+model VehicleIssue {
+  id          String   @id @default(uuid())
+  vehicleId   String
+  driverId    String
+  description String
+  severity    String?
+  status      String   @default("open")
+  createdAt   DateTime @default(now())
+  @@index([vehicleId])
+}
+
+model Incident {
+  id          String   @id @default(uuid())
+  driverId    String
+  tripId      String?
+  type        String
+  latitude    Float?
+  longitude   Float?
+  description String?
+  createdAt   DateTime @default(now())
+}

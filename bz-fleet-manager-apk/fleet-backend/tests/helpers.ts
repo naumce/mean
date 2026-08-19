@@ -5,6 +5,10 @@ export const app = createApp();
 
 export async function resetDb() {
   await prisma.$transaction([
+    prisma.message.deleteMany(), prisma.conversation.deleteMany(),
+    prisma.notification.deleteMany(), prisma.driverSession.deleteMany(),
+    prisma.safetyAlert.deleteMany(), prisma.fuelLog.deleteMany(),
+    prisma.vehicleIssue.deleteMany(), prisma.incident.deleteMany(),
     prisma.signsProof.deleteMany(), prisma.signsProofRequirement.deleteMany(),
     prisma.upload.deleteMany(), prisma.checklistItem.deleteMany(),
     prisma.stop.deleteMany(), prisma.trip.deleteMany(),
