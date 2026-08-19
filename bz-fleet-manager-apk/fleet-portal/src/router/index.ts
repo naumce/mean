@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import AppShell from '../layouts/AppShell.vue'
 import DashboardView from '../views/DashboardView.vue'
+import DriversView from '../views/DriversView.vue'
 import LoginView from '../views/LoginView.vue'
 import { authGuard } from './guards'
 
@@ -14,7 +15,10 @@ export const routes = [
   {
     path: '/',
     component: AppShell,
-    children: [{ path: '', name: 'dashboard', component: DashboardView }],
+    children: [
+      { path: '', name: 'dashboard', component: DashboardView },
+      { path: 'drivers', name: 'drivers', component: DriversView },
+    ],
   },
 ]
 
