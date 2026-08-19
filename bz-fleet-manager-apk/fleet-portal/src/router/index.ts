@@ -3,6 +3,7 @@ import AppShell from '../layouts/AppShell.vue'
 import DashboardView from '../views/DashboardView.vue'
 import DriversView from '../views/DriversView.vue'
 import LoginView from '../views/LoginView.vue'
+import TripDetailView from '../views/TripDetailView.vue'
 import TripsView from '../views/TripsView.vue'
 import VehiclesView from '../views/VehiclesView.vue'
 import { authGuard } from './guards'
@@ -22,6 +23,7 @@ export const routes = [
       { path: 'drivers', name: 'drivers', component: DriversView },
       { path: 'vehicles', name: 'vehicles', component: VehiclesView },
       { path: 'trips', name: 'trips', component: TripsView },
+      { path: 'trips/:id', name: 'trip-detail', component: TripDetailView, props: true },
     ],
   },
 ]
