@@ -5,6 +5,8 @@ export const app = createApp();
 
 export async function resetDb() {
   await prisma.$transaction([
+    prisma.signsProof.deleteMany(), prisma.signsProofRequirement.deleteMany(),
+    prisma.upload.deleteMany(), prisma.checklistItem.deleteMany(),
     prisma.stop.deleteMany(), prisma.trip.deleteMany(),
     prisma.vehicle.deleteMany(), prisma.revokedToken.deleteMany(),
     prisma.driver.deleteMany(),

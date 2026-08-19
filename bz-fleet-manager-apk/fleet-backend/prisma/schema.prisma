@@ -37,6 +37,7 @@ model Trip {
   driver                Driver   @relation(fields: [driverId], references: [id])
   driverId              String
   stops                 Stop[]
+  checklistItems        ChecklistItem[]
   startedAt             DateTime?
   completedAt           DateTime?
   createdAt             DateTime @default(now())
@@ -44,13 +45,63 @@ model Trip {
 }
 
 model Stop {
+  id           String   @id @default(uuid())
+  trip         Trip     @relation(fields: [tripId], references: [id])
+  tripId       String
+  sequence     Int
+  address      String
+  status       String   @default("pending")
+  arrivedAt    DateTime?
+  departedAt   DateTime?
+  completedAt  DateTime?
+  uploads      Upload[]
+  signsProofs  SignsProof[]
+  requirements SignsProofRequirement[]
+  @@index([tripId])
+}
+
+model ChecklistItem {
   id        String  @id @default(uuid())
   trip      Trip    @relation(fields: [tripId], references: [id])
   tripId    String
-  sequence  Int
-  address   String
-  status    String  @default("pending")
+  label     String
+  required  Boolean @default(true)
+  completed Boolean @default(false)
   @@index([tripId])
+}
+
+model Upload {
+  id        String   @id @default(uuid())
+  stop      Stop     @relation(fields: [stopId], references: [id])
+  stopId    String
+  kind      String   // "photo" | "document"
+  url       String
+  mimeType  String?
+  createdAt DateTime @default(now())
+  @@index([stopId])
+}
+
+model SignsProofRequirement {
+  id             String  @id @default(uuid())
+  stop           Stop    @relation(fields: [stopId], references: [id])
+  stopId         String
+  proofType      String  // e.g. "signature" | "photo" | "barcode"
+  validationType String?
+  required       Boolean @default(true)
+  @@index([stopId])
+}
+
+model SignsProof {
+  id            String   @id @default(uuid())
+  stop          Stop     @relation(fields: [stopId], references: [id])
+  stopId        String
+  requirementId String?
+  proofType     String
+  fileUrl       String
+  hasLocation   Boolean  @default(false)
+  status        String   @default("pending") // pending | approved | rejected
+  createdAt     DateTime @default(now())
+  @@index([stopId])
 }
 
 model RevokedToken {
