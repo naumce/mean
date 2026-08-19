@@ -5,6 +5,7 @@ import { tripsRouter } from "./routes/trips.js";
 import { signsProofRouter } from "./routes/signsProof.js";
 import { messagesRouter } from "./routes/messages.js";
 import { notificationsRouter } from "./routes/notifications.js";
+import { sessionsRouter } from "./routes/sessions.js";
 import { uploadsDir } from "./lib/upload.js";
 
 export function createApp() {
@@ -18,5 +19,6 @@ export function createApp() {
   app.use("/api", signsProofRouter);
   app.use("/api", messagesRouter);
   app.use("/api", notificationsRouter);
+  app.use("/api/driver/session", sessionsRouter);
   return app;
 }
