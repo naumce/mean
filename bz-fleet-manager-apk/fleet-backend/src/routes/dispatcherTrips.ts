@@ -37,6 +37,7 @@ dispatcherTripsRouter.get("/trips", async (req, res) => {
   const trips = await prisma.trip.findMany({
     where: { ...(status ? { status } : {}), ...(driverId ? { driverId } : {}) },
     orderBy: { createdAt: "desc" },
+    include: { stops: true },
   });
   res.json(trips);
 });

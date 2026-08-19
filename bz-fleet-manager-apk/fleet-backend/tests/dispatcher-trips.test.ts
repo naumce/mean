@@ -67,6 +67,16 @@ it("filters the trip list by status and driverId", async () => {
   expect(byDriver.body.map((t: { identifier: string }) => t.identifier)).toEqual(["TR-FILT-2"]);
 });
 
+it("the trip list includes each trip's stops (so the board can show stop counts)", async () => {
+  const auth = await dispatcherAuth();
+  await request(app).post("/api/dispatcher/trips").set("authorization", auth)
+    .send({ identifier: "TR-STOPS", stops: [{ sequence: 1, address: "A" }, { sequence: 2, address: "B" }] });
+  const list = await request(app).get("/api/dispatcher/trips").set("authorization", auth);
+  const t = list.body.find((x: { identifier: string }) => x.identifier === "TR-STOPS");
+  expect(Array.isArray(t.stops)).toBe(true);
+  expect(t.stops).toHaveLength(2);
+});
+
 it("end-to-end: dispatcher creates + assigns a trip; the assigned driver sees it via /driver/trips/active", async () => {
   const auth = await dispatcherAuth();
   const driver = await createDriver({ email: "assignee@fleet.com" });
