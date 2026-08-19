@@ -5,6 +5,7 @@ import DashboardView from '../views/DashboardView.vue'
 import DriversView from '../views/DriversView.vue'
 import LoginView from '../views/LoginView.vue'
 import MessagesView from '../views/MessagesView.vue'
+import TrackingView from '../views/TrackingView.vue'
 import TripDetailView from '../views/TripDetailView.vue'
 import TripsView from '../views/TripsView.vue'
 import VehiclesView from '../views/VehiclesView.vue'
@@ -28,6 +29,7 @@ export const routes = [
       { path: 'trips/:id', name: 'trip-detail', component: TripDetailView, props: true },
       { path: 'approvals', name: 'approvals', component: ApprovalsView },
       { path: 'messages', name: 'messages', component: MessagesView },
+      { path: 'tracking', name: 'tracking', component: TrackingView },
     ],
   },
 ]

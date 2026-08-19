@@ -13,7 +13,7 @@ const navItems = [
   { label: 'Trips', to: '/trips', disabled: false },
   { label: 'Approvals', to: '/approvals', disabled: false },
   { label: 'Messages', to: '/messages', disabled: false },
-  { label: 'Tracking', disabled: true },
+  { label: 'Tracking', to: '/tracking', disabled: false },
 ]
 
 async function handleLogout(): Promise<void> {
