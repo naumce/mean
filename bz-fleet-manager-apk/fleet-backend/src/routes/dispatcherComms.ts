@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { validateBody } from "../middleware/validate.js";
+import { emitToDriver } from "../realtime.js";
 
 // Dispatcher-side messaging + notify. Mounted (without its own prefix) under
 // dispatcherRouter, which already applies requireAuth + requireDispatcher —
@@ -55,6 +56,7 @@ dispatcherCommsRouter.post("/conversations/:id/messages", validateBody(sendMessa
   const { text } = req.body as z.infer<typeof sendMessageSchema>;
   const created = await prisma.message.create({
     data: { conversationId: conversation.id, senderType: "dispatcher", text } });
+  emitToDriver(conversation.driverId, "general_notification", { conversationId: conversation.id });
   res.json(created);
 });
 
@@ -83,5 +85,7 @@ dispatcherCommsRouter.post("/drivers/:id/notify", validateBody(notifySchema), as
   if (!driver) return res.status(404).json({ error: "Driver not found" });
   const { type, title, body } = req.body as z.infer<typeof notifySchema>;
   const created = await prisma.notification.create({ data: { driverId, type, title, body } });
+  // Closes the BE-5 gap: general_notification previously had no trigger.
+  emitToDriver(driverId, "general_notification", { notificationId: created.id });
   res.json(created);
 });
