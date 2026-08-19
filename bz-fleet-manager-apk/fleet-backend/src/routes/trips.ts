@@ -4,7 +4,7 @@ import { prisma } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
 import { canStart } from "../domain/tripState.js";
-import { canArriveStop, canCompleteStop } from "../domain/stopState.js";
+import { canArriveStop, canCompleteStop, canCompleteTrip } from "../domain/stopState.js";
 import { upload } from "../lib/upload.js";
 
 export const tripsRouter = Router();
@@ -113,4 +113,15 @@ tripsRouter.get("/:id/can-proceed", async (req, res) => {
   const providedCount = await prisma.signsProof.count({ where: { stopId: stop.id } });
   if (providedCount < requiredCount) return res.json({ canProceed: false, reason: "required signs-proof is missing" });
   res.json({ canProceed: true, reason: null });
+});
+
+tripsRouter.post("/:id/complete", async (req, res) => {
+  const trip = await prisma.trip.findFirst({ where: { id: req.params.id, driverId: req.auth!.driverId } });
+  if (!trip) return res.status(404).json({ error: "Trip not found" });
+  const stops = await prisma.stop.findMany({ where: { tripId: trip.id } });
+  const guard = canCompleteTrip(trip, stops);
+  if (!guard.ok) return res.status(409).json({ error: guard.reason });
+  const updated = await prisma.trip.update({
+    where: { id: trip.id }, data: { status: "completed", completedAt: new Date() } });
+  res.json(updated);
 });
