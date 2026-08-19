@@ -9,6 +9,9 @@ import { sessionsRouter } from "./routes/sessions.js";
 import { safetyRouter } from "./routes/safety.js";
 import { vehicleRouter } from "./routes/vehicle.js";
 import { navigationRouter } from "./routes/navigation.js";
+import { dispatcherAuthRouter } from "./routes/dispatcherAuth.js";
+import { dispatcherDriversRouter } from "./routes/dispatcherDrivers.js";
+import { requireAuth, requireDispatcher } from "./middleware/auth.js";
 import { uploadsDir } from "./lib/upload.js";
 
 export function createApp() {
@@ -17,6 +20,18 @@ export function createApp() {
   app.use("/uploads", express.static(uploadsDir));
   app.get("/health", (_req, res) => res.json({ status: "ok" }));
   app.use("/api/auth", authRouter);
+  // dispatcherAuthRouter's /dispatcher/login must be public — it has to be
+  // mounted before signsProofRouter/messagesRouter/notificationsRouter/
+  // vehicleRouter below: those are mounted broadly at "/api" and each does
+  // `router.use(requireAuth)` with no path filter, so once a request enters
+  // one of them it applies to every path that reaches that router, not just
+  // its own routes. Placed after authRouter, before any of the broad ones.
+  app.use("/api/auth", dispatcherAuthRouter);
+  // Each dispatcher feature router is mounted separately (rather than
+  // composed into one) so a request cascades through requireAuth +
+  // requireDispatcher once per router it reaches — harmless (idempotent
+  // checks), and it keeps these additions independent of each other.
+  app.use("/api/dispatcher", requireAuth, requireDispatcher, dispatcherDriversRouter);
   app.use("/api/driver", driverRouter);
   app.use("/api/trips", tripsRouter);
   app.use("/api", signsProofRouter);
