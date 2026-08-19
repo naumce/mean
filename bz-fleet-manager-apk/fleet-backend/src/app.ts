@@ -11,6 +11,7 @@ import { vehicleRouter } from "./routes/vehicle.js";
 import { navigationRouter } from "./routes/navigation.js";
 import { dispatcherAuthRouter } from "./routes/dispatcherAuth.js";
 import { dispatcherDriversRouter } from "./routes/dispatcherDrivers.js";
+import { dispatcherTripsRouter } from "./routes/dispatcherTrips.js";
 import { requireAuth, requireDispatcher } from "./middleware/auth.js";
 import { uploadsDir } from "./lib/upload.js";
 
@@ -32,6 +33,7 @@ export function createApp() {
   // requireDispatcher once per router it reaches — harmless (idempotent
   // checks), and it keeps these additions independent of each other.
   app.use("/api/dispatcher", requireAuth, requireDispatcher, dispatcherDriversRouter);
+  app.use("/api/dispatcher", requireAuth, requireDispatcher, dispatcherTripsRouter);
   app.use("/api/driver", driverRouter);
   app.use("/api/trips", tripsRouter);
   app.use("/api", signsProofRouter);
