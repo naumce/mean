@@ -1,0 +1,59 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Driver {
+  id                    String   @id @default(uuid())
+  email                 String   @unique
+  passwordHash          String
+  name                  String
+  phone                 String?
+  status                String   @default("offline")
+  requiresPasswordChange Boolean @default(false)
+  pushToken             String?
+  vehicle               Vehicle?
+  trips                 Trip[]
+  createdAt             DateTime @default(now())
+}
+
+model Vehicle {
+  id        String  @id @default(uuid())
+  plate     String  @unique
+  model     String?
+  driver    Driver? @relation(fields: [driverId], references: [id])
+  driverId  String? @unique
+}
+
+model Trip {
+  id                    String   @id @default(uuid())
+  identifier            String   @unique
+  status                String   @default("pending")
+  preTripCheckCompleted Boolean  @default(false)
+  driver                Driver   @relation(fields: [driverId], references: [id])
+  driverId              String
+  stops                 Stop[]
+  startedAt             DateTime?
+  completedAt           DateTime?
+  createdAt             DateTime @default(now())
+  @@index([driverId, status])
+}
+
+model Stop {
+  id        String  @id @default(uuid())
+  trip      Trip    @relation(fields: [tripId], references: [id])
+  tripId    String
+  sequence  Int
+  address   String
+  status    String  @default("pending")
+  @@index([tripId])
+}
+
+model RevokedToken {
+  jti       String   @id
+  expiresAt DateTime
+}
