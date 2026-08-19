@@ -3,6 +3,7 @@ import { authRouter } from "./routes/auth.js";
 import { driverRouter } from "./routes/driver.js";
 import { tripsRouter } from "./routes/trips.js";
 import { signsProofRouter } from "./routes/signsProof.js";
+import { messagesRouter } from "./routes/messages.js";
 import { uploadsDir } from "./lib/upload.js";
 
 export function createApp() {
@@ -14,5 +15,6 @@ export function createApp() {
   app.use("/api/driver", driverRouter);
   app.use("/api/trips", tripsRouter);
   app.use("/api", signsProofRouter);
+  app.use("/api", messagesRouter);
   return app;
 }
