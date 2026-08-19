@@ -1,7 +1,10 @@
 import { Router } from "express";
+import { z } from "zod";
 import { prisma } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { validateBody } from "../middleware/validate.js";
 import { canStart } from "../domain/tripState.js";
+import { canArriveStop, canCompleteStop } from "../domain/stopState.js";
 
 export const tripsRouter = Router();
 tripsRouter.use(requireAuth);
@@ -14,5 +17,53 @@ tripsRouter.post("/:id/start", async (req, res) => {
   if (!guard.ok) return res.status(409).json({ error: guard.reason });
   const updated = await prisma.trip.update({
     where: { id: trip.id }, data: { status: "in_progress", startedAt: new Date() } });
+  res.json(updated);
+});
+
+tripsRouter.get("/:id/checklist", async (req, res) => {
+  const trip = await prisma.trip.findFirst({ where: { id: req.params.id, driverId: req.auth!.driverId } });
+  if (!trip) return res.status(404).json({ error: "Trip not found" });
+  const items = await prisma.checklistItem.findMany({ where: { tripId: trip.id } });
+  res.json(items);
+});
+
+const checklistCompleteSchema = z.object({ loadId: z.string().optional(), populate: z.boolean().optional() });
+
+tripsRouter.post("/:id/checklist/complete", validateBody(checklistCompleteSchema), async (req, res) => {
+  // combining validateBody's generic RequestHandler with this route's typed
+  // params widens req.params.id to string|string[] under @types/express 5's
+  // repeated-param typing; a single ":id" segment is always a plain string.
+  const tripId = req.params.id as string;
+  const trip = await prisma.trip.findFirst({ where: { id: tripId, driverId: req.auth!.driverId } });
+  if (!trip) return res.status(404).json({ error: "Trip not found" });
+  await prisma.checklistItem.updateMany({ where: { tripId: trip.id }, data: { completed: true } });
+  const updated = await prisma.trip.update({ where: { id: trip.id }, data: { preTripCheckCompleted: true } });
+  res.json(updated);
+});
+
+tripsRouter.post("/:id/stops/:stopId/arrive", async (req, res) => {
+  const trip = await prisma.trip.findFirst({ where: { id: req.params.id, driverId: req.auth!.driverId } });
+  if (!trip) return res.status(404).json({ error: "Trip not found" });
+  const stop = await prisma.stop.findFirst({ where: { id: req.params.stopId, tripId: trip.id } });
+  if (!stop) return res.status(404).json({ error: "Stop not found" });
+  const earlierStops = await prisma.stop.findMany({ where: { tripId: trip.id, sequence: { lt: stop.sequence } } });
+  const guard = canArriveStop(trip, stop, earlierStops);
+  if (!guard.ok) return res.status(409).json({ error: guard.reason });
+  const updated = await prisma.stop.update({
+    where: { id: stop.id }, data: { status: "arrived", arrivedAt: new Date() } });
+  res.json(updated);
+});
+
+tripsRouter.post("/:id/stops/:stopId/complete", async (req, res) => {
+  const trip = await prisma.trip.findFirst({ where: { id: req.params.id, driverId: req.auth!.driverId } });
+  if (!trip) return res.status(404).json({ error: "Trip not found" });
+  const stop = await prisma.stop.findFirst({ where: { id: req.params.stopId, tripId: trip.id } });
+  if (!stop) return res.status(404).json({ error: "Stop not found" });
+  const requiredCount = await prisma.signsProofRequirement.count({ where: { stopId: stop.id, required: true } });
+  const providedCount = await prisma.signsProof.count({ where: { stopId: stop.id } });
+  const guard = canCompleteStop(stop, requiredCount, providedCount);
+  if (!guard.ok) return res.status(409).json({ error: guard.reason });
+  const updated = await prisma.stop.update({
+    where: { id: stop.id }, data: { status: "completed", completedAt: new Date() } });
   res.json(updated);
 });
