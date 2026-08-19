@@ -20,6 +20,10 @@ it("rotates the refresh token", async () => {
   expect(res.status).toBe(200);
   expect(res.body.token).toBeTruthy();
   expect(res.body.refreshToken).not.toBe(refreshToken);
+
+  // the rotated-out token is single-use: reusing it must now be rejected
+  const reuse = await request(app).post("/api/auth/refresh").send({ refreshToken });
+  expect(reuse.status).toBe(401);
 });
 
 it("revokes a refresh token on logout", async () => {

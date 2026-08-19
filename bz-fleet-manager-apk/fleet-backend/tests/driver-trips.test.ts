@@ -25,3 +25,12 @@ it("never returns another driver's trip", async () => {
   expect(res.status).toBe(200);
   expect(res.body).toHaveLength(0);
 });
+
+it("never returns another driver's trip as the caller's current trip", async () => {
+  const me = await createDriver({ email: "me2@f.com" });
+  const other = await createDriver({ email: "other2@f.com" });
+  await tripFor(other.id, "TR-OTHER-CURRENT");
+  const res = await request(app).get("/api/driver/trip/current").set("authorization", `Bearer ${signAccess(me.id)}`);
+  expect(res.status).toBe(200);
+  expect(res.body).toEqual({ success: false });
+});

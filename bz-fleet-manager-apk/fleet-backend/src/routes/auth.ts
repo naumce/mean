@@ -35,9 +35,14 @@ authRouter.post("/refresh", validateBody(z.object({ refreshToken: z.string() }))
 
 authRouter.post("/logout", requireAuth, validateBody(z.object({ refreshToken: z.string() })), async (req, res) => {
   try {
-    const { jti } = verifyRefresh(req.body.refreshToken);
-    await prisma.revokedToken.upsert({
-      where: { jti }, create: { jti, expiresAt: new Date(Date.now() + 30 * 864e5) }, update: {} });
-  } catch { /* already invalid — nothing to revoke */ }
+    const { driverId, jti } = verifyRefresh(req.body.refreshToken);
+    // ownership check: only the token's own driver may revoke it — otherwise
+    // an authed driver could revoke another driver's session by guessing/reusing
+    // a refresh token that isn't theirs.
+    if (driverId === req.auth!.driverId) {
+      await prisma.revokedToken.upsert({
+        where: { jti }, create: { jti, expiresAt: new Date(Date.now() + 30 * 864e5) }, update: {} });
+    }
+  } catch { /* invalid token — nothing to revoke */ }
   res.status(204).end();
 });
