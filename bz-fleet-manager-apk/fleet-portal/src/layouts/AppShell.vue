@@ -11,7 +11,7 @@ const navItems = [
   { label: 'Drivers', to: '/drivers', disabled: false },
   { label: 'Vehicles', to: '/vehicles', disabled: false },
   { label: 'Trips', to: '/trips', disabled: false },
-  { label: 'Approvals', disabled: true },
+  { label: 'Approvals', to: '/approvals', disabled: false },
   { label: 'Messages', disabled: true },
 ]
 

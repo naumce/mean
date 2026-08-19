@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import AppShell from '../layouts/AppShell.vue'
+import ApprovalsView from '../views/ApprovalsView.vue'
 import DashboardView from '../views/DashboardView.vue'
 import DriversView from '../views/DriversView.vue'
 import LoginView from '../views/LoginView.vue'
@@ -24,6 +25,7 @@ export const routes = [
       { path: 'vehicles', name: 'vehicles', component: VehiclesView },
       { path: 'trips', name: 'trips', component: TripsView },
       { path: 'trips/:id', name: 'trip-detail', component: TripDetailView, props: true },
+      { path: 'approvals', name: 'approvals', component: ApprovalsView },
     ],
   },
 ]
