@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { verifyPassword } from "../lib/password.js";
-import { signAccess, signRefresh, verifyRefresh } from "../lib/tokens.js";
+import { signAccess, signDispatcherAccess, signDispatcherRefresh, signRefresh, verifyRefresh } from "../lib/tokens.js";
 import { validateBody } from "../middleware/validate.js";
 import { requireAuth } from "../middleware/auth.js";
 
@@ -24,24 +24,31 @@ authRouter.post("/driver/login", validateBody(loginSchema), async (req, res) => 
 
 authRouter.post("/refresh", validateBody(z.object({ refreshToken: z.string() })), async (req, res) => {
   try {
-    const { driverId, jti } = verifyRefresh(req.body.refreshToken);
-    if (await prisma.revokedToken.findUnique({ where: { jti } }))
+    const payload = verifyRefresh(req.body.refreshToken);
+    if (await prisma.revokedToken.findUnique({ where: { jti: payload.jti } }))
       return res.status(401).json({ error: "Token revoked" });
-    await prisma.revokedToken.create({ data: { jti, expiresAt: new Date(Date.now() + 30 * 864e5) } });
-    const next = signRefresh(driverId);
-    res.json({ token: signAccess(driverId), refreshToken: next.token });
+    await prisma.revokedToken.create({ data: { jti: payload.jti, expiresAt: new Date(Date.now() + 30 * 864e5) } });
+    if (payload.role === "dispatcher") {
+      const next = signDispatcherRefresh(payload.dispatcherId);
+      return res.json({ token: signDispatcherAccess(payload.dispatcherId), refreshToken: next.token });
+    }
+    const next = signRefresh(payload.driverId);
+    res.json({ token: signAccess(payload.driverId), refreshToken: next.token });
   } catch { res.status(401).json({ error: "Invalid refresh token" }); }
 });
 
 authRouter.post("/logout", requireAuth, validateBody(z.object({ refreshToken: z.string() })), async (req, res) => {
   try {
-    const { driverId, jti } = verifyRefresh(req.body.refreshToken);
-    // ownership check: only the token's own driver may revoke it — otherwise
-    // an authed driver could revoke another driver's session by guessing/reusing
-    // a refresh token that isn't theirs.
-    if (driverId === req.auth!.driverId) {
+    const payload = verifyRefresh(req.body.refreshToken);
+    // ownership check: only the token's own subject (driver or dispatcher) may
+    // revoke it — otherwise an authed caller could revoke someone else's
+    // session by guessing/reusing a refresh token that isn't theirs.
+    const isOwner = payload.role === "dispatcher"
+      ? payload.dispatcherId === req.auth!.dispatcherId
+      : payload.driverId === req.auth!.driverId;
+    if (isOwner) {
       await prisma.revokedToken.upsert({
-        where: { jti }, create: { jti, expiresAt: new Date(Date.now() + 30 * 864e5) }, update: {} });
+        where: { jti: payload.jti }, create: { jti: payload.jti, expiresAt: new Date(Date.now() + 30 * 864e5) }, update: {} });
     }
   } catch { /* invalid token — nothing to revoke */ }
   res.status(204).end();
