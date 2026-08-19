@@ -5,6 +5,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
 import { canStart } from "../domain/tripState.js";
 import { canArriveStop, canCompleteStop } from "../domain/stopState.js";
+import { upload } from "../lib/upload.js";
 
 export const tripsRouter = Router();
 tripsRouter.use(requireAuth);
@@ -66,4 +67,33 @@ tripsRouter.post("/:id/stops/:stopId/complete", async (req, res) => {
   const updated = await prisma.stop.update({
     where: { id: stop.id }, data: { status: "completed", completedAt: new Date() } });
   res.json(updated);
+});
+
+// combining multer's generic RequestHandler with these routes' typed params
+// widens req.params.* to string|string[] under @types/express 5's
+// repeated-param typing; single ":id"/":stopId" segments are always strings.
+tripsRouter.post("/:id/stops/:stopId/photos", upload.single("file"), async (req, res) => {
+  const tripId = req.params.id as string;
+  const stopId = req.params.stopId as string;
+  const trip = await prisma.trip.findFirst({ where: { id: tripId, driverId: req.auth!.driverId } });
+  if (!trip) return res.status(404).json({ error: "Trip not found" });
+  const stop = await prisma.stop.findFirst({ where: { id: stopId, tripId: trip.id } });
+  if (!stop) return res.status(404).json({ error: "Stop not found" });
+  if (!req.file) return res.status(400).json({ error: "file is required" });
+  const url = `/uploads/${req.file.filename}`;
+  await prisma.upload.create({ data: { stopId: stop.id, kind: "photo", url, mimeType: req.file.mimetype } });
+  res.json({ url });
+});
+
+tripsRouter.post("/:id/stops/:stopId/documents", upload.single("file"), async (req, res) => {
+  const tripId = req.params.id as string;
+  const stopId = req.params.stopId as string;
+  const trip = await prisma.trip.findFirst({ where: { id: tripId, driverId: req.auth!.driverId } });
+  if (!trip) return res.status(404).json({ error: "Trip not found" });
+  const stop = await prisma.stop.findFirst({ where: { id: stopId, tripId: trip.id } });
+  if (!stop) return res.status(404).json({ error: "Stop not found" });
+  if (!req.file) return res.status(400).json({ error: "file is required" });
+  const url = `/uploads/${req.file.filename}`;
+  await prisma.upload.create({ data: { stopId: stop.id, kind: "document", url, mimeType: req.file.mimetype } });
+  res.json({ url });
 });
