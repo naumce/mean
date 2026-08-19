@@ -19,3 +19,18 @@ driverRouter.put("/status", validateBody(z.object({ status: z.string().min(1) })
     where: { id: req.auth!.driverId }, data: { status: req.body.status } });
   res.json({ status: d.status });
 });
+
+driverRouter.get("/trip/current", async (req, res) => {
+  const t = await prisma.trip.findFirst({
+    where: { driverId: req.auth!.driverId, status: { in: ["assigned", "in_progress", "arrived"] } },
+    orderBy: { createdAt: "desc" } });
+  if (!t) return res.json({ success: false });
+  res.json({ success: true, tripId: t.id, tripIdentifier: t.identifier,
+             preTripCheckCompleted: t.preTripCheckCompleted });
+});
+
+driverRouter.get("/trips/active", async (req, res) => {
+  const trips = await prisma.trip.findMany({
+    where: { driverId: req.auth!.driverId, status: { in: ["assigned", "in_progress", "arrived"] } } });
+  res.json(trips);
+});
