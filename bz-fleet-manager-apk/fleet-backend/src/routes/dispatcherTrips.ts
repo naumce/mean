@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { validateBody } from "../middleware/validate.js";
+import { emitToDriver } from "../realtime.js";
 
 // Trip creation, listing, and assignment for the dispatcher portal. Mounted
 // (without its own prefix) under dispatcherRouter, which already applies
@@ -60,5 +61,7 @@ dispatcherTripsRouter.post("/trips/:id/assign", validateBody(assignTripSchema), 
   if (!driver) return res.status(404).json({ error: "Driver not found" });
   const updated = await prisma.trip.update({ where: { id: tripId }, data: { driverId, status: "assigned" } });
   await prisma.routePreAssignment.create({ data: { driverId, tripId, status: "pending" } });
+  emitToDriver(driverId, "trip_assignment", { tripId });
+  emitToDriver(driverId, "route_pre_assignment", { tripId });
   res.json(updated);
 });
