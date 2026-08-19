@@ -97,3 +97,20 @@ tripsRouter.post("/:id/stops/:stopId/documents", upload.single("file"), async (r
   await prisma.upload.create({ data: { stopId: stop.id, kind: "document", url, mimeType: req.file.mimetype } });
   res.json({ url });
 });
+
+tripsRouter.get("/:id/can-proceed", async (req, res) => {
+  const trip = await prisma.trip.findFirst({ where: { id: req.params.id, driverId: req.auth!.driverId } });
+  if (!trip) return res.status(404).json({ error: "Trip not found" });
+  const seq = Number(req.query.currentStopSequence);
+  if (!Number.isFinite(seq)) return res.status(400).json({ error: "currentStopSequence is required" });
+  const stop = await prisma.stop.findFirst({ where: { tripId: trip.id, sequence: seq } });
+  if (!stop) return res.json({ canProceed: true, reason: null });
+  const validationType = typeof req.query.validationType === "string" ? req.query.validationType : undefined;
+  const requirementWhere = validationType
+    ? { stopId: stop.id, required: true, validationType }
+    : { stopId: stop.id, required: true };
+  const requiredCount = await prisma.signsProofRequirement.count({ where: requirementWhere });
+  const providedCount = await prisma.signsProof.count({ where: { stopId: stop.id } });
+  if (providedCount < requiredCount) return res.json({ canProceed: false, reason: "required signs-proof is missing" });
+  res.json({ canProceed: true, reason: null });
+});
