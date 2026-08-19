@@ -34,3 +34,13 @@ driverRouter.get("/trips/active", async (req, res) => {
     where: { driverId: req.auth!.driverId, status: { in: ["assigned", "in_progress", "arrived"] } } });
   res.json(trips);
 });
+
+driverRouter.post("/location", validateBody(z.object({
+  latitude: z.number(), longitude: z.number(),
+  speed: z.number().optional(), heading: z.number().optional(), accuracy: z.number().optional(),
+})), async (req, res) => {
+  const { latitude, longitude } = req.body as { latitude: number; longitude: number };
+  const loc = await prisma.driverLocation.create({
+    data: { driverId: req.auth!.driverId, latitude, longitude } });
+  res.status(201).json(loc);
+});
