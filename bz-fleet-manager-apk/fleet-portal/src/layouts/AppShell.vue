@@ -9,7 +9,7 @@ const router = useRouter()
 const navItems = [
   { label: 'Dashboard', to: '/', disabled: false },
   { label: 'Drivers', to: '/drivers', disabled: false },
-  { label: 'Vehicles', disabled: true },
+  { label: 'Vehicles', to: '/vehicles', disabled: false },
   { label: 'Trips', disabled: true },
   { label: 'Approvals', disabled: true },
   { label: 'Messages', disabled: true },

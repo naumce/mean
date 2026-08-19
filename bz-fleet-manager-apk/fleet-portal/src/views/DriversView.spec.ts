@@ -21,7 +21,13 @@ function createStoreStub(overrides: Record<string, unknown> = {}) {
   }
 }
 
-function findButtonByText(scope: DOMWrapper<Element>, text: string) {
+// Accepts both VueWrapper (from mount) and DOMWrapper (from body(), below) —
+// they share the findAll shape used here but aren't otherwise compatible types.
+interface ButtonQueryable {
+  findAll(selector: string): DOMWrapper<Element>[]
+}
+
+function findButtonByText(scope: ButtonQueryable, text: string) {
   const button = scope.findAll('button').find((candidate) => candidate.text().trim() === text)
   if (!button) throw new Error(`No button found with text "${text}"`)
   return button
