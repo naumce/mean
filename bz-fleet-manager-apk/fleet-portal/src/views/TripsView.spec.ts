@@ -113,6 +113,18 @@ describe('TripsView', () => {
     expect(assignedSection.text()).toContain('2')
   })
 
+  it('renders a trip whose stops are missing (list payload) without crashing', () => {
+    const noStopsTrip = { id: 't3', identifier: 'TRIP-003', status: 'pending', driverId: null, createdAt: '2026-01-03' }
+    const tripsStore = createTripsStoreStub({ items: [noStopsTrip as unknown as typeof pendingTrip] })
+    mockedUseTripsStore.mockReturnValue(tripsStore as unknown as ReturnType<typeof useTripsStore>)
+
+    const wrapper = mountTripsView()
+
+    const pendingSection = wrapper.find('[data-status-group="pending"]')
+    expect(pendingSection.text()).toContain('TRIP-003')
+    expect(pendingSection.text()).toContain('0')
+  })
+
   it('opening "Create trip" shows the create modal with one stop row', async () => {
     mockedUseTripsStore.mockReturnValue(createTripsStoreStub() as unknown as ReturnType<typeof useTripsStore>)
     const wrapper = mountTripsView()

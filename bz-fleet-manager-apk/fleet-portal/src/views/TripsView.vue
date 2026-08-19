@@ -187,7 +187,7 @@ onMounted(() => {
           </RouterLink>
         </template>
         <template #cell-driverId="{ row }">{{ driverName((row as Trip).driverId) }}</template>
-        <template #cell-stops="{ row }">{{ (row as Trip).stops.length }}</template>
+        <template #cell-stops="{ row }">{{ (row as Trip).stops?.length ?? 0 }}</template>
         <template #cell-status="{ row }">
           <StatusPill :status="(row as Trip).status" />
         </template>
