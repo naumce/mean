@@ -65,3 +65,30 @@ export interface TripListFilters {
   status?: string
   driverId?: string
 }
+
+export interface Message {
+  id: string
+  senderType: string
+  text: string
+  createdAt: string
+}
+
+// GET /dispatcher/conversations returns lastMessage as the full message row
+// (or null when the conversation has no messages yet) — always read
+// `lastMessage?.text`, never assume it's present.
+export interface Conversation {
+  id: string
+  driverId: string
+  driverName: string
+  lastMessage: Message | null
+  unread: number
+}
+
+export interface DriverLocation {
+  driverId: string
+  driverName?: string
+  latitude: number
+  longitude: number
+  speed?: number
+  createdAt: string
+}
