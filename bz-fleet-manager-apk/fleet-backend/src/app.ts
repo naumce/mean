@@ -4,6 +4,7 @@ import { driverRouter } from "./routes/driver.js";
 import { tripsRouter } from "./routes/trips.js";
 import { signsProofRouter } from "./routes/signsProof.js";
 import { messagesRouter } from "./routes/messages.js";
+import { notificationsRouter } from "./routes/notifications.js";
 import { uploadsDir } from "./lib/upload.js";
 
 export function createApp() {
@@ -16,5 +17,6 @@ export function createApp() {
   app.use("/api/trips", tripsRouter);
   app.use("/api", signsProofRouter);
   app.use("/api", messagesRouter);
+  app.use("/api", notificationsRouter);
   return app;
 }
