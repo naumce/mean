@@ -34,8 +34,10 @@ model Trip {
   identifier            String   @unique
   status                String   @default("pending")
   preTripCheckCompleted Boolean  @default(false)
-  driver                Driver   @relation(fields: [driverId], references: [id])
-  driverId              String
+  driver                Driver?  @relation(fields: [driverId], references: [id])
+  driverId              String?
+  approvedAt            DateTime?
+  approvedBy            String?
   stops                 Stop[]
   checklistItems        ChecklistItem[]
   startedAt             DateTime?
@@ -107,6 +109,35 @@ model SignsProof {
 model RevokedToken {
   jti       String   @id
   expiresAt DateTime
+}
+
+model Dispatcher {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+}
+
+model RoutePreAssignment {
+  id            String    @id @default(uuid())
+  driverId      String
+  tripId        String
+  status        String    @default("pending")
+  declineReason String?
+  createdAt     DateTime  @default(now())
+  respondedAt   DateTime?
+  @@index([driverId])
+  @@index([tripId])
+}
+
+model DriverLocation {
+  id        String   @id @default(uuid())
+  driverId  String
+  latitude  Float
+  longitude Float
+  createdAt DateTime @default(now())
+  @@index([driverId, createdAt])
 }
 
 model Conversation {
