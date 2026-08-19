@@ -13,6 +13,7 @@ import { dispatcherAuthRouter } from "./routes/dispatcherAuth.js";
 import { dispatcherDriversRouter } from "./routes/dispatcherDrivers.js";
 import { dispatcherTripsRouter } from "./routes/dispatcherTrips.js";
 import { dispatcherApprovalsRouter } from "./routes/dispatcherApprovals.js";
+import { dispatcherCommsRouter } from "./routes/dispatcherComms.js";
 import { requireAuth, requireDispatcher } from "./middleware/auth.js";
 import { uploadsDir } from "./lib/upload.js";
 
@@ -36,6 +37,7 @@ export function createApp() {
   app.use("/api/dispatcher", requireAuth, requireDispatcher, dispatcherDriversRouter);
   app.use("/api/dispatcher", requireAuth, requireDispatcher, dispatcherTripsRouter);
   app.use("/api/dispatcher", requireAuth, requireDispatcher, dispatcherApprovalsRouter);
+  app.use("/api/dispatcher", requireAuth, requireDispatcher, dispatcherCommsRouter);
   app.use("/api/driver", driverRouter);
   app.use("/api/trips", tripsRouter);
   app.use("/api", signsProofRouter);
