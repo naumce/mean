@@ -1,4 +1,5 @@
 import express from "express";
+import cors from "cors";
 import { authRouter } from "./routes/auth.js";
 import { driverRouter } from "./routes/driver.js";
 import { tripsRouter } from "./routes/trips.js";
@@ -19,6 +20,9 @@ import { uploadsDir } from "./lib/upload.js";
 
 export function createApp() {
   const app = express();
+  // Dev-permissive CORS so the Vue portal (separate origin, e.g. :5173) can
+  // call the API. In production, restrict `origin` to the portal's host.
+  app.use(cors());
   app.use(express.json({ limit: "1mb" }));
   app.use("/uploads", express.static(uploadsDir));
   app.get("/health", (_req, res) => res.json({ status: "ok" }));
