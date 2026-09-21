@@ -1,5 +1,9 @@
--- gen_random_bytes (the linkSecret backfill below) needs pgcrypto.
-CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
+-- pgcrypto lives in "public" on a local Postgres and in "extensions" on
+-- Supabase; the test suite runs each migration inside its own schema. Keep
+-- the tables resolving to the current schema (first in search_path) and let
+-- gen_random_bytes resolve from wherever the extension actually is.
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+SELECT set_config('search_path', current_setting('search_path') || ',public,extensions', false);
 
 -- AlterTable
 ALTER TABLE "Load" ADD COLUMN     "customerEmail" TEXT,
@@ -92,7 +96,7 @@ ALTER TABLE "SheetBinding" ADD CONSTRAINT "SheetBinding_orgId_fkey" FOREIGN KEY 
 -- Schema-qualified: pgcrypto installs into "public" regardless of which
 -- schema this migration itself runs in (each vitest process gets its own
 -- `test_<pid>` schema whose search_path does not include public).
-UPDATE "Org" SET "linkSecret" = encode(public.gen_random_bytes(32), 'hex') WHERE "linkSecret" = '';
+UPDATE "Org" SET "linkSecret" = encode(gen_random_bytes(32), 'hex') WHERE "linkSecret" = '';
 INSERT INTO "Plan" (id, "orgId", tier)
 SELECT gen_random_uuid()::text, id, 'tower' FROM "Org" WHERE id NOT IN (SELECT "orgId" FROM "Plan");
 
@@ -107,7 +111,7 @@ SELECT gen_random_uuid()::text, id, 'tower' FROM "Org" WHERE id NOT IN (SELECT "
 CREATE OR REPLACE FUNCTION org_default_plan() RETURNS trigger AS $$
 BEGIN
   INSERT INTO "Plan" (id, "orgId", tier)
-  VALUES (public.gen_random_uuid()::text, NEW.id, 'tower')
+  VALUES (gen_random_uuid()::text, NEW.id, 'tower')
   ON CONFLICT ("orgId") DO NOTHING;
   RETURN NEW;
 END

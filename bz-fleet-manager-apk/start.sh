@@ -3,7 +3,13 @@
 # private port, then the backend on $PORT (Render sets it). If either child
 # dies the container exits, so the platform restarts it — no half-alive state.
 set -e
-cd /app/fleet-backend && npx prisma migrate deploy
+cd /app/fleet-backend
+# 2026-09-21: the first Supabase deploy recorded this migration as failed
+# (pgcrypto lived in "extensions", not "public"; the SQL is fixed now). Prisma
+# refuses to deploy past a failed row, so clear it first — a no-op error once
+# the migration is applied. Remove after the demo database is rebuilt.
+npx prisma migrate resolve --rolled-back 20260920103547_night_shift_sheet 2>/dev/null || true
+npx prisma migrate deploy
 
 # The worker's own HTTP server (driver page, Twilio webhooks) listens on
 # WORKER_PORT; the backend proxies /d, /act, /twilio to it. PUBLIC_URL is the
