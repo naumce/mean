@@ -10,9 +10,13 @@ cd /app/fleet-backend
 # the migration is applied. Remove after the demo database is rebuilt.
 npx prisma migrate resolve --rolled-back 20260920103547_night_shift_sheet 2>/dev/null || true
 npx prisma migrate deploy
-# One-off demo data (d@fleet.com / pass123): set SEED_DEMO=1 for one deploy,
-# then remove it. The seed upserts, so a second run is harmless but slow.
-if [ "$SEED_DEMO" = "1" ]; then node seed-control-tower.mjs; fi
+# One-off demo data (d@fleet.com / pass123): set SEED_DEMO to a seed script
+# name for one deploy, then remove it. seed-control-tower.mjs = the org and
+# dispatcher; seed-demo.mjs = the rich two-carrier dataset on top of it.
+case "$SEED_DEMO" in
+  seed-control-tower.mjs|seed-demo.mjs) node "$SEED_DEMO" ;;
+  1) node seed-control-tower.mjs ;;
+esac
 
 # The worker's own HTTP server (driver page, Twilio webhooks) listens on
 # WORKER_PORT; the backend proxies /d, /act, /twilio to it. PUBLIC_URL is the
