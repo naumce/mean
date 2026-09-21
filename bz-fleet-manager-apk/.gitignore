@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+.playwright-mcp/
+.env
+.env.local
+.env.*.local
+info.md
+fleet-backend/uploads/
+# scratch at the project root
+/*.png
+/screenshot-mockup.mjs
+/commit-slice.sh
+/risk-brief.html

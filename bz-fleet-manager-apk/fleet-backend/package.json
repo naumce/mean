@@ -7,7 +7,10 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "test": "vitest run",
-    "build": "tsc"
+    "build": "tsc",
+    "loads:rederive": "tsx src/cli/rederive.ts",
+    "demo:seed": "tsx seed-week.ts && tsx seed-rest-stops.ts",
+    "demo:shift": "tsx -e \"import{shiftDemoTime}from'./src/lib/demoTimeShift.js';shiftDemoTime(Date.now()).then(p=>{console.log(p);process.exit(0)})\""
   },
   "keywords": [],
   "author": "",
@@ -17,9 +20,11 @@
     "bcrypt": "^5.1.1",
     "cors": "^2.8.6",
     "express": "^4.22.2",
+    "googleapis": "^181.0.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
     "ws": "^8.21.3",
+    "xlsx": "^0.18.5",
     "zod": "^3.25.76"
   },
   "devDependencies": {
@@ -31,6 +36,7 @@
     "@types/node": "^26.2.0",
     "@types/supertest": "^7.2.1",
     "@types/ws": "^8.18.1",
+    "google-auth-library": "^11.1.0",
     "prisma": "^5.22.0",
     "supertest": "^6.3.4",
     "tsx": "^4.23.12",

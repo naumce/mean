@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
 const router = useRouter()
+const route = useRoute()
 
 const email = ref('')
 const password = ref('')
@@ -14,7 +15,9 @@ async function handleSubmit(): Promise<void> {
   isSubmitting.value = true
   try {
     await auth.login(email.value, password.value)
-    await router.push('/')
+    // Honor the deep link the guard preserved (?redirect=/loads/abc).
+    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
+    await router.push(redirect)
   } catch {
     // auth.error already holds a user-facing message; nothing else to do.
   } finally {
@@ -71,6 +74,11 @@ async function handleSubmit(): Promise<void> {
           {{ isSubmitting ? 'Signing in…' : 'Sign in' }}
         </button>
       </form>
+
+      <p class="mt-4 text-center text-sm text-gray-500">
+        New fleet?
+        <RouterLink to="/signup" class="font-medium text-primary-600 hover:text-primary-700">Create an account</RouterLink>
+      </p>
     </div>
   </div>
 </template>

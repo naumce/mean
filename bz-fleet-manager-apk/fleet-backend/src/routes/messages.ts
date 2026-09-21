@@ -4,6 +4,7 @@ import { prisma } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
 import { upload } from "../lib/upload.js";
+import { asyncRoute } from "../lib/asyncRoute.js";
 
 // Mounted at "/api" in app.ts — the client's paths don't share a common
 // prefix (`/driver/messages...` vs `/trips/:id/messages...` vs
@@ -22,14 +23,14 @@ async function findOrCreateConversation(driverId: string, tripId: string | null)
   return prisma.conversation.create({ data: { driverId, tripId } });
 }
 
-messagesRouter.get("/driver/messages", async (req, res) => {
+messagesRouter.get("/driver/messages", asyncRoute(async (req, res) => {
   const conversationId = typeof req.query.conversation === "string" ? req.query.conversation : undefined;
   if (!conversationId) return res.status(400).json({ error: "conversation is required" });
   const conversation = await prisma.conversation.findFirst({ where: { id: conversationId, driverId: req.auth!.driverId } });
   if (!conversation) return res.status(404).json({ error: "Conversation not found" });
   const messages = await prisma.message.findMany({ where: { conversationId: conversation.id }, orderBy: { createdAt: "asc" } });
   res.json(messages);
-});
+}));
 
 const createMessageSchema = z.object({
   conversationId: z.string().optional(),
@@ -37,7 +38,7 @@ const createMessageSchema = z.object({
   text: z.string().min(1),
 });
 
-messagesRouter.post("/driver/messages", validateBody(createMessageSchema), async (req, res) => {
+messagesRouter.post("/driver/messages", validateBody(createMessageSchema), asyncRoute(async (req, res) => {
   const { conversationId, tripId, text } = req.body as z.infer<typeof createMessageSchema>;
   let conversation;
   if (conversationId) {
@@ -50,7 +51,7 @@ messagesRouter.post("/driver/messages", validateBody(createMessageSchema), async
     data: { conversationId: conversation.id, senderType: "driver", text },
   });
   res.json(created);
-});
+}));
 
 const tripMessageSchema = z.object({ text: z.string().optional() });
 
@@ -61,7 +62,7 @@ messagesRouter.post(
   "/trips/:id/messages",
   upload.single("file"),
   validateBody(tripMessageSchema),
-  async (req, res) => {
+  asyncRoute(async (req, res) => {
     const tripId = req.params.id as string;
     const trip = await prisma.trip.findFirst({ where: { id: tripId, driverId: req.auth!.driverId } });
     if (!trip) return res.status(404).json({ error: "Trip not found" });
@@ -73,10 +74,10 @@ messagesRouter.post(
       data: { conversationId: conversation.id, senderType: "driver", text: text ?? null, attachmentUrl },
     });
     res.json(created);
-  },
+  }),
 );
 
-messagesRouter.get("/driver/messages/unread-summary", async (req, res) => {
+messagesRouter.get("/driver/messages/unread-summary", asyncRoute(async (req, res) => {
   const conversations = await prisma.conversation.findMany({ where: { driverId: req.auth!.driverId } });
   const summaries = await Promise.all(conversations.map(async (c) => ({
     conversationId: c.id,
@@ -84,22 +85,22 @@ messagesRouter.get("/driver/messages/unread-summary", async (req, res) => {
   })));
   const total = summaries.reduce((sum, s) => sum + s.unread, 0);
   res.json({ conversations: summaries, total });
-});
+}));
 
-messagesRouter.get("/driver/unread-messages-count", async (req, res) => {
+messagesRouter.get("/driver/unread-messages-count", asyncRoute(async (req, res) => {
   const count = await prisma.message.count({ where: { conversation: { driverId: req.auth!.driverId }, ...unreadWhere } });
   res.json({ count });
-});
+}));
 
-messagesRouter.post("/driver/messages/read-all", async (req, res) => {
+messagesRouter.post("/driver/messages/read-all", asyncRoute(async (req, res) => {
   const result = await prisma.message.updateMany({
     where: { conversation: { driverId: req.auth!.driverId }, ...unreadWhere },
     data: { readAt: new Date() },
   });
   res.json({ updated: result.count });
-});
+}));
 
-messagesRouter.put("/trips/:id/messages/read-all", async (req, res) => {
+messagesRouter.put("/trips/:id/messages/read-all", asyncRoute(async (req, res) => {
   const tripId = req.params.id as string;
   const trip = await prisma.trip.findFirst({ where: { id: tripId, driverId: req.auth!.driverId } });
   if (!trip) return res.status(404).json({ error: "Trip not found" });
@@ -110,9 +111,9 @@ messagesRouter.put("/trips/:id/messages/read-all", async (req, res) => {
     data: { readAt: new Date() },
   });
   res.json({ updated: result.count });
-});
+}));
 
-messagesRouter.put("/messages/:id/read", async (req, res) => {
+messagesRouter.put("/messages/:id/read", asyncRoute(async (req, res) => {
   const id = req.params.id as string;
   // ownership by construction via the relation: the message must belong to a
   // conversation owned by the calling driver.
@@ -120,4 +121,4 @@ messagesRouter.put("/messages/:id/read", async (req, res) => {
   if (!message) return res.status(404).json({ error: "Message not found" });
   const updated = await prisma.message.update({ where: { id: message.id }, data: { readAt: new Date() } });
   res.json(updated);
-});
+}));

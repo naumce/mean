@@ -15,18 +15,18 @@ withDefaults(
   <RouterLink
     v-if="!disabled && to"
     :to="to"
-    class="flex items-center justify-between rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-primary-50 hover:text-primary-700"
-    active-class="bg-primary-50 text-primary-700"
+    class="flex items-center justify-between rounded-md px-3 py-2 text-sm font-medium text-ink-2 hover:bg-brand/10 hover:text-brand-ink"
+    active-class="bg-brand/10 text-brand-ink"
   >
     {{ label }}
   </RouterLink>
   <span
     v-else
-    class="flex cursor-not-allowed items-center justify-between rounded-md px-3 py-2 text-sm font-medium text-gray-400"
+    class="flex cursor-not-allowed items-center justify-between rounded-md px-3 py-2 text-sm font-medium text-ink-3"
     :title="`${label} is coming in a later increment`"
   >
     {{ label }}
-    <span class="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+    <span class="ml-2 rounded-full bg-surface-3 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-3">
       Soon
     </span>
   </span>

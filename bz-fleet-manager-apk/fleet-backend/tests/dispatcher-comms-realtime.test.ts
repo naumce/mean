@@ -21,7 +21,7 @@ afterEach(async () => {
 });
 
 function connect(token: string) {
-  const ws = new WebSocket(`ws://localhost:${port}/?token=${encodeURIComponent(token)}`);
+  const ws = new WebSocket(`ws://localhost:${port}/ws?token=${encodeURIComponent(token)}`);
   sockets.push(ws);
   return ws;
 }

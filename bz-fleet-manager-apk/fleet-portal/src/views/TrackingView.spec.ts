@@ -17,6 +17,8 @@ function createTrackingStoreStub(overrides: Record<string, unknown> = {}) {
     listLocations: vi.fn(),
     startPolling: vi.fn(),
     stopPolling: vi.fn(),
+    connectRealtime: vi.fn(),
+    disconnectRealtime: vi.fn(),
     ...overrides,
   }
 }
@@ -46,6 +48,7 @@ describe('TrackingView', () => {
     const wrapper = mount(TrackingView)
 
     expect(store.startPolling).toHaveBeenCalled()
+    expect(store.connectRealtime).toHaveBeenCalled()
     expect(wrapper.text()).toContain('Dana Driver')
     expect(wrapper.text()).toContain('32 mph')
     expect(wrapper.text()).toContain('1 active driver')
@@ -69,5 +72,6 @@ describe('TrackingView', () => {
     wrapper.unmount()
 
     expect(store.stopPolling).toHaveBeenCalled()
+    expect(store.disconnectRealtime).toHaveBeenCalled()
   })
 })

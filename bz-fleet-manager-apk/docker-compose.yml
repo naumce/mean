@@ -1,0 +1,51 @@
+# Dispatch Control Tower — full stack in one command:
+#   JWT_ACCESS_SECRET=… JWT_REFRESH_SECRET=… docker compose up --build
+# Portal at http://localhost:8080 (nginx proxies /api + /ws to the backend;
+# the backend itself is not exposed to the host).
+# First run: seed a demo org with
+#   docker compose exec backend node seed-control-tower.mjs
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: fleet
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fleet}
+      POSTGRES_DB: fleet
+    volumes:
+      - fleet-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fleet"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+
+  backend:
+    build: ./fleet-backend
+    environment:
+      DATABASE_URL: postgresql://fleet:${POSTGRES_PASSWORD:-fleet}@postgres:5432/fleet
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?set JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set JWT_REFRESH_SECRET}
+      PORT: "3001"
+      # nginx is one proxy hop in front — required so req.ip (rate limiting)
+      # is the real client, not the proxy.
+      TRUST_PROXY: "1"
+      NODE_OPTIONS: --max-http-header-size=65536
+      # Same-origin through nginx, so CORS never fires; set this if the API
+      # is ever exposed on its own origin.
+      # CORS_ORIGIN: https://portal.example.com
+      # Optional precision providers (offline fallbacks used when unset):
+      # GEOCODER_URL: https://nominatim.openstreetmap.org/search
+      # ROUTER_URL: http://your-osrm-host:5000
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  portal:
+    build: ./fleet-portal
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+volumes:
+  fleet-pgdata:

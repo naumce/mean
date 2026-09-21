@@ -1,10 +1,15 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from '../lib/api'
+import { TOKEN_STORAGE_KEY } from '../lib/constants'
 import { useTrackingStore } from './tracking'
 
+// API_BASE_URL must be in the factory: tracking.ts subscribes through the
+// shared realtime singleton (lib/realtime.ts), which derives its ws:// URL
+// from this value via lib/wsUrl.ts.
 vi.mock('../lib/api', () => ({
   api: { get: vi.fn(), post: vi.fn() },
+  API_BASE_URL: 'http://localhost:3001/api',
 }))
 
 const mockedGet = vi.mocked(api.get)
@@ -91,5 +96,70 @@ describe('useTrackingStore', () => {
     await vi.advanceTimersByTimeAsync(8000)
     // Only one interval should be ticking, not two stacked ones.
     expect(mockedGet).toHaveBeenCalledTimes(1)
+  })
+
+  describe('realtime', () => {
+    // The socket now lives in lib/realtime.ts (plan A4) — this harness drives
+    // IT, not the store, and asserts on frames delivered through subscribe().
+    class FakeWebSocket {
+      static instances: FakeWebSocket[] = []
+      url: string
+      onopen: (() => void) | null = null
+      onmessage: ((e: { data: string }) => void) | null = null
+      onclose: (() => void) | null = null
+      onerror: (() => void) | null = null
+      closed = false
+      constructor(url: string) {
+        this.url = url
+        FakeWebSocket.instances.push(this)
+      }
+      close(): void {
+        this.closed = true
+        this.onclose?.()
+      }
+    }
+
+    beforeEach(() => {
+      FakeWebSocket.instances = []
+      vi.stubGlobal('WebSocket', FakeWebSocket)
+      localStorage.setItem(TOKEN_STORAGE_KEY, 'tok123')
+    })
+    afterEach(() => {
+      vi.unstubAllGlobals()
+      localStorage.clear()
+    })
+
+    it('driver_location frames upsert markers: new drivers append, known ones move', () => {
+      const store = useTrackingStore()
+      store.locations = [sampleLocation]
+      store.connectRealtime()
+      store.connectRealtime() // no second socket
+      expect(FakeWebSocket.instances).toHaveLength(1)
+
+      const push = (payload: Record<string, unknown>) =>
+        FakeWebSocket.instances[0].onmessage?.({ data: JSON.stringify(payload) })
+
+      push({
+        type: 'driver_location', driverId: 'drv-1', driverName: 'Dana Driver',
+        latitude: 41.0, longitude: -75.0, at: '2026-08-21T12:00:00.000Z',
+      })
+      expect(store.locations).toHaveLength(1)
+      expect(store.locations[0].latitude).toBe(41.0)
+
+      push({
+        type: 'driver_location', driverId: 'drv-2', driverName: 'New Driver',
+        latitude: 39.1, longitude: -94.6, at: '2026-08-21T12:01:00.000Z',
+      })
+      expect(store.locations).toHaveLength(2)
+      expect(store.locations[1].driverName).toBe('New Driver')
+
+      // Non-location frames and malformed payloads are ignored.
+      push({ type: 'board_update' })
+      push({ type: 'driver_location', driverId: 'drv-3' })
+      expect(store.locations).toHaveLength(2)
+
+      store.disconnectRealtime()
+      expect(FakeWebSocket.instances[0].closed).toBe(true)
+    })
   })
 })

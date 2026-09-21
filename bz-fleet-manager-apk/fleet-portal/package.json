@@ -9,7 +9,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tanstack/vue-table": "^8.21.3",
+    "@tanstack/vue-virtual": "^3.13.37",
     "axios": "^1.19.0",
+    "mapbox-gl": "^3.29.0",
     "pinia": "^4.0.3",
     "vue": "^3.5.40",
     "vue-router": "^5.2.0"
@@ -22,6 +25,7 @@
     "@vue/tsconfig": "^0.9.1",
     "autoprefixer": "^10.5.4",
     "jsdom": "^29.1.1",
+    "playwright": "^1.62.1",
     "postcss": "^8.5.26",
     "tailwindcss": "^3.4.19",
     "typescript": "~6.0.2",

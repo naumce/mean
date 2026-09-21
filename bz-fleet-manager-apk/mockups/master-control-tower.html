@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Control Tower Master — Bertschi Industrial × North American OTR</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    .grid-lines {
+      background-size: 48px 48px;
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+    }
+    .laser-glow {
+      box-shadow: 0 0 12px rgba(239, 68, 68, 0.9), 0 0 24px rgba(239, 68, 68, 0.4);
+    }
+    .spotted-glow {
+      box-shadow: 0 0 16px rgba(250, 204, 21, 0.6), inset 0 0 8px rgba(250, 204, 21, 0.3);
+    }
+    .custom-scrollbar::-webkit-scrollbar { height: 6px; width: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: #070a12; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #334155; }
+  </style>
+</head>
+<body class="bg-[#050811] text-slate-100 min-h-screen flex flex-col antialiased selection:bg-blue-600 selection:text-white">
+
+  <!-- TOP COMMAND BAR -->
+  <header class="border-b border-slate-800/80 bg-[#090d18] px-4 py-2.5 flex items-center justify-between sticky top-0 z-50 shadow-2xl">
+    <!-- Brand & Status -->
+    <div class="flex items-center gap-4">
+      <div class="flex items-center gap-2.5">
+        <div class="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center font-black text-white shadow-lg shadow-blue-500/25 ring-1 ring-white/20">
+          ⚡
+        </div>
+        <div>
+          <div class="text-xs font-black tracking-tight text-white flex items-center gap-2">
+            CONTROL TOWER MASTER
+            <span class="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <span class="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span> 5 POWER UNITS ONLINE
+            </span>
+            <span class="text-[10px] font-mono text-slate-500">BERTSCHI-ENGINE v4.2</span>
+          </div>
+          <div class="text-[10px] font-mono text-slate-400 flex items-center gap-2">
+            <span>DISPATCHER: ALEX (DEV)</span>
+            <span>•</span>
+            <span class="text-emerald-400">PESSIMISTIC LOCKING: ON</span>
+            <span>•</span>
+            <span class="text-blue-400">MULTI-TENANT US REGIONAL</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center Search with Spotting Highlights -->
+    <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2 bg-[#04060c] border border-slate-800 px-3 py-1.5 rounded-lg text-xs w-80 focus-within:border-amber-400/80 transition">
+        <span class="text-amber-400 font-mono font-bold">🔍 Spot:</span>
+        <input type="text" value="Chicago" placeholder="Type city, trailer, commodity to spot on board..." class="bg-transparent text-slate-200 placeholder:text-slate-600 outline-none w-full text-xs font-mono font-medium">
+        <span class="text-[9px] font-mono bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-bold">2 MATCHES</span>
+      </div>
+
+      <!-- Mode View Toggles -->
+      <div class="flex rounded-lg border border-slate-800 bg-[#04060c] p-0.5 text-xs">
+        <button class="px-2.5 py-1 rounded bg-slate-800 font-bold text-white flex items-center gap-1.5 shadow">
+          <span>📅 Dispatch Board</span>
+        </button>
+        <button class="px-2.5 py-1 rounded text-slate-400 hover:text-white flex items-center gap-1.5 transition">
+          <span>🗺️ Asset Radar</span>
+        </button>
+        <button class="px-2.5 py-1 rounded text-slate-400 hover:text-white flex items-center gap-1.5 transition">
+          <span>📈 Profit Ledger</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Horizon Controls & Fast Actions -->
+    <div class="flex items-center gap-3">
+      <div class="flex items-center gap-1.5 bg-[#04060c] border border-slate-800 rounded-lg px-2 py-1 text-xs">
+        <span class="text-[10px] font-bold text-slate-500 uppercase font-mono">Zoom</span>
+        <input type="range" min="1" max="5" value="3" class="w-16 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500">
+        <span class="text-[10px] font-mono text-blue-400 font-bold">3-DAY</span>
+      </div>
+
+      <div class="flex items-center gap-1 bg-[#04060c] border border-slate-800 rounded-lg p-0.5 text-xs font-mono">
+        <button class="px-2 py-1 rounded text-slate-400 hover:text-white hover:bg-slate-800">◀</button>
+        <span class="px-2 font-bold text-slate-200">AUG 28 – AUG 30</span>
+        <button class="px-2 py-1 rounded text-slate-400 hover:text-white hover:bg-slate-800">▶</button>
+      </div>
+
+      <button class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold font-mono px-3 py-1.5 rounded-lg shadow-lg shadow-blue-600/30 transition flex items-center gap-1">
+        <span>+ Add Action</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- TELEMETRY & STRATEGIC KPI STRIP -->
+  <section class="bg-[#070b14] border-b border-slate-800/80 px-4 py-2 text-xs">
+    <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5">
+      
+      <!-- HERO: Empty Miles Avoided (The Retention Weapon) -->
+      <div class="rounded-lg border border-emerald-500/40 bg-gradient-to-br from-emerald-950/30 to-teal-950/20 px-2.5 py-1.5 flex flex-col justify-between">
+        <div class="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+          <span>Empty Mi Avoided</span>
+          <span class="text-[9px] bg-emerald-500/20 px-1 rounded font-mono">THIS WK</span>
+        </div>
+        <div class="flex items-baseline justify-between mt-1">
+          <span class="text-base font-bold font-mono text-emerald-300">428 mi</span>
+          <span class="text-[10px] font-bold text-emerald-400 font-mono">+$714.76</span>
+        </div>
+      </div>
+
+      <div class="rounded-lg border border-slate-800 bg-[#04060c] px-2.5 py-1.5 flex flex-col justify-between">
+        <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Committed Freight</div>
+        <div class="flex items-baseline justify-between mt-1">
+          <span class="text-base font-bold font-mono text-white">$14,820</span>
+          <span class="text-[10px] text-slate-400 font-mono">5 loads</span>
+        </div>
+      </div>
+
+      <div class="rounded-lg border border-slate-800 bg-[#04060c] px-2.5 py-1.5 flex flex-col justify-between">
+        <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Net Fleet Margin</div>
+        <div class="flex items-baseline justify-between mt-1">
+          <span class="text-base font-bold font-mono text-emerald-400">$3,420</span>
+          <span class="text-[10px] font-bold text-emerald-400 font-mono">23.1%</span>
+        </div>
+      </div>
+
+      <div class="rounded-lg border border-slate-800 bg-[#04060c] px-2.5 py-1.5 flex flex-col justify-between">
+        <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Avg $/Loaded Mi</div>
+        <div class="flex items-baseline justify-between mt-1">
+          <span class="text-base font-bold font-mono text-white">$2.84<span class="text-[10px] text-slate-500">/mi</span></span>
+          <span class="text-[10px] text-emerald-400 font-mono">▲ +18¢</span>
+        </div>
+      </div>
+
+      <div class="rounded-lg border border-slate-800 bg-[#04060c] px-2.5 py-1.5 flex flex-col justify-between">
+        <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Deadhead Ratio</div>
+        <div class="flex items-baseline justify-between mt-1">
+          <span class="text-base font-bold font-mono text-emerald-400">6.8%</span>
+          <span class="text-[10px] text-slate-500 font-mono">312 mi ttl</span>
+        </div>
+      </div>
+
+      <div class="rounded-lg border border-slate-800 bg-[#04060c] px-2.5 py-1.5 flex flex-col justify-between">
+        <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Fleet Utilization</div>
+        <div class="flex items-baseline justify-between mt-1">
+          <span class="text-base font-bold font-mono text-blue-400">80%</span>
+          <span class="text-[10px] text-slate-400">4/5 Active</span>
+        </div>
+      </div>
+
+      <div class="rounded-lg border border-slate-800 bg-[#04060c] px-2.5 py-1.5 flex flex-col justify-between">
+        <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">HOS Safety Gate</div>
+        <div class="flex items-baseline justify-between mt-1">
+          <span class="text-base font-bold font-mono text-emerald-400">0 VIOLATIONS</span>
+          <span class="text-[10px] text-emerald-400">🛡️ Protected</span>
+        </div>
+      </div>
+
+      <div class="rounded-lg border border-amber-500/40 bg-amber-950/20 px-2.5 py-1.5 flex flex-col justify-between cursor-pointer hover:border-amber-400 transition">
+        <div class="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-amber-400">
+          <span>Attention Queue</span>
+          <span class="h-2 w-2 rounded-full bg-amber-400 animate-ping"></span>
+        </div>
+        <div class="flex items-baseline justify-between mt-1">
+          <span class="text-base font-bold font-mono text-amber-300">2 Items</span>
+          <span class="text-[10px] text-amber-400">1 Maint · 1 Stale</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- MAIN COCKPIT BODY: GANTT + SPLITSCREEN DRAWER -->
+  <div class="flex-1 p-3 flex gap-3 w-full overflow-hidden">
+    
+    <!-- LEFT PANE: GANTT BOARD & BACKLOG (Takes full width or splits) -->
+    <div class="flex-1 flex flex-col gap-3 min-w-0">
+      
+      <!-- GANTT TIMELINE BOARD -->
+      <div class="rounded-xl border border-slate-800/80 bg-[#070b14] overflow-hidden shadow-2xl flex flex-col">
+        
+        <!-- Timeline Header / Time Ruler -->
+        <div class="grid grid-cols-12 border-b border-slate-800 bg-[#090d18] text-xs font-semibold select-none">
+          <!-- Lane Composite Entity Column Header -->
+          <div class="col-span-4 p-2.5 border-r border-slate-800 flex items-center justify-between">
+            <span class="text-[11px] font-bold uppercase tracking-widest text-slate-400">Composite Fleet Unit (Tractor · Driver · Trailer)</span>
+            <div class="flex items-center gap-1.5 text-[10px] text-slate-500 font-mono">
+              <span>FMCSA CLOCKS</span>
+            </div>
+          </div>
+
+          <!-- Time Grid Ruler across 3 Days (24h blocks with shift notches) -->
+          <div class="col-span-8 grid grid-cols-3 text-center font-mono">
+            <!-- FRIDAY 28 (TODAY) -->
+            <div class="border-r border-slate-800 bg-blue-500/5 relative p-2">
+              <div class="flex items-center justify-between text-[11px] font-bold text-blue-300 px-2">
+                <span>FRI 28 (TODAY)</span>
+                <span class="text-[9px] bg-blue-500/20 px-1.5 py-0.5 rounded text-blue-400">NOW: 14:32 CST</span>
+              </div>
+              <div class="grid grid-cols-4 text-[9px] text-slate-500 mt-1 border-t border-slate-800/60 pt-1">
+                <span>06:00</span>
+                <span>12:00</span>
+                <span class="text-blue-400 font-bold">18:00</span>
+                <span>24:00</span>
+              </div>
+            </div>
+
+            <!-- SATURDAY 29 -->
+            <div class="border-r border-slate-800 p-2">
+              <div class="flex items-center justify-between text-[11px] font-bold text-slate-300 px-2">
+                <span>SAT 29 (WEEKEND)</span>
+                <span class="text-[9px] text-slate-500">Shift 1 & 2</span>
+              </div>
+              <div class="grid grid-cols-4 text-[9px] text-slate-500 mt-1 border-t border-slate-800/60 pt-1">
+                <span>06:00</span>
+                <span>12:00</span>
+                <span>18:00</span>
+                <span>24:00</span>
+              </div>
+            </div>
+
+            <!-- SUNDAY 30 -->
+            <div class="p-2">
+              <div class="flex items-center justify-between text-[11px] font-bold text-slate-300 px-2">
+                <span>SUN 30 (OTR DELIVERIES)</span>
+                <span class="text-[9px] text-slate-500">Unload Windows</span>
+              </div>
+              <div class="grid grid-cols-4 text-[9px] text-slate-500 mt-1 border-t border-slate-800/60 pt-1">
+                <span>06:00</span>
+                <span>12:00</span>
+                <span>18:00</span>
+                <span>24:00</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- LANE 1: JAKE MORROW (Spotted Match for "Chicago" · Freight Leg + Predictive Next Slot) -->
+        <div class="grid grid-cols-12 border-b border-slate-800/60 bg-[#060913] hover:bg-slate-800/20 transition group relative">
+          
+          <!-- Composite Row Header -->
+          <div class="col-span-4 p-2.5 border-r border-slate-800 flex flex-col justify-between bg-[#080d19]/80">
+            <div class="flex items-start justify-between">
+              <div class="flex items-center gap-2.5">
+                <div class="h-9 w-9 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold font-mono text-xs shadow-inner">
+                  JM
+                </div>
+                <div>
+                  <div class="text-xs font-bold text-white flex items-center gap-1.5">
+                    Jake Morrow
+                    <span class="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" title="Speed 58 MPH · GPS Fresh"></span>
+                    <span class="text-[10px] font-mono text-slate-400 font-normal">#1207 Sleeper</span>
+                  </div>
+                  <div class="text-[10px] font-mono text-slate-400 flex items-center gap-1.5 mt-0.5">
+                    <span class="text-slate-300">DV-4450 (53' Van)</span>
+                    <span>•</span>
+                    <span class="text-emerald-400 font-bold">58 MPH I-70 E</span>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Quick Actions -->
+              <div class="flex items-center gap-1">
+                <span class="px-1.5 py-0.5 rounded text-[9px] font-bold font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">ROLLING</span>
+              </div>
+            </div>
+
+            <!-- FMCSA Clocks Strip -->
+            <div class="mt-2 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] font-mono">
+              <div class="flex items-center gap-1 text-slate-400">
+                📍 <span class="text-slate-200 font-semibold">Columbia, MO</span> <span class="text-slate-500">(4m)</span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <span class="text-emerald-400 font-bold bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-500/30">DRV: 8h 15m</span>
+                <span class="text-slate-300 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">CYC: 46h</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Schedule Track with Spotted Glow on Chicago Destination -->
+          <div class="col-span-8 p-2 grid grid-cols-3 gap-2 items-center relative grid-lines">
+            
+            <!-- Laser Now-Line -->
+            <div class="absolute top-0 bottom-0 left-[24%] w-px bg-red-500 laser-glow z-20 pointer-events-none">
+              <div class="bg-red-500 text-white text-[8px] font-mono font-bold px-1 rounded absolute -top-2 -left-3">NOW</div>
+            </div>
+
+            <!-- Active Leg Brick (Spotted in Yellow because dest is Chicago) -->
+            <div class="col-span-1 rounded-lg bg-gradient-to-r from-blue-900/80 to-indigo-900/80 border-2 border-amber-400 p-2 relative shadow-2xl spotted-glow cursor-pointer">
+              <div class="flex items-center justify-between text-[11px]">
+                <span class="font-bold text-white font-mono flex items-center gap-1.5">
+                  L-51217 <span class="text-[9px] text-blue-300 bg-blue-950 px-1 rounded">53' VAN</span>
+                </span>
+                <span class="font-bold text-emerald-400 font-mono">$1,450 ($2.78/m)</span>
+              </div>
+              <div class="text-[11px] text-amber-300 font-bold truncate mt-0.5 flex items-center gap-1">
+                <span>Kansas City ➔ Chicago, IL</span>
+                <span class="text-[9px] bg-amber-400 text-slate-950 font-black px-1 rounded">MATCH</span>
+              </div>
+              
+              <!-- Bertschi Checklist Badges -->
+              <div class="text-[10px] text-slate-400 mt-1 flex items-center justify-between font-mono pt-1 border-t border-blue-500/30">
+                <div class="flex items-center gap-1 text-[9px]">
+                  <span class="text-emerald-400" title="Pre-trip inspection passed">✓ PTI</span>
+                  <span class="text-emerald-400" title="Rate confirmation signed">✓ RATE</span>
+                  <span class="text-slate-500" title="BOL pending delivery">○ BOL</span>
+                </div>
+                <span class="text-emerald-400 font-bold">+$320 MARGIN</span>
+              </div>
+            </div>
+
+            <!-- Bertschi Fleet Slot: Predictive Next Leg Opportunity -->
+            <div class="col-span-2 rounded-lg border border-dashed border-emerald-500/50 bg-emerald-950/15 p-2 flex items-center justify-between">
+              <div>
+                <div class="text-xs font-bold text-emerald-300 flex items-center gap-1.5 font-mono">
+                  <span>⚡ 1-Click Match: L-51220 (Chicago ➔ Indy)</span>
+                  <span class="text-[9px] bg-emerald-500/20 text-emerald-400 px-1 rounded font-bold">12 mi DH</span>
+                </div>
+                <div class="text-[10px] text-slate-400 font-mono mt-0.5">
+                  Available Sat 10:00 in Chicago · Auto Parts · $750 ($4.07/mi)
+                </div>
+              </div>
+              <button class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold font-mono px-3 py-1.5 rounded-lg shadow-lg shadow-emerald-600/30 transition">
+                ⚡ Lock & Dispatch
+              </button>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- LANE 2: TYRONE BANKS (Reefer Telemetry + Multi-Dispatcher Lock Indicator) -->
+        <div class="grid grid-cols-12 border-b border-slate-800/60 bg-[#060913] hover:bg-slate-800/20 transition group relative">
+          <div class="col-span-4 p-2.5 border-r border-slate-800 flex flex-col justify-between bg-[#080d19]/80">
+            <div class="flex items-start justify-between">
+              <div class="flex items-center gap-2.5">
+                <div class="h-9 w-9 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 flex items-center justify-center font-bold font-mono text-xs shadow-inner">
+                  TB
+                </div>
+                <div>
+                  <div class="text-xs font-bold text-white flex items-center gap-1.5">
+                    Tyrone Banks
+                    <span class="h-2 w-2 rounded-full bg-cyan-400 animate-pulse"></span>
+                    <span class="text-[10px] font-mono text-slate-400 font-normal">#1212 Sleeper</span>
+                  </div>
+                  <div class="text-[10px] font-mono text-slate-400 flex items-center gap-1.5 mt-0.5">
+                    <span class="text-cyan-300">RF-2201 (Reefer)</span>
+                    <span>•</span>
+                    <span class="text-cyan-400 font-bold">TEMP: -9.8°F (OK)</span>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Pessimistic Lock Flag -->
+              <span class="px-1.5 py-0.5 rounded text-[9px] font-bold font-mono bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center gap-1">
+                <span>🔒</span> YOU EDITING
+              </span>
+            </div>
+
+            <div class="mt-2 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] font-mono">
+              <div class="flex items-center gap-1 text-slate-400">
+                📍 <span class="text-slate-200 font-semibold">St. Louis, MO Yard</span> <span class="text-slate-500">(Docked)</span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <span class="text-emerald-400 font-bold bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-500/30">DRV: 11h 00m</span>
+                <span class="text-slate-300 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">CYC: 58h</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Multi-Day OTR Reefer Freight Leg -->
+          <div class="col-span-8 p-2 grid grid-cols-3 gap-2 items-center relative grid-lines">
+            <div class="col-span-2 rounded-lg bg-gradient-to-r from-cyan-950/90 via-blue-950/90 to-indigo-950/90 border border-cyan-500/50 p-2 shadow-xl">
+              <div class="flex items-center justify-between text-[11px]">
+                <span class="font-bold text-white font-mono flex items-center gap-1.5">
+                  L-51219 <span class="text-[9px] bg-cyan-500/20 text-cyan-300 px-1 rounded">REEFER (-10°F)</span>
+                  <span class="text-[9px] bg-slate-800 text-slate-300 px-1 rounded">Tyson Foods</span>
+                </span>
+                <span class="font-bold text-emerald-400 font-mono">$2,890 ($2.95/mi)</span>
+              </div>
+              <div class="text-[11px] text-slate-200 font-medium mt-0.5">
+                St. Louis, MO ➔ Atlanta, GA (Frozen Poultry · 42,000 lbs)
+              </div>
+              
+              <!-- Checklist Badges & Net Margin -->
+              <div class="text-[10px] text-slate-400 mt-1 flex items-center justify-between font-mono pt-1 border-t border-cyan-500/30">
+                <div class="flex items-center gap-1.5 text-[9px]">
+                  <span class="text-emerald-400 font-bold">✓ TEMP LOGGED</span>
+                  <span class="text-emerald-400 font-bold">✓ PRE-COOL</span>
+                  <span class="text-amber-400 font-bold">⚠ STRICT APPT (Sun 06:00)</span>
+                </div>
+                <span class="text-emerald-400 font-bold">+$610 NET MARGIN</span>
+              </div>
+            </div>
+
+            <!-- Destination Available Post-Delivery -->
+            <div class="col-span-1 rounded-lg border border-dashed border-slate-700/60 p-2 flex flex-col justify-between text-[11px] font-mono text-slate-400 bg-[#04060c]">
+              <span class="text-slate-300 font-bold">Free in Atlanta, GA</span>
+              <span class="text-[10px] text-slate-500">Sun 08:00 (Post-Unload)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- LANE 3: MARIA DELGADO (Fleet Action: Scheduled PM Maintenance + Rest Reset) -->
+        <div class="grid grid-cols-12 border-b border-slate-800/60 bg-[#060913] hover:bg-slate-800/20 transition group relative">
+          <div class="col-span-4 p-2.5 border-r border-slate-800 flex flex-col justify-between bg-[#080d19]/80">
+            <div class="flex items-start justify-between">
+              <div class="flex items-center gap-2.5">
+                <div class="h-9 w-9 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center justify-center font-bold font-mono text-xs shadow-inner">
+                  MD
+                </div>
+                <div>
+                  <div class="text-xs font-bold text-white flex items-center gap-1.5">
+                    Maria Delgado
+                    <span class="h-2 w-2 rounded-full bg-amber-400"></span>
+                    <span class="text-[10px] font-mono text-slate-400 font-normal">#1105 DayCab</span>
+                  </div>
+                  <div class="text-[10px] font-mono text-slate-400 flex items-center gap-1.5 mt-0.5">
+                    <span class="text-slate-300">DV-3310 (53' Van)</span>
+                    <span>•</span>
+                    <span class="text-amber-400 font-bold">LOW HOS HOURS</span>
+                  </div>
+                </div>
+              </div>
+              <span class="px-1.5 py-0.5 rounded text-[9px] font-bold font-mono bg-amber-500/10 text-amber-400 border border-amber-500/20">RESET REQUIRED</span>
+            </div>
+
+            <div class="mt-2 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] font-mono">
+              <div class="flex items-center gap-1 text-slate-400">
+                📍 <span class="text-slate-200 font-semibold">Des Moines, IA Hub</span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <span class="text-amber-400 font-bold bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-500/30">DRV: 2h 10m</span>
+                <span class="text-slate-300 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">CYC: 54h</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bertschi Fleet Action Bricks on Timeline -->
+          <div class="col-span-8 p-2 grid grid-cols-3 gap-2 items-center relative grid-lines">
+            
+            <!-- Fleet Action 1: Mandatory 10h Sleeper Berth Reset -->
+            <div class="col-span-1 rounded-lg bg-amber-950/30 border border-amber-500/40 p-2 flex flex-col justify-between">
+              <div class="flex items-center justify-between text-[11px] font-mono">
+                <span class="text-amber-300 font-bold">💤 10h Sleeper Berth Reset</span>
+                <span class="text-[9px] bg-amber-500/20 text-amber-400 px-1 rounded">FMCSA</span>
+              </div>
+              <div class="text-[10px] text-slate-400 mt-1 font-mono">
+                Mandatory Rest: 12:00 – 22:00
+              </div>
+            </div>
+
+            <!-- Fleet Action 2: Scheduled Tractor Preventive Maintenance -->
+            <div class="col-span-1 rounded-lg bg-purple-950/30 border border-purple-500/40 p-2 flex flex-col justify-between">
+              <div class="flex items-center justify-between text-[11px] font-mono">
+                <span class="text-purple-300 font-bold">🔧 PM B-Service (Shop)</span>
+                <span class="text-[9px] bg-purple-500/20 text-purple-400 px-1 rounded">SHOP</span>
+              </div>
+              <div class="text-[10px] text-slate-400 mt-1 font-mono">
+                Des Moines Freightliner Service Bay 3
+              </div>
+            </div>
+
+            <!-- Available Sunday -->
+            <div class="col-span-1 rounded-lg border border-dashed border-slate-700/60 p-2 flex items-center justify-between text-xs text-slate-400 bg-[#04060c]">
+              <span>Ready Sun 06:00</span>
+              <button class="bg-blue-600/30 hover:bg-blue-600 text-blue-300 hover:text-white text-[10px] font-bold font-mono px-2 py-1 rounded transition">
+                ⚡ Plan
+              </button>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- LANE 4: DALE HUTCHINS (34-Hour Restart Violation Hard-Lockout Shield) -->
+        <div class="grid grid-cols-12 border-b border-slate-800/60 bg-red-950/10 hover:bg-red-950/20 transition group relative">
+          <div class="col-span-4 p-2.5 border-r border-slate-800 flex flex-col justify-between bg-red-950/20">
+            <div class="flex items-start justify-between">
+              <div class="flex items-center gap-2.5">
+                <div class="h-9 w-9 rounded-lg bg-red-500/10 text-red-400 border border-red-500/30 flex items-center justify-center font-bold font-mono text-xs shadow-inner">
+                  DH
+                </div>
+                <div>
+                  <div class="text-xs font-bold text-white flex items-center gap-1.5">
+                    Dale Hutchins
+                    <span class="h-2 w-2 rounded-full bg-red-500"></span>
+                    <span class="text-[10px] font-mono text-slate-400 font-normal">#1199 Flatbed</span>
+                  </div>
+                  <div class="text-[10px] font-mono text-red-400 flex items-center gap-1.5 mt-0.5 font-bold">
+                    <span>FB-3310</span>
+                    <span>•</span>
+                    <span>34h RESTART ACTIVE</span>
+                  </div>
+                </div>
+              </div>
+              <span class="px-1.5 py-0.5 rounded text-[9px] font-bold font-mono bg-red-500/20 text-red-400 border border-red-500/30">ENGINE LOCK</span>
+            </div>
+
+            <div class="mt-2 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] font-mono">
+              <div class="flex items-center gap-1 text-slate-400">
+                📍 <span class="text-slate-200 font-semibold">Omaha, NE Terminal</span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <span class="text-red-400 font-bold bg-red-950/60 px-1.5 py-0.5 rounded border border-red-500/40">DRV: 0.0h</span>
+                <span class="text-red-400 font-bold">CYC: 69.2h/70h</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Lockout Shield Block -->
+          <div class="col-span-8 p-2 grid grid-cols-3 gap-2 items-center relative grid-lines">
+            <div class="col-span-2 rounded-lg bg-red-950/40 border border-red-500/40 p-2.5 flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="text-base">⛔</span>
+                <div>
+                  <div class="text-xs font-bold text-red-300 font-mono">FMCSA HARD LOCKOUT: 34-Hour Weekly Restart in Progress</div>
+                  <div class="text-[10px] text-slate-400">System has physically locked all dispatch actions to prevent roadside DOT violation fines.</div>
+                </div>
+              </div>
+            </div>
+            <div class="col-span-1 rounded-lg border border-slate-800 p-2 text-right text-[11px] font-mono text-slate-400">
+              Unlocked: <span class="text-emerald-400 font-bold">Sun Aug 30 @ 08:00</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- UNASSIGNED FREIGHT BACKLOG LEDGER -->
+      <div class="rounded-xl border border-slate-800 bg-[#070b14] p-3 shadow-xl flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between pb-2 border-b border-slate-800 text-xs">
+            <div class="flex items-center gap-2 font-bold text-white">
+              <span>📦 Unassigned Freight Backlog (Drag onto any available slot)</span>
+              <span class="px-1.5 py-0.2 rounded-full bg-blue-500/10 text-blue-400 font-mono text-[10px] border border-blue-500/20">3 Open</span>
+            </div>
+            <div class="flex items-center gap-2 text-[10px] font-mono text-slate-400">
+              <span>ORDERED BY EARLIEST APPOINTMENT</span>
+            </div>
+          </div>
+
+          <!-- Freight Cards -->
+          <div class="mt-2.5 grid grid-cols-1 sm:grid-cols-2 gap-2">
+            
+            <!-- Load 1 (Target Match for Jake) -->
+            <div class="p-2.5 rounded-lg bg-[#04060c] border border-slate-800 hover:border-blue-500/50 transition flex items-center justify-between gap-3 cursor-grab active:cursor-grabbing">
+              <div class="flex items-center gap-2.5">
+                <span class="font-mono text-xs font-bold text-blue-400 bg-blue-950/60 px-2 py-1 rounded border border-blue-500/30">L-51220</span>
+                <div>
+                  <div class="text-xs font-bold text-white flex items-center gap-2">
+                    Chicago, IL ➔ Indianapolis, IN
+                    <span class="text-[9px] font-bold font-mono bg-amber-500/10 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/20">Sat 11:00 Appt</span>
+                  </div>
+                  <div class="text-[10px] text-slate-400 font-mono mt-0.5 flex items-center gap-2">
+                    <span>184 mi</span>
+                    <span>•</span>
+                    <span>42k lbs Auto Parts</span>
+                    <span>•</span>
+                    <span class="text-slate-300">CH Robinson</span>
+                  </div>
+                </div>
+              </div>
+              <div class="flex items-center gap-3">
+                <div class="text-right">
+                  <div class="text-xs font-bold font-mono text-emerald-400">$750</div>
+                  <div class="text-[9px] font-mono text-slate-500">$4.07/mi</div>
+                </div>
+                <button class="bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold font-mono px-3 py-1.5 rounded-lg shadow transition">
+                  ⚡ Suggest
+                </button>
+              </div>
+            </div>
+
+            <!-- Load 2 (Hazmat Requirement) -->
+            <div class="p-2.5 rounded-lg bg-[#04060c] border border-slate-800 hover:border-amber-500/50 transition flex items-center justify-between gap-3 cursor-grab active:cursor-grabbing">
+              <div class="flex items-center gap-2.5">
+                <span class="font-mono text-xs font-bold text-amber-400 bg-amber-950/60 px-2 py-1 rounded border border-amber-500/30">L-51221</span>
+                <div>
+                  <div class="text-xs font-bold text-white flex items-center gap-2">
+                    Wichita, KS ➔ St. Louis, MO
+                    <span class="text-[9px] font-bold font-mono bg-red-500/20 text-red-300 px-1.5 py-0.5 rounded border border-red-500/30">⚠️ HAZMAT CLASS 8</span>
+                  </div>
+                  <div class="text-[10px] text-slate-400 font-mono mt-0.5 flex items-center gap-2">
+                    <span>440 mi</span>
+                    <span>•</span>
+                    <span>38k lbs Corrosive</span>
+                    <span>•</span>
+                    <span class="text-slate-300">Landstar</span>
+                  </div>
+                </div>
+              </div>
+              <div class="flex items-center gap-3">
+                <div class="text-right">
+                  <div class="text-xs font-bold font-mono text-emerald-400">$1,680</div>
+                  <div class="text-[9px] font-mono text-slate-500">$3.81/mi</div>
+                </div>
+                <button class="bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold font-mono px-3 py-1.5 rounded-lg shadow transition">
+                  ⚡ Suggest
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT PANE: BERTSCHI SPLITSCREEN MASTER DRAWER (Slide-over Inspect Panel) -->
+    <aside class="w-96 rounded-xl border border-slate-800 bg-[#070b14] p-3 shadow-2xl flex flex-col justify-between shrink-0">
+      <div>
+        <!-- Drawer Header with Lock Indicator -->
+        <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-bold text-white font-mono">INSPECT: LEG L-51217</span>
+            <span class="px-1.5 py-0.2 rounded text-[9px] font-mono bg-blue-500/20 text-blue-400 font-bold">PESSIMISTIC LOCK</span>
+          </div>
+          <button class="text-slate-400 hover:text-white text-xs font-mono">✕</button>
+        </div>
+
+        <!-- Route Milestones & Appointments -->
+        <div class="mt-3 p-2.5 rounded-lg bg-[#04060c] border border-slate-800 text-xs font-mono">
+          <div class="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Route Milestones</div>
+          
+          <div class="mt-2 flex flex-col gap-2">
+            <div class="flex items-start gap-2">
+              <span class="text-emerald-400 font-bold">1. PICKUP</span>
+              <div>
+                <div class="text-white font-bold">Kansas City, MO DC #4</div>
+                <div class="text-[10px] text-slate-400">Aug 28 @ 14:00 CST · Strict Appt</div>
+              </div>
+            </div>
+            <div class="flex items-start gap-2">
+              <span class="text-blue-400 font-bold">2. DROP</span>
+              <div>
+                <div class="text-white font-bold">Chicago, IL Distribution Hub</div>
+                <div class="text-[10px] text-slate-400">Aug 29 @ 09:00 CST · Window Open</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bertschi Checklists Widget -->
+        <div class="mt-3 p-2.5 rounded-lg bg-[#04060c] border border-slate-800 text-xs font-mono">
+          <div class="text-slate-400 text-[10px] uppercase font-bold tracking-wider flex items-center justify-between">
+            <span>Transport Checklists</span>
+            <span class="text-emerald-400">3/4 Done</span>
+          </div>
+
+          <div class="mt-2 flex flex-col gap-1.5 text-[11px]">
+            <label class="flex items-center gap-2 text-slate-200">
+              <input type="checkbox" checked class="rounded bg-slate-900 border-slate-800 text-blue-600 focus:ring-0">
+              <span>Driver Pre-Trip Inspection (DVIR)</span>
+            </label>
+            <label class="flex items-center gap-2 text-slate-200">
+              <input type="checkbox" checked class="rounded bg-slate-900 border-slate-800 text-blue-600 focus:ring-0">
+              <span>Rate Confirmation Signed ($1,450)</span>
+            </label>
+            <label class="flex items-center gap-2 text-slate-200">
+              <input type="checkbox" checked class="rounded bg-slate-900 border-slate-800 text-blue-600 focus:ring-0">
+              <span>Trailer Cleanliness / Seal #48810</span>
+            </label>
+            <label class="flex items-center gap-2 text-slate-400">
+              <input type="checkbox" class="rounded bg-slate-900 border-slate-800 text-blue-600 focus:ring-0">
+              <span>Receiver Proof of Delivery (POD)</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- True North American Pre-Dispatch Cost Breakdown -->
+        <div class="mt-3 p-2.5 rounded-lg bg-[#04060c] border border-slate-800 text-xs font-mono">
+          <div class="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Economics & Cost Model</div>
+          
+          <div class="mt-2 flex flex-col gap-1 text-[11px]">
+            <div class="flex justify-between">
+              <span class="text-slate-400">Gross Linehaul + FSC:</span>
+              <span class="text-white font-bold">$1,450.00</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">Fuel Burn (522 mi @ 6.5 mpg):</span>
+              <span class="text-red-400">-$321.23</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">Driver Pay (522 mi @ $0.60):</span>
+              <span class="text-red-400">-$313.20</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">Fixed Overhead ($0.45/mi):</span>
+              <span class="text-red-400">-$234.90</span>
+            </div>
+            <div class="border-t border-slate-800 pt-1 mt-1 flex justify-between font-bold">
+              <span class="text-emerald-400">Net Estimated Profit:</span>
+              <span class="text-emerald-400 font-bold">+$580.67 (40.0%)</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Quick Action Controls -->
+      <div class="mt-3 pt-2 border-t border-slate-800 flex flex-col gap-2 font-mono">
+        <button class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs py-2 rounded-lg shadow-lg shadow-blue-600/30 transition">
+          ⚡ Push Updates to Driver App
+        </button>
+        <button class="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs py-1.5 rounded-lg transition">
+          Print Rate Confirmation PDF
+        </button>
+      </div>
+    </aside>
+
+  </div>
+
+</body>
+</html>

@@ -6,6 +6,29 @@ export const app = createApp();
 
 export async function resetDb() {
   await prisma.$transaction([
+    // Control Tower domain (children -> parents), cleared before driver/org below
+    prisma.deadheadLeg.deleteMany(), prisma.dispatchConflict.deleteMany(),
+    prisma.rate.deleteMany(), prisma.assignment.deleteMany(),
+    prisma.agentUpdate.deleteMany(),
+    // Night Shift (spec §17.2): AgentCommand cascades with its load anyway,
+    // but AgentPolicy's FK to Org is RESTRICT (like boardLayout/updateRule
+    // below) — must be cleared before org.deleteMany() or every later
+    // suite's resetDb fails.
+    prisma.agentCommand.deleteMany(),
+    prisma.agentPolicy.deleteMany(),
+    prisma.appointment.deleteMany(), prisma.loadStop.deleteMany(),
+    // A2: locks cascade with their load, but a live one on a load another
+    // suite created must not survive into the next suite's org — clear first.
+    prisma.loadLock.deleteMany(),
+    // One honest record: the trace rows cascade with the load, but the
+    // vocabulary is org-scoped and its FK to Org is RESTRICT — clear it before
+    // org, like boardLayout/boardView, or every later suite's resetDb fails.
+    prisma.loadChange.deleteMany(),
+    prisma.load.deleteMany(), prisma.hosState.deleteMany(),
+    prisma.serviceRecord.deleteMany(), prisma.serviceShop.deleteMany(),
+    prisma.tractor.deleteMany(), prisma.trailer.deleteMany(),
+    prisma.routeDistance.deleteMany(),
+    // Existing mobile/dispatcher domain
     prisma.message.deleteMany(), prisma.conversation.deleteMany(),
     prisma.notification.deleteMany(), prisma.driverSession.deleteMany(),
     prisma.safetyAlert.deleteMany(), prisma.fuelLog.deleteMany(),
@@ -16,6 +39,30 @@ export async function resetDb() {
     prisma.stop.deleteMany(), prisma.trip.deleteMany(),
     prisma.vehicle.deleteMany(), prisma.revokedToken.deleteMany(),
     prisma.driver.deleteMany(), prisma.dispatcher.deleteMany(),
+    // Carrier layer (T1): drivers/tractors/trailers above may reference a
+    // carrier, and carrier references org — must clear after them, before org.
+    prisma.carrier.deleteMany(),
+    // T3 rest stops: org-scoped, no other table references it yet — clear
+    // before org like serviceShop/carrier above.
+    prisma.restStop.deleteMany(),
+    // T4 fuel prices: org-scoped, orgId FK is ON DELETE RESTRICT — clear
+    // before org like restStop above.
+    prisma.fuelPrice.deleteMany(),
+    // Broker Board layout and view: org-scoped, one per org, and their FK to
+    // Org is RESTRICT — a row left behind here does not fail its own test, it
+    // fails `org.deleteMany()` in every suite that runs after it in the same
+    // schema. Clear both before org.
+    prisma.boardLayout.deleteMany(),
+    prisma.boardView.deleteMany(),
+    prisma.updateRule.deleteMany(),
+    // Night Shift sheet slices: Plan/OrgTelephony/SheetBinding are org-scoped,
+    // one (or several, for SheetBinding) per org, and their FK to Org is
+    // RESTRICT — clear before org, like boardLayout/updateRule above.
+    prisma.plan.deleteMany(),
+    prisma.orgTelephony.deleteMany(),
+    prisma.sheetBinding.deleteMany(),
+    // Org last — drivers/loads/tractors/trailers/assignments all reference it
+    prisma.org.deleteMany(),
   ]);
 }
 

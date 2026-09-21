@@ -8,6 +8,28 @@ async function dispatcherAuth() {
   return `Bearer ${signDispatcherAccess(disp.id)}`;
 }
 
+it("creates a trip with a planned schedule and returns it on the trip", async () => {
+  const auth = await dispatcherAuth();
+  const res = await request(app).post("/api/dispatcher/trips").set("authorization", auth).send({
+    identifier: "TR-SCHED-1",
+    stops: [{ sequence: 1, address: "A St" }],
+    scheduledStart: "2026-08-21T08:00:00.000Z",
+    scheduledEnd: "2026-08-21T11:00:00.000Z",
+  });
+  expect(res.status).toBe(201);
+  expect(res.body.scheduledStart).toBe("2026-08-21T08:00:00.000Z");
+  expect(res.body.scheduledEnd).toBe("2026-08-21T11:00:00.000Z");
+});
+
+it("creates a trip with no schedule — schedule is optional (nulls)", async () => {
+  const auth = await dispatcherAuth();
+  const res = await request(app).post("/api/dispatcher/trips").set("authorization", auth)
+    .send({ identifier: "TR-SCHED-2", stops: [{ sequence: 1, address: "A" }] });
+  expect(res.status).toBe(201);
+  expect(res.body.scheduledStart).toBeNull();
+  expect(res.body.scheduledEnd).toBeNull();
+});
+
 it("creates a trip with stops + checklist, unassigned, status pending", async () => {
   const auth = await dispatcherAuth();
   const res = await request(app).post("/api/dispatcher/trips").set("authorization", auth).send({

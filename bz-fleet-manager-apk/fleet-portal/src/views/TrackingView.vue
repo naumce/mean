@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted } from 'vue'
 import DataTable from '../components/DataTable.vue'
+import FleetMap from '../components/tracking/FleetMap.vue'
 import { useTrackingStore } from '../stores/tracking'
 import type { DriverLocation } from '../types/dispatcher'
 
@@ -30,10 +31,12 @@ const activeDriverCount = computed(() => trackingStore.locations.length)
 
 onMounted(() => {
   trackingStore.startPolling()
+  trackingStore.connectRealtime()
 })
 
 onBeforeUnmount(() => {
   trackingStore.stopPolling()
+  trackingStore.disconnectRealtime()
 })
 </script>
 
@@ -52,6 +55,8 @@ onBeforeUnmount(() => {
     <p v-if="trackingStore.error" class="text-sm text-red-600" role="alert">
       {{ trackingStore.error }}
     </p>
+
+    <FleetMap :locations="trackingStore.locations" />
 
     <DataTable :columns="columns" :rows="trackingStore.locations" row-key="driverId">
       <template #cell-driverName="{ row }">{{ (row as DriverLocation).driverName ?? (row as DriverLocation).driverId }}</template>

@@ -1,0 +1,1181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Control Tower — Fully Interactive Bertschi Cockpit</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{--row-h:132px;--brick-h:100px;--brick-top:16px;}
+    [data-density="compact"]{--row-h:72px;--brick-h:52px;--brick-top:10px;}
+    body { font-family: 'Inter', sans-serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    input,select{color-scheme:dark;}
+    .laser-glow { box-shadow: 0 0 12px rgba(239, 68, 68, 0.9), 0 0 24px rgba(239, 68, 68, 0.4); }
+    .spotted-glow { box-shadow: 0 0 16px rgba(250, 204, 21, 0.9), inset 0 0 10px rgba(250, 204, 21, 0.4); border-color: #facc15 !important; }
+    .step-bar { height: 4px; }
+    .popover-shadow { box-shadow: 0 20px 25px -5px rgba(0,0,0,.7), 0 10px 10px -5px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.1); }
+
+    /* board geometry */
+    .lane{display:flex;position:relative;border-bottom:1px solid rgba(30,41,59,.6);}
+    .lane-head{width:400px;flex:0 0 400px;position:sticky;left:0;z-index:20;border-right:1px solid #1e293b;}
+    .lane.lockout{background:rgba(69,10,10,.18);}
+    .lane.lockout .lane-head{background:rgba(69,10,10,.35);}
+    .lane.dropzone .track{background:rgba(59,130,246,.10);}
+    .lane.dropzone-eq .track{background:rgba(16,185,129,.10);}
+    .lane.dropzone-blocked .track{background:rgba(239,68,68,.14);}
+    .lane.lane-spot .lane-head{box-shadow:inset 0 0 0 1.5px #facc15, inset 0 0 18px rgba(250,204,21,.18);}
+    .track{position:relative;height:var(--row-h);flex:none;background-image:linear-gradient(to bottom, rgba(255,255,255,.02) 1px, transparent 1px);background-size:100% 48px;}
+    .hgrid{position:absolute;top:0;bottom:0;border-left:1px solid rgba(255,255,255,.045);pointer-events:none;}
+    .hgrid.sep{border-left:1px solid rgba(148,163,184,.28);}
+    .hgrid.six{border-left:1px solid rgba(255,255,255,.08);}
+    .ruler-track{position:relative;height:44px;}
+    .dayband{position:absolute;top:0;height:22px;border-left:1px solid rgba(148,163,184,.28);padding:4px 8px 0;font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;font-family:'JetBrains Mono',monospace;}
+    .tick{position:absolute;top:22px;bottom:0;border-left:1px solid rgba(255,255,255,.06);}
+    .tick.sep{border-left:1px solid rgba(148,163,184,.28);}
+    .tick .t{position:absolute;bottom:4px;left:4px;font-size:9px;color:#64748b;font-family:'JetBrains Mono',monospace;}
+    .now-line{position:absolute;top:0;bottom:0;width:1px;background:#ef4444;z-index:25;pointer-events:none;}
+    .now-flag{position:absolute;top:2px;transform:translateX(-50%);background:#ef4444;color:#fff;font-size:8px;font-weight:700;padding:1px 5px;border-radius:3px;z-index:35;font-family:'JetBrains Mono',monospace;pointer-events:none;white-space:nowrap;}
+
+    /* bricks */
+    .brick{position:absolute;top:var(--brick-top);height:var(--brick-h);z-index:5;cursor:grab;user-select:none;touch-action:none;border:1px solid;transition:box-shadow .12s,transform .12s;}
+    .brick:hover{z-index:9;transform:scale(1.005);box-shadow:0 12px 30px rgba(0,0,0,.6);}
+    .brick.dragging{opacity:.35;}
+    .brick.dim{opacity:.45;}
+    .brick.conflict{border-color:#ef4444 !important;box-shadow:0 0 0 1px rgba(239,68,68,.6), 0 0 14px rgba(239,68,68,.35);}
+    .brick.mismatch{border-style:dashed !important;border-color:#f59e0b !important;}
+    .brick.needsEq{border-style:dashed !important;}
+    .brick.tendered{border-style:dashed !important;border-color:#a855f7 !important;}
+    [data-haz="loud"] .brick.hazmat{background-image:repeating-linear-gradient(135deg,rgba(249,115,22,.16),rgba(249,115,22,.16) 6px,transparent 6px,transparent 14px) !important;border-color:#f97316 !important;}
+    [data-margin="on"] .brick.m-good{background:rgba(16,185,129,.16) !important;border-color:#10b981 !important;}
+    [data-margin="on"] .brick.m-ok{background:rgba(234,179,8,.16) !important;border-color:#eab308 !important;}
+    [data-margin="on"] .brick.m-bad{background:rgba(239,68,68,.18) !important;border-color:#ef4444 !important;}
+    .brick.updated{animation:glow 1.8s ease-out;}
+    @keyframes glow{0%{box-shadow:0 0 0 4px rgba(96,165,250,.8);}100%{box-shadow:0 0 0 0 transparent;}}
+    .handle{position:absolute;top:0;bottom:0;width:7px;cursor:ew-resize;z-index:6;}
+    .handle.l{left:0;}.handle.r{right:0;}
+    .handle::after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:2px;height:40%;border-radius:2px;background:#fff;opacity:0;}
+    .brick:hover .handle::after{opacity:.5;}
+    .stopdots{position:absolute;left:8px;right:8px;bottom:5px;height:0;}
+    .stopdots .sd{position:absolute;width:5px;height:5px;border-radius:50%;background:#94a3b8;top:-2px;transform:translateX(-50%);opacity:.7;}
+    [data-density="compact"] .b-route,[data-density="compact"] .b-check,[data-density="compact"] .lane-sub,[data-density="compact"] .lane-badges,[data-density="compact"] .lane-ops,[data-density="compact"] .occ-sub,[data-density="compact"] .slot-sub{display:none !important;}
+
+    /* occupancy / fleet actions */
+    .occ{position:absolute;top:8px;bottom:8px;z-index:2;border-radius:.5rem;padding:6px 8px;overflow:hidden;border:1px solid;}
+    .occ.rest{background:rgba(120,53,15,.3);border-color:rgba(245,158,11,.4);}
+    .occ.shop{background:rgba(88,28,135,.3);border-color:rgba(168,85,247,.4);}
+    .occ.off{background:rgba(30,41,59,.4);border-color:rgba(100,116,139,.4);}
+    .occ.lockout{background:rgba(127,29,29,.4);border-color:rgba(239,68,68,.45);}
+    .dh{position:absolute;height:2px;top:calc(var(--brick-top) + var(--brick-h) / 2);background:repeating-linear-gradient(90deg,#64748b,#64748b 4px,transparent 4px,transparent 8px);z-index:3;}
+    .dh-l{position:absolute;top:calc(-1 * (var(--brick-top) + var(--brick-h) / 2) + 2px);left:50%;transform:translateX(-50%);font-size:9px;white-space:nowrap;color:#94a3b8;font-family:'JetBrains Mono',monospace;background:rgba(4,7,17,.85);padding:0 4px;border-radius:3px;z-index:6;}
+    .slot{position:absolute;top:var(--brick-top);height:var(--brick-h);z-index:4;border-radius:.5rem;border:1px dashed;padding:8px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px;overflow:hidden;}
+    .slot.match{border-color:rgba(16,185,129,.55);background:linear-gradient(rgba(6,78,59,.28),rgba(6,78,59,.28)),#040711;}
+    .slot.free{border-color:rgba(71,85,105,.7);background:#020409;}
+
+    /* lane header bits */
+    .util{margin-top:4px;height:3px;border-radius:2px;background:#0f172a;overflow:hidden;}
+    .util span{display:block;height:100%;background:#3b82f6;opacity:.75;}
+    .hos-bar{width:46px;height:4px;border-radius:2px;background:#0f172a;overflow:hidden;display:inline-block;vertical-align:middle;}
+    .hos-bar span{display:block;height:100%;background:#10b981;}
+    .hos-bad .hos-bar span{background:#ef4444;}
+
+    /* backlog / yard */
+    .bl-card{cursor:grab;touch-action:none;user-select:none;}
+    .bl-card.dragging,.res.dragging{opacity:.35;}
+    .res{cursor:grab;touch-action:none;user-select:none;}
+
+    /* stepper + leg chain */
+    .stepper{display:flex;overflow-x:auto;padding-bottom:2px;}
+    .stepper .st{flex:1;min-width:44px;text-align:center;position:relative;}
+    .stepper .st::before{content:"";position:absolute;top:7px;left:-50%;width:100%;height:2px;background:#1e293b;}
+    .stepper .st:first-child::before{display:none;}
+    .stepper .st.done::before,.stepper .st.current::before{background:#10b981;}
+    .stepper .sc{width:14px;height:14px;border-radius:50%;background:#0f172a;border:2px solid #334155;margin:0 auto;position:relative;z-index:1;}
+    .stepper .st.done .sc{background:#10b981;border-color:#10b981;}
+    .stepper .st.current .sc{background:#3b82f6;border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.3);}
+    .stepper .sl{font-size:8px;color:#64748b;margin-top:4px;white-space:nowrap;}
+    .stepper .st.current .sl{color:#93c5fd;font-weight:700;}
+    .legchain .lg{display:flex;gap:10px;align-items:flex-start;position:relative;padding-bottom:10px;}
+    .legchain .lg:not(:last-child)::before{content:"";position:absolute;left:10px;top:22px;bottom:-2px;width:2px;background:#1e293b;}
+    .legchain .dot{width:20px;height:20px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:10px;color:#fff;z-index:1;}
+    .legchain .lg.done .dot{background:#475569;} .legchain .lg.current .dot{background:#2563eb;} .legchain .lg.pending .dot{background:#334155;opacity:.7;}
+
+    /* overlays */
+    #ghost{position:fixed;z-index:70;pointer-events:none;opacity:.92;border-radius:.5rem;display:none;box-shadow:0 12px 30px rgba(0,0,0,.7);}
+    #dragTime{position:fixed;z-index:71;pointer-events:none;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:#fff;background:#2563eb;padding:2px 7px;border-radius:5px;display:none;white-space:nowrap;}
+    #pop{position:fixed;z-index:60;width:290px;display:none;}
+    .toast{animation:slidein .25s ease;}
+    @keyframes slidein{from{opacity:0;transform:translateX(20px);}to{opacity:1;transform:none;}}
+    #msgPanel{transition:transform .22s ease;}
+    .mtable th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8;padding:7px 10px;border-bottom:1px solid #1e293b;font-weight:700;}
+    .mtable td{padding:7px 10px;border-bottom:1px solid rgba(30,41,59,.7);font-size:11.5px;}
+    .mtable tr:hover td{background:rgba(30,41,59,.35);}
+    .mtable .num{text-align:right;font-variant-numeric:tabular-nums;}
+    .ed-in{width:100%;background:#0b1120;border:1px solid #1e293b;border-radius:6px;padding:5px 7px;font-size:11px;color:#e2e8f0;outline:none;font-family:'JetBrains Mono',monospace;}
+    .ed-in:focus{border-color:#3b82f6;}
+    .ed-lbl{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin-bottom:2px;display:block;}
+    .qbtn{font-size:10px;font-weight:700;border:1px solid #1e293b;background:#0b1120;color:#cbd5e1;border-radius:6px;padding:4px 8px;cursor:pointer;font-family:'JetBrains Mono',monospace;}
+    .qbtn:hover{border-color:#475569;color:#fff;}
+    .qbtn.danger{color:#f87171;}
+    ::-webkit-scrollbar{height:10px;width:10px;} ::-webkit-scrollbar-track{background:#060a14;} ::-webkit-scrollbar-thumb{background:#1e293b;border-radius:6px;} ::-webkit-scrollbar-thumb:hover{background:#334155;}
+  </style>
+</head>
+<body class="bg-[#040711] text-slate-100 min-h-screen flex flex-col antialiased selection:bg-blue-600 selection:text-white relative" data-density="comfortable" data-haz="subtle" data-margin="off">
+
+  <!-- TOP GLOBAL COMMAND BAR -->
+  <header class="border-b border-slate-800/80 bg-[#080c18] px-4 py-2 flex items-center justify-between gap-3 flex-wrap sticky top-0 z-40 shadow-2xl">
+    <div class="flex items-center gap-4">
+      <div class="flex items-center gap-2.5">
+        <div class="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center font-black text-white shadow-lg shadow-blue-500/25 ring-1 ring-white/20">⚡</div>
+        <div>
+          <div class="text-xs font-black tracking-tight text-white flex items-center gap-2">
+            DISPATCH CONTROL TOWER
+            <span class="inline-flex items-center gap-1 px-1.5 rounded text-[9px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"><span class="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span> BERTSCHI-TP CORE</span>
+            <span class="text-[10px] font-mono text-slate-500">v5.0-MERGED</span>
+          </div>
+          <div class="text-[10px] font-mono text-slate-400 flex items-center gap-2">
+            <span>DISPATCHER: ALEX M.</span><span>•</span>
+            <span class="text-emerald-400">PESSIMISTIC LOCK: ON</span><span>•</span>
+            <span class="text-blue-400">HOTKEYS: [⌘K spot] [ESC close] [SPACE now]</span><span>•</span>
+            <span id="clock" class="text-slate-300">14:32:00 CST</span><span id="diesel" class="text-amber-300">⛽ $4.00/gal</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center Live Search & Spotting Input + Views -->
+    <div class="flex items-center gap-3 flex-wrap">
+      <div class="flex items-center gap-2 bg-[#020409] border border-slate-800 px-3 py-1.5 rounded-lg text-xs w-72 focus-within:border-amber-400 transition shadow-inner">
+        <span class="text-amber-400 font-mono font-bold">🔍 Spot:</span>
+        <input type="text" id="spotInput" value="Chicago" placeholder="City, leg, trailer, driver…" class="bg-transparent text-slate-200 placeholder:text-slate-600 outline-none w-full text-xs font-mono font-medium">
+        <span id="spotBadge" class="text-[9px] font-mono bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-bold cursor-pointer whitespace-nowrap" onclick="clearSpot()">0 SPOTTED ✕</span>
+      </div>
+      <div class="flex rounded-lg border border-slate-800 bg-[#020409] p-0.5 text-xs" id="viewSeg">
+        <button data-view="board" class="px-2.5 py-1 rounded font-bold text-white bg-slate-800 shadow">📅 Dispatch Board</button>
+        <button data-view="map" class="px-2.5 py-1 rounded text-slate-400 hover:text-white transition">🗺️ GPS Radar</button>
+        <button data-view="market" class="px-2.5 py-1 rounded text-slate-400 hover:text-white transition">📈 Market</button>
+        <button data-view="money" class="px-2.5 py-1 rounded text-slate-400 hover:text-white transition">💵 Money</button>
+        <button data-view="fuel" class="px-2.5 py-1 rounded text-slate-400 hover:text-white transition">⛽ Fuel & IFTA</button>
+        <button data-view="comp" class="px-2.5 py-1 rounded text-slate-400 hover:text-white transition">🛡️ Compliance & Maint</button>
+      </div>
+    </div>
+
+    <!-- Horizon Controls & Fast Actions -->
+    <div class="flex items-center gap-2 flex-wrap">
+      <div class="flex rounded-lg border border-slate-800 bg-[#020409] p-0.5 text-[11px] font-mono" id="regionSeg">
+        <button data-region="US" class="px-2 py-1 rounded font-bold text-white bg-slate-800">🇺🇸 US</button>
+        <button data-region="EU" class="px-2 py-1 rounded text-slate-400 hover:text-white">🇪🇺 EU</button>
+      </div>
+      <div class="flex rounded-lg border border-slate-800 bg-[#020409] p-0.5 text-[11px] font-mono" id="groupSeg"></div>
+      <div class="flex rounded-lg border border-slate-800 bg-[#020409] p-0.5 text-[11px] font-mono" id="daySeg">
+        <button data-days="1" class="px-2 py-1 rounded text-slate-400 hover:text-white">1-DAY</button>
+        <button data-days="3" class="px-2 py-1 rounded font-bold text-white bg-slate-800">3-DAY</button>
+        <button data-days="5" class="px-2 py-1 rounded text-slate-400 hover:text-white">5-DAY</button>
+        <button data-days="7" class="px-2 py-1 rounded text-slate-400 hover:text-white">7-DAY</button>
+      </div>
+      <div class="flex items-center gap-1.5 bg-[#020409] border border-slate-800 rounded-lg px-2 py-1 text-xs font-mono">
+        <span class="text-[10px] font-bold text-slate-500 uppercase">Zoom</span>
+        <input type="range" id="zoomSlider" min="10" max="72" value="22" class="w-16 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500">
+        <span id="zoomLabel" class="text-[10px] font-mono text-blue-400 font-bold">22px/h</span>
+      </div>
+      <div class="flex items-center gap-1 bg-[#020409] border border-slate-800 rounded-lg p-0.5 text-xs font-mono">
+        <button id="prevDay" class="px-2 py-1 rounded text-slate-400 hover:text-white hover:bg-slate-800">◀</button>
+        <span id="rangeLabel" class="px-2 font-bold text-slate-200">AUG 28 – AUG 30</span>
+        <button id="nextDay" class="px-2 py-1 rounded text-slate-400 hover:text-white hover:bg-slate-800">▶</button>
+      </div>
+      <button id="msgBtn" class="relative px-2 py-1.5 rounded-lg border border-slate-800 bg-[#020409] text-xs hover:border-slate-600" title="Driver messages">💬<span id="msgBadge" class="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-black grid place-items-center">0</span></button>
+      <button id="bellBtn" class="relative px-2 py-1.5 rounded-lg border border-slate-800 bg-[#020409] text-xs hover:border-slate-600" title="Activity">🔔<span id="bellBadge" class="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-black grid place-items-center">0</span></button>
+      <button onclick="openNewLegModal()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold font-mono px-3 py-1.5 rounded-lg shadow-lg shadow-blue-600/30 transition flex items-center gap-1">+ New Transport Leg</button>
+    </div>
+  </header>
+
+  <!-- RETENTION & TELEMETRY STRIP -->
+  <section class="bg-[#060a14] border-b border-slate-800/80 px-4 py-2 text-xs">
+    <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5" id="kpis"></div>
+  </section>
+
+  <!-- BOARD TOOLBAR -->
+  <section id="toolbar" class="bg-[#060a14]/60 border-b border-slate-800/60 px-4 py-1.5 text-[11px] font-mono flex items-center gap-2 flex-wrap">
+    <div class="flex rounded-lg border border-slate-800 bg-[#020409] p-0.5" id="densSeg">
+      <button data-den="comfortable" class="px-2 py-0.5 rounded font-bold text-white bg-slate-800">Comfortable</button>
+      <button data-den="compact" class="px-2 py-0.5 rounded text-slate-400 hover:text-white">Compact</button>
+    </div>
+    <select id="equipSel" class="bg-[#020409] border border-slate-800 rounded-lg px-2 py-1 text-[11px] text-slate-300 outline-none"></select>
+    <button id="hazBtn" class="px-2 py-1 rounded-lg border border-slate-800 bg-[#020409] text-slate-300 hover:border-slate-600">☣ Placards: subtle</button>
+    <button id="marginBtn" class="px-2 py-1 rounded-lg border border-slate-800 bg-[#020409] text-slate-300 hover:border-slate-600">💲 Margin heatmap</button>
+    <button id="nowBtn" class="px-2 py-1 rounded-lg border border-slate-800 bg-[#020409] text-slate-300 hover:border-slate-600">⏱ Jump to NOW</button>
+    <div class="flex-1"></div>
+    <div class="flex items-center gap-1.5" id="chips">
+      <button data-filter="all" class="chip px-2.5 py-0.5 rounded-full border border-blue-500 bg-blue-600 text-white font-bold">All</button>
+      <button data-filter="in_progress" class="chip px-2.5 py-0.5 rounded-full border border-slate-700 bg-[#020409] text-slate-300 hover:border-slate-500">Rolling</button>
+      <button data-filter="haz" class="chip px-2.5 py-0.5 rounded-full border border-slate-700 bg-[#020409] text-slate-300 hover:border-slate-500">☣ Hazmat</button>
+      <button data-filter="conflict" class="chip px-2.5 py-0.5 rounded-full border border-slate-700 bg-[#020409] text-slate-300 hover:border-slate-500">⚠ Conflicts <span id="conflictCount" class="text-red-400"></span></button>
+      <button data-filter="tendered" class="chip px-2.5 py-0.5 rounded-full border border-slate-700 bg-[#020409] text-slate-300 hover:border-slate-500">⏳ Tendered</button>
+    </div>
+  </section>
+
+  <!-- MAIN COCKPIT: DUAL PANE TIMELINE + BERTSCHI MASTER DRAWER -->
+  <div class="flex-1 p-3 flex gap-3 w-full items-start">
+
+    <!-- LEFT PANE: VIEWS -->
+    <div class="flex-1 flex flex-col gap-3 min-w-0">
+
+      <!-- BOARD VIEW -->
+      <div id="boardView" class="flex flex-col gap-3">
+        <div class="rounded-xl border border-slate-800/80 bg-[#060a14] overflow-hidden shadow-2xl flex flex-col">
+          <div class="overflow-x-auto" id="boardScroll">
+            <div class="min-w-max relative" id="boardInner">
+              <div class="flex sticky top-0 z-30 bg-[#080d1a] border-b border-slate-800" id="rulerRow">
+                <div class="lane-head bg-[#080d1a] p-2.5 flex items-end justify-between" style="z-index:40">
+                  <span class="text-[11px] font-bold uppercase tracking-widest text-slate-400" id="corner">Bertschi Fleet Unit (Specs · Compliance · Clocks)</span>
+                  <span class="text-[10px] text-slate-500 font-mono">HOS & DOT</span>
+                </div>
+                <div class="ruler-track" id="ruler"></div>
+              </div>
+              <div id="lanes" class="relative"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- BACKLOG + YARD -->
+        <div class="grid grid-cols-1 xl:grid-cols-[1.25fr_1fr] gap-3">
+          <div class="rounded-xl border border-slate-800 bg-[#060a14] p-3 shadow-xl flex flex-col">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-800 text-xs">
+              <div class="flex items-center gap-2 font-bold text-white">
+                <span>📦 Unassigned Freight Backlog (Click ⚡ or Drag onto any lane)</span>
+                <span id="blCount" class="px-1.5 rounded-full bg-blue-500/10 text-blue-400 font-mono text-[10px] border border-blue-500/20">0 Open</span>
+              </div>
+              <div class="text-[10px] font-mono text-slate-400">ORDERED BY EARLIEST APPOINTMENT</div>
+            </div>
+            <div class="mt-2.5 grid grid-cols-1 2xl:grid-cols-2 gap-2" id="backlogGrid"></div>
+          </div>
+          <div class="rounded-xl border border-slate-800 bg-[#060a14] p-3 shadow-xl">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-800 text-xs">
+              <div class="font-bold text-white">🏗 Yard — available now (drag onto a lane to hook / assign)</div>
+              <div class="text-[10px] font-mono text-slate-400">BOBTAIL · DROPPED · OPEN</div>
+            </div>
+            <div class="mt-2.5 flex flex-col gap-2.5" id="yard"></div>
+          </div>
+        </div>
+        <div id="legend" class="flex items-center gap-4 flex-wrap px-1 text-[10px] font-mono text-slate-400"></div>
+      </div>
+
+      <div id="mapView" class="hidden rounded-xl border border-slate-800 bg-[#060a14] p-3 shadow-2xl"></div>
+      <div id="marketView" class="hidden rounded-xl border border-slate-800 bg-[#060a14] p-4 shadow-2xl"></div>
+      <div id="moneyView" class="hidden rounded-xl border border-slate-800 bg-[#060a14] p-4 shadow-2xl"></div>
+      <div id="fuelView" class="hidden rounded-xl border border-slate-800 bg-[#060a14] p-4 shadow-2xl"></div>
+      <div id="compView" class="hidden rounded-xl border border-slate-800 bg-[#060a14] p-4 shadow-2xl"></div>
+    </div>
+
+    <!-- RIGHT PANE: BERTSCHI SPLITSCREEN MASTER DRAWER -->
+    <aside id="detailDrawer" class="w-[400px] shrink-0 rounded-xl border border-slate-800 bg-[#060a14] shadow-2xl flex flex-col sticky top-[64px] max-h-[calc(100vh-80px)] overflow-hidden transition-all duration-300">
+      <div id="drawerBody" class="flex-1 overflow-y-auto p-3"></div>
+    </aside>
+  </div>
+
+  <!-- POPOVER -->
+  <div id="pop" class="bg-[#090d1a] border border-slate-700 rounded-lg popover-shadow text-xs font-mono"></div>
+
+  <!-- NOTIFICATION CENTRE -->
+  <div id="notifPanel" class="hidden fixed top-[58px] right-4 w-[360px] max-h-[70vh] bg-[#090d1a] border border-slate-700 rounded-xl popover-shadow z-50 flex-col overflow-hidden">
+    <div class="px-3.5 py-2.5 border-b border-slate-800 flex items-center justify-between">
+      <b class="text-xs text-white font-mono">Activity Feed</b>
+      <button id="ntClear" class="text-[10px] text-blue-400 hover:text-blue-300 font-mono">Mark all read</button>
+    </div>
+    <div id="ntList" class="overflow-y-auto"></div>
+  </div>
+
+  <!-- TOASTS -->
+  <div id="toasts" class="fixed right-4 bottom-4 z-[65] flex flex-col gap-2 items-end"></div>
+
+  <!-- DRIVER MESSAGING SLIDE-OVER -->
+  <div id="msgPanel" class="fixed inset-y-0 right-0 w-[380px] max-w-[92vw] bg-[#090d1a] border-l border-slate-700 shadow-2xl z-[55] translate-x-full flex flex-col"></div>
+
+  <!-- DRAG GHOSTS -->
+  <div id="ghost"></div>
+  <div id="dragTime"></div>
+
+  <!-- INTERACTIVE MODAL 1: FLEET TECHNICAL INFO HUD -->
+  <div id="fleetModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+    <div class="bg-[#090d1a] border border-slate-700 rounded-xl p-5 max-w-lg w-full shadow-2xl font-mono relative">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <span class="text-base font-bold text-white" id="modalFleetTitle">Technical Fleet Specs</span>
+        <button onclick="closeFleetModal()" class="text-slate-400 hover:text-white font-bold">✕</button>
+      </div>
+      <div class="mt-4 flex flex-col gap-3 text-xs" id="modalFleetBody"></div>
+      <div class="mt-5 pt-3 border-t border-slate-800 flex justify-between items-center">
+        <button id="modalFleetMsg" class="px-3 py-1.5 bg-blue-600/30 hover:bg-blue-600 text-blue-200 hover:text-white rounded-lg text-xs font-bold">💬 Message driver</button>
+        <button onclick="closeFleetModal()" class="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-bold">Close HUD</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- INTERACTIVE MODAL 2: ⚡ SUGGEST PRE-DISPATCH ENGINE MODAL -->
+  <div id="suggestModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+    <div class="bg-[#090d1a] border border-blue-500/40 rounded-xl p-5 max-w-2xl w-full shadow-2xl font-mono relative max-h-[90vh] overflow-y-auto" id="suggestCard"></div>
+  </div>
+
+  <!-- INTERACTIVE MODAL 3: NEW TRANSPORT LEG -->
+  <div id="newLegModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+    <div class="bg-[#090d1a] border border-slate-700 rounded-xl p-5 max-w-xl w-full shadow-2xl font-mono relative" id="newLegCard"></div>
+  </div>
+
+  <!-- INTERACTIVE JAVASCRIPT LOGIC -->
+  <script>
+// ============================================================================
+//  BERTSCHI MASTER COCKPIT — data-driven dispatch engine (merged from dispatch-board.html)
+//  Single-file mockup · fabricated data · same time→pixel core the production board will use.
+// ============================================================================
+const $=s=>document.querySelector(s),$$=s=>Array.from(document.querySelectorAll(s)),ce=document.createElement.bind(document);
+const MS_DAY=86400000,DAY_START=6,DAY_END=24,HPD=DAY_END-DAY_START,LANE_W=400;
+const BASE=new Date(2026,7,28);                 // Fri 28 Aug 2026 (TODAY)
+const NOW=new Date(2026,7,28,14,32);            // frozen "now" for the mockup
+const mk=(off,t)=>{const[h,m]=t.split(':').map(Number);return new Date(BASE.getTime()+off*MS_DAY+((h*60+m)*60000));};
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+function hsh(s){let x=0;s=String(s);for(let i=0;i<s.length;i++)x=(x*31+s.charCodeAt(i))>>>0;return x;}
+
+// ---------- palettes ----------
+const EQ_COLORS={'Dry Van':'#3b82f6','Reefer':'#06b6d4','Flatbed':'#f59e0b','Step Deck':'#a855f7','Tanker':'#eab308','Intermodal':'#14b8a6','Tautliner':'#3b82f6','Tank':'#eab308','Box':'#06b6d4','Chassis':'#14b8a6'};
+const EQ_ICON={'Dry Van':'📦','Reefer':'❄','Flatbed':'▤','Step Deck':'⬍','Tanker':'⬤','Intermodal':'▭','Tautliner':'📦','Tank':'⬤','Box':'📦','Chassis':'▭'};
+const COLORS={
+  emerald:{av:'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20',dot:'bg-emerald-400',text:'text-emerald-400'},
+  cyan:{av:'bg-cyan-500/10 text-cyan-400 border-cyan-500/30 hover:bg-cyan-500/20',dot:'bg-cyan-400',text:'text-cyan-400'},
+  amber:{av:'bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20',dot:'bg-amber-400',text:'text-amber-400'},
+  red:{av:'bg-red-500/10 text-red-400 border-red-500/30 hover:bg-red-500/20',dot:'bg-red-500',text:'text-red-400'},
+  violet:{av:'bg-violet-500/10 text-violet-300 border-violet-500/30 hover:bg-violet-500/20',dot:'bg-violet-400',text:'text-violet-300'},
+  blue:{av:'bg-blue-500/10 text-blue-400 border-blue-500/30 hover:bg-blue-500/20',dot:'bg-blue-400',text:'text-blue-400'},
+  slate:{av:'bg-slate-500/10 text-slate-300 border-slate-500/30 hover:bg-slate-500/20',dot:'bg-slate-400',text:'text-slate-300'},
+  purple:{av:'bg-purple-500/10 text-purple-300 border-purple-500/30 hover:bg-purple-500/20',dot:'bg-purple-400',text:'text-purple-300'}};
+const PILL={emerald:'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',blue:'bg-blue-500/10 text-blue-400 border-blue-500/20',amber:'bg-amber-500/10 text-amber-400 border-amber-500/20',red:'bg-red-500/20 text-red-400 border-red-500/30',slate:'bg-slate-500/10 text-slate-300 border-slate-500/20',purple:'bg-purple-500/10 text-purple-300 border-purple-500/20',cyan:'bg-cyan-500/10 text-cyan-300 border-cyan-500/20'};
+const BADGE={slate:'bg-slate-900 border-slate-800 text-slate-300',emerald:'bg-emerald-950/40 border-emerald-500/30 text-emerald-400 font-bold',cyan:'bg-cyan-950/50 border-cyan-500/30 text-cyan-300 font-bold',purple:'bg-purple-950/50 border-purple-500/30 text-purple-300 font-bold',amber:'bg-amber-950/40 border-amber-500/30 text-amber-400 font-bold',red:'bg-red-950 border-red-500/50 text-red-300 font-bold',violet:'bg-violet-950/50 border-violet-500/30 text-violet-300 font-bold',blue:'bg-blue-950/50 border-blue-500/30 text-blue-300 font-bold'};
+const STATUS={
+  assigned:{c:'#3b82f6',bg:'linear-gradient(90deg,rgba(15,23,42,.95),rgba(30,58,138,.55))',label:'Assigned'},
+  in_progress:{c:'#60a5fa',bg:'linear-gradient(90deg,rgba(30,58,138,.85),rgba(49,46,129,.85))',label:'Rolling'},
+  completed:{c:'#475569',bg:'rgba(30,41,59,.55)',label:'Delivered'},
+  tendered:{c:'#a855f7',bg:'rgba(88,28,135,.3)',label:'Tendered'},
+  pending:{c:'#f59e0b',bg:'rgba(120,53,15,.35)',label:'Open'}};
+const OCC_KIND={rest:{tag:'FMCSA',tagCls:'bg-amber-500/20 text-amber-400',text:'text-amber-300'},shop:{tag:'SHOP',tagCls:'bg-purple-500/20 text-purple-400',text:'text-purple-300'},off:{tag:'OFF',tagCls:'bg-slate-500/20 text-slate-300',text:'text-slate-300'},lockout:{tag:'LOCK',tagCls:'bg-red-500/20 text-red-400',text:'text-red-300'}};
+
+// ---------- economics: cost model = fuel burn + driver pay + fixed overhead (the cockpit's model) ----------
+const ECON={
+  US:{unit:'mi',k:0.621371,cur:'$',diesel:4.00,dieselUnit:'/gal',mpg:6.5,pay:0.60,overhead:0.45,fscRate:0.28,road:1.2,speed:52,rpm:{'Dry Van':2.05,'Reefer':2.55,'Flatbed':2.65,'Step Deck':2.75,'Tanker':3.05,'Intermodal':1.90}},
+  EU:{unit:'km',k:1,cur:'€',diesel:1.85,dieselUnit:'/L',lp100:30,pay:0.55,overhead:0.45,fscRate:0.20,road:1.25,speed:75,rpm:{'Tautliner':2.0,'Tank':2.9,'Box':2.1,'Reefer':2.5,'Chassis':1.9}}};
+const MKT={US:{'Dry Van':1.95,'Reefer':2.45,'Flatbed':2.55,'Step Deck':2.65,'Tanker':2.90,'Intermodal':1.95},EU:{'Tautliner':1.95,'Tank':2.75,'Box':2.05,'Reefer':2.45,'Chassis':1.95}};
+const STATE_TAX={IL:.454,IN:.57,OH:.47,TX:.20,GA:.326,TN:.27,MO:.22,MI:.286,KY:.246,NC:.405,WI:.329,OK:.20,NE:.297,AR:.285,PA:.741,KS:.26,IA:.325};
+const BROKERS=['TQL','Coyote','Echo','C.H. Robinson','Landstar','Direct'];
+function haversineKm(a,b){const R=6371,dLat=(b[1]-a[1])*Math.PI/180,dLon=(b[0]-a[0])*Math.PI/180,la1=a[1]*Math.PI/180,la2=b[1]*Math.PI/180;const x=Math.sin(dLat/2)**2+Math.cos(la1)*Math.cos(la2)*Math.sin(dLon/2)**2;return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));}
+const E=()=>ECON[state.region];
+const fuelCpm=()=>state.region==='US'?E().diesel/E().mpg:E().lp100/100*E().diesel;
+const cpmOf=()=>fuelCpm()+E().pay+E().overhead;
+const money=n=>(n<0?'-':'')+E().cur+Math.abs(Math.round(n||0)).toLocaleString();
+const money2=n=>(n<0?'-':'')+E().cur+Math.abs(n||0).toFixed(2);
+const cityShort=c=>String(c||'').split(',')[0];
+function distBetween(from,to){const a=D.cities[from],b=D.cities[to];if(!a||!b)return from===to?0:250;if(from===to)return 12;return Math.max(12,Math.round(haversineKm(a,b)*E().k*E().road));}
+function econOf(from,to,type,haz,fixedRate){const e=E(),cf=e.rpm[type]||2.0;const dist=distBetween(from,to)||30;let rate=fixedRate||Math.round(dist*(cf+(haz?0.3:0)));const rpm=rate/dist;const fuel=Math.round(dist*fuelCpm()),pay=Math.round(dist*e.pay),ovh=Math.round(dist*e.overhead),cost=fuel+pay+ovh,margin=rate-cost,pct=rate?margin/rate:0;const mkt=MKT[state.region][type]||rpm,vsMkt=mkt?(rpm-mkt)/mkt:0;const fsc=Math.round(dist*e.fscRate),linehaul=rate-fsc;return{dist,rpm,rate,fuel,pay,ovh,cost,margin,pct,marketRpm:mkt,vsMkt,fsc,linehaul,mClass:pct>=.22?'m-good':pct>=.12?'m-ok':'m-bad'};}
+function computeEconomics(){D.loads.forEach(l=>Object.assign(l,econOf(l.from,l.to,l.trailerType,l.haz,l.rateFixed)));D.backlog.forEach(b=>Object.assign(b,econOf(b.from,b.to,b.type,b.haz,b.rateFixed)));}
+
+// ---------- transport checklists (Bertschi checklist model → US carrier items) ----------
+function defaultChecks(l){const st=l.status;const c=[
+  {k:'DVIR',label:'Driver Pre-Trip Inspection (DVIR)',ok:st!=='tendered'},
+  {k:'RATE',label:`Rate Confirmation Signed (${money(l.rate)})`,ok:true},
+  {k:'SEAL',label:'Trailer Cleanliness / Seal #'+(48000+hsh(l.id)%900),ok:st==='in_progress'||st==='completed'},
+  {k:'POD',label:'Receiver Proof of Delivery (POD)',ok:st==='completed'}];
+  if(l.trailerType==='Reefer')c.splice(2,0,{k:'PRE-COOL',label:'Reefer Pre-Cool Log (45 min continuous)',ok:st!=='tendered'});
+  if(l.haz)c.splice(1,0,{k:'PLACARD',label:'Placards + Shipping Papers (49 CFR 172)',ok:st!=='tendered'});
+  return c;}
+
+// ---------- customer / broker / appointment / ELD enrichment ----------
+function enrich(){
+  D.loads.forEach(l=>{const k=hsh(l.id);
+    l.shipper=l.shipper||cityShort(l.from)+' '+['DC','Foods','Mfg','Distribution','Terminal'][k%5];
+    l.consignee=l.consignee||cityShort(l.to)+' '+['Whse','Retail DC','Plant','Cross-dock','Yard'][(k>>3)%5];
+    l.broker=l.broker||(l.mode==='dnh'?'Direct':BROKERS[k%BROKERS.length]);
+    l.pro=l.pro||('PRO'+(100000+k%899999));l.orderRef=l.orderRef||('ORD-'+(1000+k%9000));l.mode=l.mode||(k%3===0?'dnh':'live');
+    if(l.appt&&!l.apptEnd){l.apptEnd=l.appt;l.apptStart=new Date(l.appt.getTime()-3600000);l.apptManual=true;}
+    if(!l.apptManual){l.apptEnd=new Date(l.end.getTime()+[-20,10,25,40][k%4]*60000);l.apptStart=new Date(l.apptEnd.getTime()-3600000);}
+    l.lateRisk=l.apptEnd?l.end>l.apptEnd:false;
+    if(l.detention==null)l.detention=(k%7===0);
+    if(l.detention&&!l.detApplied){l.rate+=150;l.margin+=150;l.pct=l.rate?l.margin/l.rate:l.pct;l.detApplied=true;}
+    if(!l.checks)l.checks=defaultChecks(l);
+  });
+  D.drivers.forEach((dr,i)=>{const cur=D.loads.filter(l=>l.driverId===dr.id&&l.status==='in_progress')[0];
+    if(!dr.lastCall)dr.lastCall=cur?{loc:cityShort(dr.loc||cur.from),mins:14+i*13}:{loc:cityShort(dr.loc),mins:30+i*20};
+    dr.callDue=dr.lastCall.mins>90;
+    if(dr.eldToBreak==null)dr.eldToBreak=dr.status==='break'?0:Math.max(0.2,Math.min(8,(dr.hosDrive||0)-(1+i*0.55)));
+    if(dr.overdue==null)dr.overdue=(dr.medDays??999)<14;});
+}
+
+// ---------- datasets ----------
+let uL=51201,uT=51230;
+function T(off,d,tr,tl,type,from,to,s,e,stops,status,extra){extra=extra||{};const id=extra.id||('L-'+(uL++));const eoff=extra.eoff!=null?extra.eoff:off;const o=Object.assign({id,driverId:d,tractorId:tr,trailerId:tl,trailerType:type,reqEquip:type,from,to,start:mk(off,s),end:mk(eoff,e),stops,status},extra);delete o.eoff;return o;}
+const DATA={
+  US:{
+    term:{region:'US',load:'Leg',loadPl:'Legs',tractor:'Tractor',trailer:'Trailer',driver:'Driver',hazPrefix:'HAZMAT',placard:'Placards',rolling:'Rolling',reg:'FMCSA',drv:'DRV',cyc:'CYC',cycMax:70,eld:'ELD'},
+    equip:['Dry Van','Reefer','Flatbed','Step Deck','Tanker','Intermodal'],
+    drivers:[
+      {id:'d1',name:'Jake Morrow',sub:'CDL-A · Company',status:'active',hazmat:false,hosDrive:8.25,cycLeft:46,tractorId:'t1',trailerId:'r1',loc:'Columbia, MO',locNote:'4m',locCity:'Kansas City, MO',tele:{t:'58 MPH I-70 E',c:'emerald'},color:'emerald',badges:[{t:'📦 Liftgate ⓘ',c:'slate'},{t:"DOT: Nov '26 ✓",c:'emerald'},{t:'MED: 14mo',c:'slate'}],csa:88,medDays:420,medCard:'Oct 2027'},
+      {id:'d2',name:'Tyrone Banks',sub:'CDL-A · Company',status:'active',hazmat:false,hosDrive:11,cycLeft:58,tractorId:'t2',trailerId:'r2',loc:'St. Louis, MO Yard',locNote:'Docked',locCity:'St. Louis, MO',tele:{t:'TEMP: -9.8°F (OK)',c:'cyan'},color:'cyan',badges:[{t:'❄️ Carrier X4',c:'cyan'},{t:'🚿 FSMA Sanitized',c:'emerald'},{t:"DOT: Oct '26",c:'slate'}],csa:91,medDays:300,medCard:'Jun 2027',reefer:{set:-10,cur:-9.8}},
+      {id:'d3',name:'Maria Delgado',sub:'CDL-A · Hazmat',status:'active',hazmat:true,hosDrive:2.17,cycLeft:54,tractorId:'t3',trailerId:'r3',loc:'Des Moines, IA Hub',locCity:'Des Moines, IA',tele:{t:'PM DUE IN 420 MI',c:'amber'},color:'amber',badges:[{t:'🔧 PM B-Service',c:'purple'},{t:'MED: 7 Days ⚠',c:'amber'}],csa:76,medDays:7,medCard:'Sep 04, 2026'},
+      {id:'d4',name:'Dale Hutchins',sub:'CDL-A · 34h restart',status:'break',hazmat:false,hosDrive:0,cycLeft:0.8,tractorId:'t4',trailerId:'r4',loc:'Omaha, NE Terminal',locCity:'Omaha, NE',tele:{t:'34h RESTART',c:'red'},color:'red',badges:[{t:'⚠️ REG EXPIRED (Aug 12)',c:'red'},{t:'Ramps Equipped',c:'slate'}],csa:64,medDays:120,medCard:'Dec 2026'},
+      {id:'d5',name:'Priya Nair',sub:'CDL-A · Owner-op',status:'active',subcon:'Nair Trucking',hazmat:true,hosDrive:10,cycLeft:61,tractorId:'t5',trailerId:'r5',loc:'Wichita, KS',locNote:'Staged',locCity:'Wichita, KS',tele:{t:'HAZMAT-H · TWIC',c:'violet'},color:'violet',badges:[{t:'☣ HAZMAT-H ✓',c:'violet'},{t:"DOT: Jan '27 ✓",c:'emerald'},{t:'MED: 9mo',c:'slate'}],csa:93,medDays:270,medCard:'May 2027'},
+      {id:'d6',name:'Sam Whitfield',sub:'CDL-A · Company',status:'active',hazmat:false,hosDrive:6,cycLeft:40,tractorId:'t6',trailerId:'r6',loc:'Bowling Green, KY',locNote:'12m',locCity:'Louisville, KY',tele:{t:'61 MPH I-65 S',c:'emerald'},color:'blue',badges:[{t:'⬍ Ramps',c:'slate'},{t:"DOT: Dec '26 ✓",c:'emerald'},{t:'MED: 22mo',c:'slate'}],csa:84,medDays:660,medCard:'Jun 2028'},
+      {id:'d7',name:'Chuck Baker',sub:'CDL-A · Company',status:'active',hazmat:false,hosDrive:11,cycLeft:70,tractorId:'t8',trailerId:null,loc:'Milwaukee, WI Yard',locNote:'Bobtail',locCity:'Milwaukee, WI',tele:{t:'IDLE 3h 10m',c:'slate'},color:'slate',badges:[{t:"DOT: Aug 30 ⚠",c:'amber'},{t:'MED: 30mo',c:'slate'}],csa:79,medDays:900,medCard:'Feb 2029'},
+    ],
+    tractors:[
+      {id:'t1',unit:'1207',make:'Peterbilt 579',cab:'Sleeper',status:'active',dot:'Nov 15, 2026',pmMiles:4200},
+      {id:'t2',unit:'1212',make:'Kenworth T680',cab:'Sleeper',status:'active',dot:'Oct 10, 2026',pmMiles:9100},
+      {id:'t3',unit:'1105',make:'Freightliner Cascadia',cab:'Day Cab',status:'active',dot:'Mar 02, 2027',pmMiles:420},
+      {id:'t4',unit:'1199',make:'Volvo VNL 860',cab:'Sleeper',status:'active',dot:'Sep 20, 2026',pmMiles:6600},
+      {id:'t5',unit:'1301',make:'International LT',cab:'Sleeper',status:'active',dot:'Jan 12, 2027',pmMiles:12000},
+      {id:'t6',unit:'1176',make:'Mack Anthem',cab:'Day Cab',status:'active',dot:'Dec 05, 2026',pmMiles:7800},
+      {id:'t7',unit:'1240',make:'Freightliner Cascadia',cab:'Day Cab',status:'shop',dot:'Jul 01, 2027',pmMiles:0},
+      {id:'t8',unit:'1184',make:'Peterbilt 579',cab:'Sleeper',status:'active',dot:'Aug 30, 2026',pmMiles:2100},
+    ],
+    trailers:[
+      {id:'r1',unit:'DV-4450',type:'Dry Van',len:"53'",status:'active',tare:'14,200 lbs',reg:'Dec 31, 2026',feat:'Liftgate · Air-Ride'},
+      {id:'r2',unit:'RF-2201',type:'Reefer',len:"53'",status:'active',tare:'15,900 lbs',reg:'Dec 31, 2026',feat:'Carrier X4 · -10°F'},
+      {id:'r3',unit:'DV-3310',type:'Dry Van',len:"53'",status:'active',tare:'14,100 lbs',reg:'Nov 30, 2026'},
+      {id:'r4',unit:'FB-3310',type:'Flatbed',len:"48'",status:'active',tare:'10,800 lbs',reg:'Aug 12, 2026',regExpired:true,feat:'Ramps'},
+      {id:'r5',unit:'TK-5090',type:'Tanker',len:'',status:'active',tare:'12,400 lbs',reg:'Feb 28, 2027',feat:'Chemical · MC-307'},
+      {id:'r6',unit:'SD-2277',type:'Step Deck',len:"48'",status:'active',tare:'11,900 lbs',reg:'Oct 31, 2026',feat:'Ramps'},
+      {id:'r7',unit:'DV-4432',type:'Dry Van',len:"53'",status:'idle',tare:'14,200 lbs',reg:'Dec 31, 2026',yard:'Chicago, IL'},
+      {id:'r8',unit:'RF-2208',type:'Reefer',len:"53'",status:'idle',tare:'15,900 lbs',reg:'Dec 31, 2026',feat:'Thermo King',yard:'St. Louis, MO'},
+      {id:'r9',unit:'FB-3325',type:'Flatbed',len:"48'",status:'idle',tare:'10,800 lbs',reg:'Jan 31, 2027',yard:'Omaha, NE'},
+      {id:'r10',unit:'IM-8804',type:'Intermodal',len:"40'",status:'idle',tare:'9,600 lbs',reg:'Mar 31, 2027',yard:'Chicago, IL'},
+    ],
+    loads:[
+      T(0,'d1','t1','r1','Dry Van','St. Louis, MO','Kansas City, MO','06:00','10:30',1,'completed',{commodity:'Retail freight',wt:'38,500 lbs',broker:'Direct',rateFixed:620}),
+      T(0,'d1','t1','r1','Dry Van','Kansas City, MO','Chicago, IL','14:00','09:00',2,'in_progress',{id:'L-51217',eoff:1,pct:.38,commodity:'Retail freight',wt:'42,000 lbs',broker:'C.H. Robinson',shipper:'Kansas City, MO DC #4',consignee:'Chicago, IL Distribution Hub',rateFixed:1450,appt:mk(1,'09:00'),apptStrict:true}),
+      T(2,'d1','t1','r1','Dry Van','Indianapolis, IN','Columbus, OH','07:00','11:00',1,'assigned',{commodity:'Auto parts',wt:'36,000 lbs',broker:'Echo',rateFixed:560}),
+      T(0,'d2','t2','r2','Reefer','Memphis, TN','St. Louis, MO','06:00','11:30',1,'completed',{commodity:'Dairy',wt:'40,000 lbs',broker:'TQL',rateFixed:780}),
+      T(0,'d2','t2','r2','Reefer','St. Louis, MO','Atlanta, GA','16:00','06:00',1,'assigned',{id:'L-51219',eoff:2,commodity:'Frozen Poultry',wt:'42,000 lbs',broker:'Tyson Foods',shipper:'Tyson Foods · St. Louis Cold Storage',consignee:'Atlanta, GA Kroger DC',rateFixed:2890,appt:mk(2,'06:00'),apptStrict:true,turn:120,temp:'-10°F'}),
+      T(0,'d3','t3','r3','Dry Van','Omaha, NE','Des Moines, IA','06:00','09:30',1,'completed',{commodity:'Retail freight',wt:'30,000 lbs',broker:'Coyote',rateFixed:410}),
+      T(0,'d5','t5','r5','Tanker','Oklahoma City, OK','Wichita, KS','06:00','10:30',1,'completed',{haz:'3',un:'UN 1203',commodity:'Gasoline',wt:'44,000 lbs',broker:'Landstar',rateFixed:690}),
+      T(0,'d6','t6','r6','Step Deck','Indianapolis, IN','Louisville, KY','07:00','10:30',1,'completed',{commodity:'Machinery',wt:'44,000 lbs',broker:'Direct',rateFixed:520}),
+      T(0,'d6','t6','r6','Step Deck','Louisville, KY','Nashville, TN','13:00','17:30',2,'in_progress',{pct:.3,commodity:'HVAC units',wt:'41,000 lbs',broker:'Landstar',rateFixed:640}),
+      T(1,'d6','t6','r6','Step Deck','Nashville, TN','Memphis, TN','08:00','13:00',1,'assigned',{commodity:'Steel fabrications',wt:'46,000 lbs',broker:'TQL',rateFixed:610}),
+    ],
+    backlog:[
+      {id:'L-51220',from:'Chicago, IL',to:'Indianapolis, IN',stops:1,dur:210,type:'Dry Van',commodity:'Auto Parts',wt:'42,000 lbs',broker:'C.H. Robinson',rateFixed:750,appt:mk(1,'11:00'),apptStrict:true},
+      {id:'L-51221',from:'Wichita, KS',to:'St. Louis, MO',stops:1,dur:480,type:'Tanker',haz:'8',un:'UN 1789',commodity:'Hydrochloric Acid',wt:'38,000 lbs',broker:'Landstar',rateFixed:1680,appt:mk(1,'14:00')},
+      {id:'L-51222',from:'Atlanta, GA',to:'Charlotte, NC',stops:2,dur:300,type:'Reefer',commodity:'Fresh produce',wt:'39,000 lbs',broker:'TQL',rateFixed:820,appt:mk(2,'16:00')},
+      {id:'L-51223',from:'Des Moines, IA',to:'Chicago, IL',stops:1,dur:360,type:'Dry Van',commodity:'Retail freight',wt:'33,000 lbs',broker:'Coyote',rateFixed:760,appt:mk(2,'12:00')},
+    ],
+    occupancy:[
+      {d:'d3',off:0,s:'12:00',e:'22:00',kind:'rest',label:'💤 10h Sleeper Berth Reset',sub:'Mandatory Rest: 12:00 – 22:00'},
+      {d:'d3',off:1,s:'08:00',e:'12:00',kind:'shop',label:'🔧 PM B-Service (Shop)',sub:'Des Moines Freightliner Service Bay 3'},
+      {d:'d4',off:0,s:'06:00',eoff:2,e:'08:00',kind:'lockout',label:'⛔ FMCSA HARD LOCKOUT: 34-Hour Weekly Restart + Expired Trailer Reg',sub:'System has physically locked all dispatch actions until trailer FB-3310 is renewed and Dale completes his 34h reset.',until:'Sun Aug 30 @ 08:00'},
+      {tr:'t7',off:0,s:'06:00',eoff:1,e:'18:00',kind:'shop',label:'🔧 Turbo replacement (Shop)',sub:'Chicago Freightliner · Bay 1'},
+    ],
+    cities:{'Chicago, IL':[-87.63,41.88],'Indianapolis, IN':[-86.15,39.77],'Columbus, OH':[-82.99,39.96],'Cincinnati, OH':[-84.51,39.10],'Atlanta, GA':[-84.39,33.75],'Nashville, TN':[-86.78,36.16],'Memphis, TN':[-90.05,35.15],'Dallas, TX':[-96.80,32.78],'Houston, TX':[-95.37,29.76],'Oklahoma City, OK':[-97.52,35.47],'Kansas City, MO':[-94.58,39.10],'St. Louis, MO':[-90.20,38.63],'Detroit, MI':[-83.05,42.33],'Louisville, KY':[-85.76,38.25],'Charlotte, NC':[-80.84,35.23],'Milwaukee, WI':[-87.91,43.04],'Omaha, NE':[-95.94,41.26],'Little Rock, AR':[-92.29,34.75],'Pittsburgh, PA':[-79.99,40.44],'Wichita, KS':[-97.34,37.69],'Des Moines, IA':[-93.62,41.59],'Columbia, MO':[-92.33,38.95]},
+    box:[-99.5,-79,28.5,44]
+  },
+  EU:{
+    term:{region:'EU',load:'Leg',loadPl:'Legs',tractor:'Truck',trailer:'Trailer',driver:'Driver',hazPrefix:'ADR',placard:'ADR',rolling:'En route',reg:'EU 561',drv:'DRV',cyc:'WK',cycMax:56,eld:'Tacho'},
+    equip:['Tautliner','Tank','Box','Reefer','Chassis'],
+    drivers:[
+      {id:'d1',name:'Marco Bianchi',sub:'CE · Company',status:'active',hazmat:false,hosDrive:6.5,cycLeft:31,tractorId:'t1',trailerId:'r1',loc:'A1 · Aarau',locNote:'2m',locCity:'Zürich',tele:{t:'84 km/h A1 W',c:'emerald'},color:'emerald',badges:[{t:'CPC ✓',c:'emerald'},{t:'MOT: Feb 27',c:'slate'}],csa:90,medDays:400,medCard:'2028'},
+      {id:'d2',name:'Lena Hoffmann',sub:'CE · ADR',status:'active',hazmat:true,hosDrive:9,cycLeft:44,tractorId:'t2',trailerId:'r2',loc:'Lausanne Depot',locNote:'Docked',locCity:'Lausanne',tele:{t:'ADR Class 3/8 ✓',c:'violet'},color:'violet',badges:[{t:'☣ ADR ✓',c:'violet'},{t:'MOT: Oct 26',c:'slate'}],csa:95,medDays:200,medCard:'2027'},
+      {id:'d3',name:'Pavel Novák',sub:'CE · Company',status:'active',hazmat:false,hosDrive:9,cycLeft:50,tractorId:'t3',trailerId:'r3',loc:'Zürich Hub',locCity:'Zürich',tele:{t:'IDLE 1h 05m',c:'slate'},color:'blue',badges:[{t:'CPC ✓',c:'emerald'}],csa:82,medDays:30,medCard:'Sep 27, 2026'},
+      {id:'d4',name:'Sofia Ferrari',sub:'CE · Weekly rest',status:'break',hazmat:false,hosDrive:0,cycLeft:2,tractorId:'t4',trailerId:'r4',loc:'Lugano',locCity:'Lugano',tele:{t:'45h WEEKLY REST',c:'red'},color:'red',badges:[{t:'⚠ Tacho card exp. 3d',c:'red'}],csa:70,medDays:90,medCard:'2027'},
+      {id:'d5',name:'Driss El Amrani',sub:'CE · Subco',status:'active',subcon:'Alpine Log.',hazmat:false,hosDrive:8,cycLeft:38,tractorId:'t5',trailerId:'r5',loc:'Basel Rhine Port',locNote:'Staged',locCity:'Basel',tele:{t:'TEMP: -18.4°C (OK)',c:'cyan'},color:'cyan',badges:[{t:'❄️ Thermo King',c:'cyan'},{t:'MOT: Jun 27',c:'slate'}],csa:88,medDays:500,medCard:'2028'},
+    ],
+    tractors:[
+      {id:'t1',unit:'ZH 4729',make:'Scania R500',cab:'Sleeper',status:'active',dot:'Feb 2027',pmMiles:5200},
+      {id:'t2',unit:'GE 1182',make:'Volvo FH16',cab:'Sleeper',status:'active',dot:'Oct 2026',pmMiles:1100},
+      {id:'t3',unit:'SG 5562',make:'MAN TGX',cab:'Day Cab',status:'active',dot:'Apr 2027',pmMiles:8000},
+      {id:'t4',unit:'TI 3300',make:'Mercedes Actros',cab:'Sleeper',status:'active',dot:'Nov 2026',pmMiles:300},
+      {id:'t5',unit:'BS 9017',make:'DAF XG+',cab:'Sleeper',status:'active',dot:'Jun 2027',pmMiles:9400},
+      {id:'t6',unit:'BE 2245',make:'Iveco S-Way',cab:'Day Cab',status:'active',dot:'Jan 2027',pmMiles:6100},
+    ],
+    trailers:[
+      {id:'r1',unit:'TL-401',type:'Tautliner',len:'13.6m',status:'active',tare:'6,900 kg',reg:'Dec 2026'},
+      {id:'r2',unit:'TK-118',type:'Tank',len:'',status:'active',tare:'7,400 kg',reg:'Mar 2027',feat:'Chemical · L4BH'},
+      {id:'r3',unit:'BX-556',type:'Box',len:'13.6m',status:'active',tare:'7,200 kg',reg:'Dec 2026'},
+      {id:'r4',unit:'CH-901',type:'Chassis',len:"45'",status:'active',tare:'4,800 kg',reg:'Aug 2026',regExpired:true},
+      {id:'r5',unit:'RF-330',type:'Reefer',len:'13.6m',status:'active',tare:'8,100 kg',reg:'Jan 2027',feat:'-18°C'},
+      {id:'r6',unit:'TL-402',type:'Tautliner',len:'13.6m',status:'idle',tare:'6,900 kg',reg:'Dec 2026',yard:'Zürich'},
+      {id:'r7',unit:'TK-119',type:'Tank',len:'',status:'idle',tare:'7,400 kg',reg:'May 2027',feat:'Food grade',yard:'Basel'},
+    ],
+    loads:[
+      T(0,'d1','t1','r1','Tautliner','Basel','Zürich','07:00','09:30',2,'completed',{commodity:'Palletised goods',wt:'22 t'}),
+      T(0,'d1','t1','r1','Tautliner','Zürich','Bern','13:30','17:00',3,'in_progress',{pct:.3,commodity:'Retail',wt:'18 t'}),
+      T(1,'d1','t1','r1','Tautliner','Bern','Thun','08:00','11:00',1,'assigned',{commodity:'Building materials'}),
+      T(0,'d2','t2','r2','Tank','Lausanne','Fribourg','07:00','10:30',1,'completed',{haz:'3',un:'UN 1203',commodity:'Gasoline',wt:'24 t'}),
+      T(0,'d2','t2','r2','Tank','Lausanne','Sion','16:00','19:30',2,'assigned',{haz:'8',un:'UN 1830',commodity:'Sulfuric acid',wt:'24 t',appt:mk(0,'19:00'),apptStrict:true}),
+      T(0,'d5','t5','r5','Reefer','Basel','Mulhouse','06:30','09:00',1,'completed',{commodity:'Fresh produce',wt:'19 t'}),
+      T(0,'d5','t5','r5','Reefer','Mulhouse','Basel','10:00','12:30',1,'completed',{commodity:'Frozen goods',wt:'20 t'}),
+      T(1,'d5','t5','r5','Reefer','Basel','Lugano','06:00','12:30',1,'assigned',{commodity:'Dairy',wt:'21 t'}),
+    ],
+    backlog:[
+      {id:'L-51240',from:'Bern',to:'Lugano',stops:1,dur:300,type:'Tautliner',commodity:'Machinery',wt:'20 t',broker:'Direct',appt:mk(1,'13:00')},
+      {id:'L-51241',from:'Winterthur',to:'Zürich',stops:1,dur:90,type:'Tank',haz:'2',un:'UN 1978',commodity:'Propane',wt:'18 t',broker:'Bertschi AG'},
+      {id:'L-51242',from:'Zürich',to:'St. Gallen',stops:2,dur:150,type:'Box',commodity:'Electronics',wt:'12 t',broker:'Direct'},
+      {id:'L-51243',from:'Sion',to:'Martigny',stops:2,dur:105,type:'Reefer',commodity:'Produce',wt:'16 t',broker:'Coop'},
+    ],
+    occupancy:[
+      {d:'d3',off:0,s:'15:00',e:'19:00',kind:'shop',label:'🔧 Tacho calibration',sub:'Zürich MAN Service'},
+      {d:'d4',off:0,s:'06:00',eoff:2,e:'06:00',kind:'lockout',label:'⛔ EU 561 LOCKOUT: 45h Weekly Rest + Chassis CH-901 registration expired',sub:'Dispatch blocked until weekly rest completes and CH-901 is re-registered.',until:'Sun Aug 30 @ 06:00'},
+      {tr:'t6',off:0,s:'06:00',e:'18:00',kind:'shop',label:'🔧 Brake service',sub:'Bern Iveco'},
+    ],
+    cities:{'Basel':[7.59,47.56],'Zürich':[8.54,47.37],'Bern':[7.44,46.95],'Lausanne':[6.63,46.52],'Fribourg':[7.16,46.80],'St. Gallen':[9.38,47.42],'Lugano':[8.95,46.00],'Bellinzona':[9.02,46.19],'Mulhouse':[7.34,47.75],'Thun':[7.63,46.76],'Sion':[7.36,46.23],'Winterthur':[8.72,47.50],'Aarau':[8.04,47.39],'Olten':[7.90,47.35],'Martigny':[7.07,46.10]},
+    box:[5.9,9.8,45.85,47.85]
+  }
+};
+
+// ---------- state ----------
+const state={region:'US',view:'board',groupBy:'driver',days:3,dayOffset:0,pxPerHour:22,density:'comfortable',hazLoud:false,marginView:false,filter:'all',equip:'all',search:'Chicago',notifs:[],nextNotifId:1,locks:{},selected:null,emptyAvoided:428,drag:null};
+let D,TERM,driverById,tractorById,trailerById;
+function bind(){
+  D=DATA[state.region];TERM=D.term;
+  driverById=Object.fromEntries(D.drivers.map(x=>[x.id,x]));
+  tractorById=Object.fromEntries(D.tractors.map(x=>[x.id,x]));
+  trailerById=Object.fromEntries(D.trailers.map(x=>[x.id,x]));
+  D.occupancy.forEach(o=>{o.start=mk(o.off,o.s);o.end=mk(o.eoff!=null?o.eoff:o.off,o.e);});
+  computeEconomics();enrich();seedMessages();
+  state.locks=state.region==='US'?{d6:{by:'M. Keller',since:Date.now()}}:{d5:{by:'A. Brunner',since:Date.now()}};
+}
+const initials=n=>n.split(/[ ,]/).filter(Boolean).map(w=>w[0]).join('').slice(0,2).toUpperCase();
+
+// ---------- geometry (pure time ↔ pixel core) ----------
+const winStart=()=>new Date(BASE.getTime()+state.dayOffset*MS_DAY);
+const dayWidth=()=>HPD*state.pxPerHour;
+const totalW=()=>dayWidth()*state.days;
+const midnight=d=>new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime();
+const dayIdx=d=>Math.round((midnight(d)-midnight(BASE))/MS_DAY);
+function dateToX(dt){const di=Math.round((midnight(dt)-midnight(winStart()))/MS_DAY);if(di<0||di>=state.days)return null;const hod=dt.getHours()+dt.getMinutes()/60;const cl=Math.max(0,Math.min(HPD,hod-DAY_START));return di*dayWidth()+cl*state.pxPerHour;}
+function xToDate(x){const di=Math.max(0,Math.min(state.days-1,Math.floor(x/dayWidth())));let within=Math.max(0,Math.min(dayWidth(),x-di*dayWidth()));let mins=Math.round((DAY_START*60+within/state.pxPerHour*60)/15)*15;return new Date(midnight(winStart())+di*MS_DAY+mins*60000);}
+const fmt=d=>String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+const fmtDay=d=>d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+const fmtDayU=d=>d.toLocaleDateString('en-US',{weekday:'short',day:'numeric'}).toUpperCase();
+const fmtDT=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric'})+' @ '+fmt(d);
+const hrs=h=>{const H=Math.floor(h),M=Math.round((h-H)*60);return `${H}h ${String(M).padStart(2,'0')}m`;};
+const roundUp15=d=>new Date(Math.ceil(d.getTime()/900000)*900000);
+// keep a leg inside the day window; multi-day legs (dur > window) only clamp their start
+const clampStart=(d,dur)=>{const day=midnight(d),min=day+DAY_START*3600000,max=day+DAY_END*3600000-dur;if(max<min)return new Date(Math.max(min,d.getTime()));return new Date(Math.max(min,Math.min(max,d.getTime())));};
+const laneKey=()=>state.groupBy==='driver'?'driverId':state.groupBy==='tractor'?'tractorId':'trailerId';
+const occKey=o=>o.d?'driverId':o.tr?'tractorId':'trailerId';
+const occId=o=>o.d||o.tr||o.rl;
+function laneList(){
+  if(state.groupBy==='driver')return D.drivers.map(d=>({id:d.id,name:d.name,sub:d.sub,status:d.status,color:d.color||'blue',init:initials(d.name),subcon:d.subcon,d}));
+  if(state.groupBy==='tractor')return D.tractors.map(t=>({id:t.id,name:'#'+t.unit,sub:t.make+' · '+t.cab,status:t.status,color:t.status==='shop'?'purple':'blue',init:'🚛',t}));
+  return D.trailers.map(t=>({id:t.id,name:'#'+t.unit,sub:t.type+(t.len?' · '+t.len:'')+(t.feat?' · '+t.feat:''),status:t.status,color:t.status==='idle'?'slate':'cyan',init:EQ_ICON[t.type]||'▭',r:t}));
+}
+const lockOf=laneId=>state.locks[laneId]||null;
+const lockedByOther=laneId=>{const l=lockOf(laneId);return l&&l.by!=='you'?l:null;};
+function lockoutOf(driverId){return D.occupancy.find(o=>o.d===driverId&&o.kind==='lockout'&&o.end>NOW)||null;}
+
+function matchesFilter(t){if(state.equip!=='all'&&t.trailerType!==state.equip)return false;if(state.filter==='in_progress')return t.status==='in_progress';if(state.filter==='haz')return !!t.haz;if(state.filter==='conflict')return !!(t.conflict||t.mismatch||t.hazIssue);if(state.filter==='tendered')return t.status==='tendered';return true;}
+function matchesSearch(t){if(!state.search)return true;const q=state.search.toLowerCase();const dr=driverById[t.driverId],tr=tractorById[t.tractorId],rl=trailerById[t.trailerId];return (t.id+' '+t.from+' '+t.to+' '+(dr?dr.name:'')+' '+(tr?tr.unit:'')+' '+(rl?rl.unit:'')+' '+t.trailerType+' '+(t.commodity||'')+' '+(t.broker||'')).toLowerCase().includes(q);}
+function laneMatchesSearch(ln){if(!state.search)return false;const q=state.search.toLowerCase();const d=ln.d;return (ln.name+' '+ln.sub+' '+(d?(d.loc+' '+(tractorById[d.tractorId]||{}).unit+' '+(trailerById[d.trailerId]||{}).unit):'')).toLowerCase().includes(q);}
+
+function recomputeConflicts(){
+  D.loads.forEach(t=>{t.conflict=false;t.occConflict=null;});
+  const key=laneKey(),byLane={};
+  D.loads.forEach(t=>{if(!t[key])return;(byLane[t[key]]=byLane[t[key]]||[]).push(t);});
+  Object.values(byLane).forEach(arr=>{arr.sort((a,b)=>a.start-b.start);for(let i=0;i<arr.length;i++)for(let j=i+1;j<arr.length;j++)if(arr[i].end>arr[j].start&&arr[i].start<arr[j].end){arr[i].conflict=arr[j].conflict=true;}});
+  D.occupancy.forEach(o=>{if(occKey(o)!==key)return;D.loads.forEach(t=>{if(t[key]===occId(o)&&t.end>o.start&&t.start<o.end&&t.status!=='completed'){t.conflict=true;t.occConflict=o;}});});
+  D.loads.forEach(t=>{const rl=t.trailerId?trailerById[t.trailerId]:null;t.mismatch=!!(rl&&t.reqEquip&&rl.type!==t.reqEquip);const dr=t.driverId?driverById[t.driverId]:null;t.hazIssue=!!(t.haz&&dr&&!dr.hazmat);t.regIssue=!!(rl&&rl.regExpired&&t.status!=='completed');});
+}
+// Drive hours still needed TODAY: remaining road time (dist / avg speed, less % done) capped by the
+// part of the leg that actually falls inside today's window — a 38h multi-day reefer leg is not 38h of driving.
+function hosPlanned(driverId){const day0=new Date(midnight(NOW)),day1=new Date(day0.getTime()+MS_DAY);
+  return D.loads.filter(l=>l.driverId===driverId&&l.status!=='completed'&&l.end>NOW&&l.start<day1).reduce((a,l)=>{const drive=(l.dist||0)/E().speed*(l.status==='in_progress'?1-(l.pct||0):1);const from=Math.max(l.start.getTime(),NOW.getTime()),to=Math.min(l.end.getTime(),day1.getTime());return a+Math.max(0,Math.min(drive,(to-from)/3600000));},0);}
+function hosViolations(){return D.drivers.filter(d=>hosPlanned(d.id)>(d.hosDrive||0)+0.01||(lockoutOf(d.id)&&D.loads.some(l=>l.driverId===d.id&&l.status!=='completed'&&l.end>NOW))).length;}
+
+// ---------- free windows + predictive next-leg matching (the Bertschi "next slot" logic) ----------
+function laneWindows(laneId){const key=laneKey();const lt=D.loads.filter(l=>l[key]===laneId).sort((a,b)=>a.start-b.start);const d=state.groupBy==='driver'?driverById[laneId]:null;
+  let cur=new Date(NOW),city=d?d.locCity:null;const wins=[];
+  lt.forEach(l=>{if(l.end<=NOW){cur=new Date(Math.max(cur.getTime(),l.end.getTime()+(l.turn||30)*60000));city=l.to;return;}
+    if(city&&l.start-cur>45*60000)wins.push({start:new Date(cur),end:new Date(l.start),city,next:l});
+    cur=new Date(l.end.getTime()+(l.turn||30)*60000);city=l.to;});
+  D.occupancy.forEach(o=>{if(occKey(o)===key&&occId(o)===laneId&&o.end>cur)cur=new Date(o.end);});
+  wins.push({start:cur,end:null,city});return wins;}
+function bestMatch(win){if(!win.city)return null;const maxDh=state.region==='US'?60:80;let best=null;
+  D.backlog.forEach(b=>{const dh=distBetween(win.city,b.from);if(dh>maxDh)return;const start=roundUp15(new Date(win.start.getTime()+dh/E().speed*3600000));const end=new Date(start.getTime()+b.dur*60000);if(win.end&&end>win.end)return;if(b.apptEnd&&b.apptEnd<start)return;const s=dh+(b.apptEnd?Math.max(0,(end-b.apptEnd)/3600000)*40:0)-(b.margin||0)/40;if(!best||s<best.s)best={b,dh,start,s};});
+  return best;}
+function laneMatch(laneId){if(state.groupBy!=='driver')return null;const d=driverById[laneId];if(!d||lockoutOf(d.id)||d.status==='offline')return null;const wins=laneWindows(laneId);for(const w of wins){const m=bestMatch(w);if(m)return Object.assign({win:w},m);}return {win:wins[wins.length-1],b:null};}
+
+// ---------- render ----------
+const lanesEl=$('#lanes'),rulerEl=$('#ruler'),boardInner=$('#boardInner');
+function pillOf(d,lt){if(lockoutOf(d.id))return{t:'ENGINE LOCK',c:'red'};if(d.status==='offline')return{t:'OFF DUTY',c:'slate'};if(lt.some(l=>l.status==='in_progress'))return{t:'ROLLING',c:'emerald'};const shop=D.occupancy.find(o=>o.d===d.id&&o.kind==='shop'&&o.end>NOW);if(shop)return{t:'SERVICE DUE',c:'amber'};const rest=D.occupancy.find(o=>o.d===d.id&&o.kind==='rest'&&o.start<=NOW&&o.end>NOW);if(rest)return{t:'RESTING',c:'amber'};if(lt.some(l=>l.status==='tendered'))return{t:'TENDERED',c:'purple'};const nxt=lt.filter(l=>l.status==='assigned'&&l.start>NOW).sort((a,b)=>a.start-b.start)[0];if(nxt&&nxt.start-NOW<3*3600000)return{t:'LOADING',c:'blue'};return{t:'AVAILABLE',c:'blue'};}
+function stepSegs(t){const st=t.status;if(st==='completed')return['done','done','done','done'];if(st==='in_progress')return['done','done','current','pending'];if(st==='assigned')return['done','current','pending','pending'];return['current','pending','pending','pending'];}
+const STEP_T=['Dispatched','Loaded @ pickup','In Transit','Delivered'];
+function tagsHtml(t,W){const parts=[];
+  if(state.groupBy!=='trailer'||true)parts.push(`<span class="text-[9px] px-1 rounded" style="background:${EQ_COLORS[t.trailerType]}33;color:${EQ_COLORS[t.trailerType]}">${EQ_ICON[t.trailerType]||''} ${esc(t.trailerType).toUpperCase()}${t.temp?' ('+t.temp+')':''}</span>`);
+  if(W>260&&t.broker)parts.push(`<span class="text-[9px] bg-slate-800 text-slate-300 px-1 rounded">${esc(t.broker)}</span>`);
+  if(t.haz)parts.push(`<span class="text-[9px] bg-orange-500/20 text-orange-300 border border-orange-500/40 px-1 rounded font-black">⬧ ${TERM.hazPrefix} ${t.haz}</span>`);
+  if(t.conflict)parts.push(`<span class="text-[9px] bg-red-500/30 text-red-300 px-1 rounded font-black" title="${t.occConflict?'Overlaps '+esc(t.occConflict.label):'Overlaps another leg on this lane'}">⚠ CONFLICT</span>`);
+  if(t.mismatch)parts.push(`<span class="text-[9px] bg-amber-500 text-slate-950 px-1 rounded font-black">≠ ${esc(t.reqEquip)}</span>`);
+  if(t.hazIssue)parts.push(`<span class="text-[9px] bg-amber-500 text-slate-950 px-1 rounded font-black">NO HZ ENDT</span>`);
+  if(t.regIssue)parts.push(`<span class="text-[9px] bg-red-500 text-white px-1 rounded font-black">REG EXP</span>`);
+  if(t.detention)parts.push(`<span class="text-[9px] bg-emerald-600 text-white px-1 rounded font-black">+DET</span>`);
+  if(t.lateRisk)parts.push(`<span class="text-[9px] bg-red-600 text-white px-1 rounded font-black">⏰ LATE</span>`);
+  if(t.status==='tendered')parts.push(`<span class="text-[9px] bg-purple-600 text-white px-1 rounded font-black">⏳ TENDERED</span>`);
+  if(W>300&&t.mode==='dnh')parts.push(`<span class="text-[9px] border border-emerald-500/40 text-emerald-400 px-1 rounded">D&H</span>`);
+  return parts.join('');}
+function brickHtml(t,L,W){const st=STATUS[t.status]||STATUS.pending;const cls=['brick','rounded-lg','overflow-hidden','shadow-xl'];
+  if(t.haz)cls.push('hazmat');if(t.conflict)cls.push('conflict');if(t.mismatch||t.hazIssue||t.regIssue)cls.push('mismatch');if(!t.trailerId)cls.push('needsEq');if(state.marginView&&t.mClass)cls.push(t.mClass);if(t.status==='tendered')cls.push('tendered');
+  const spot=state.search&&matchesSearch(t);if(state.search)cls.push(spot?'spotted-glow':'dim');if(!matchesFilter(t))cls.push('dim');if(state.selected===t.id)cls.push('ring-2','ring-blue-400/70');
+  const wide=W>=230,mid=W>=110;const steps=stepSegs(t);
+  const stepBar=`<div class="absolute top-0 left-0 right-0 step-bar flex">${steps.map((s,i)=>`<div class="flex-1 ${s==='done'?'bg-emerald-400':s==='current'?'bg-amber-400 animate-pulse':'bg-slate-600'}" title="Step ${i+1}: ${STEP_T[i]} (${s})"></div>`).join('')}</div>`;
+  const checks=(t.checks||[]).map(c=>`<span class="${c.ok?'text-emerald-400 font-bold':'text-slate-500'}" title="${esc(c.label)}">${c.ok?'✓':'○'} ${c.k}</span>`).join('');
+  const prog=(t.status==='in_progress'&&t.pct)?`<div class="absolute left-0 bottom-0 h-[3px] bg-cyan-400/80" style="width:${Math.round(W*t.pct)}px"></div>`:'';
+  const dots=(t.stops>1&&W>64)?`<div class="stopdots">${Array.from({length:t.stops}).map((_,si)=>`<span class="sd" style="left:${si/(t.stops-1)*100}%"></span>`).join('')}</div>`:'';
+  return `<div class="${cls.join(' ')}" data-id="${t.id}" id="brick-${t.id}" style="left:${L}px;width:${W}px;background:${st.bg};border-color:${st.c}80">
+    <div class="handle l" data-h="l"></div><div class="handle r" data-h="r"></div>${stepBar}
+    <div class="px-2 pt-1.5 flex items-center justify-between text-[11px] gap-1 min-w-0">
+      <span class="font-bold ${t.status==='completed'?'text-slate-300':'text-white'} font-mono flex items-center gap-1.5 min-w-0 overflow-hidden whitespace-nowrap">${t.id} ${mid?tagsHtml(t,W):''}</span>
+      ${wide?`<span class="font-bold ${t.status==='completed'?'text-slate-400':'text-emerald-400'} font-mono whitespace-nowrap">${money(t.rate)} (${money2(t.rpm)}/${E().unit})</span>`:''}
+    </div>
+    ${mid?`<div class="b-route px-2 text-[11px] ${spot?'text-amber-300 font-bold':'text-slate-200 font-medium'} truncate mt-0.5">${esc(t.from)} ➔ ${esc(t.to)}${spot?' <span class="text-[9px] bg-amber-400 text-slate-950 font-black px-1 rounded">SPOTTED</span>':''}${wide&&t.commodity?` <span class="text-slate-400 font-normal">(${esc(t.commodity)}${t.wt?' · '+esc(t.wt):''})</span>`:''}</div>`:''}
+    ${wide?`<div class="b-check mx-2 text-[10px] text-slate-400 mt-1 flex items-center justify-between font-mono pt-1 border-t gap-2" style="border-color:${st.c}55"><div class="flex items-center gap-1.5 text-[9px] overflow-hidden whitespace-nowrap">${checks}${t.apptStrict&&t.apptEnd?`<span class="text-amber-400 font-bold">⚠ STRICT APPT (${fmtDayU(t.apptEnd)} ${fmt(t.apptEnd)})</span>`:''}</div><span class="${t.margin>=0?'text-emerald-400':'text-red-400'} font-bold whitespace-nowrap">${t.margin>=0?'+':''}${money(t.margin)} MARGIN</span></div>`:''}
+    ${prog}${dots}</div>`;}
+function occHtml(o,L,R,laneId){const k=OCC_KIND[o.kind]||OCC_KIND.off;const W=R-L;const wide=W>150;
+  if(o.kind==='lockout'){return `<div class="occ lockout flex items-center justify-between gap-3" style="left:${L}px;width:${W}px"><div class="flex items-center gap-2 min-w-0"><span class="text-base">⛔</span><div class="min-w-0"><div class="text-xs font-bold text-red-300 font-mono truncate">${esc(o.label)}</div><div class="occ-sub text-[10px] text-slate-400 truncate">${esc(o.sub)}</div></div></div>${wide?`<div class="text-right text-[11px] font-mono text-slate-400 whitespace-nowrap shrink-0 pr-1">Unlocked: <span class="text-emerald-400 font-bold">${esc(o.until||fmtDT(o.end))}</span></div>`:''}</div>`;}
+  return `<div class="occ ${o.kind}" style="left:${L}px;width:${W}px"><div class="flex items-center justify-between text-[11px] font-mono gap-2"><span class="${k.text} font-bold truncate">${esc(o.label)}</span>${wide?`<span class="text-[9px] ${k.tagCls} px-1 rounded shrink-0">${o.tag||k.tag}</span>`:''}</div><div class="occ-sub text-[10px] text-slate-400 mt-1 font-mono truncate">${esc(o.sub||'')} · ${fmt(o.start)}–${fmt(o.end)}</div></div>`;}
+function slotHtml(m,laneId,w){if(!m||!m.win)return '';const win=m.win;let x=dateToX(win.start);if(x===null){if(dayIdx(win.start)<state.dayOffset)x=0;else return '';}
+  const maxW=(win.end?(dateToX(win.end)??w):w)-x-4;const W=Math.min(m.b?340:220,maxW);if(W<80)return '';
+  if(m.b){const b=m.b;return `<div class="slot match" style="left:${x+2}px;width:${W}px" data-slot="${b.id}"><div class="min-w-0"><div class="text-xs font-bold text-emerald-300 flex items-center gap-1.5 font-mono truncate"><span>⚡ 1-Click Match: ${b.id} (${esc(cityShort(b.from))} ➔ ${esc(cityShort(b.to))})</span><span class="text-[9px] bg-emerald-500/20 text-emerald-400 px-1 rounded font-bold shrink-0">${m.dh} ${E().unit} DH</span></div><div class="slot-sub text-[10px] text-slate-400 font-mono mt-0.5 truncate">Available ${fmtDayU(m.start)} ${fmt(m.start)} in ${esc(cityShort(win.city))} · ${esc(b.commodity||'')} · ${money(b.rate)} (${money2(b.rpm)}/${E().unit})${b.haz?' · ☣ '+TERM.hazPrefix+' '+b.haz:''}</div></div>${W>220?`<button data-commit="${b.id}" data-driver="${laneId}" class="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold font-mono px-2 py-1.5 rounded-lg shadow-lg shadow-emerald-600/30 transition shrink-0">⚡ Lock &amp; Dispatch</button>`:''}</div>`;}
+  return `<div class="slot free" style="left:${x+2}px;width:${W}px"><div class="min-w-0 font-mono"><div class="text-[11px] text-slate-300 font-bold truncate">Free in ${esc(cityShort(win.city)||'—')}</div><div class="slot-sub text-[10px] text-slate-500 truncate">${fmtDayU(win.start)} ${fmt(win.start)}${win.end?' → '+fmt(win.end):' (open)'}</div></div>${W>150?`<button data-findfor="${laneId}" class="bg-blue-600/30 hover:bg-blue-600 text-blue-300 hover:text-white text-[10px] font-bold font-mono px-2 py-1 rounded transition shrink-0">⚡ Match</button>`:''}</div>`;}
+
+function laneHeadHtml(ln,lt,w){const lock=lockOf(ln.id);const lockBadge=lock?`<span class="px-1.5 py-0.5 rounded text-[9px] font-bold font-mono ${lock.by==='you'?'bg-blue-500/10 text-blue-400 border-blue-500/20':'bg-red-500/10 text-red-300 border-red-500/30'} border flex items-center gap-1">🔒 ${lock.by==='you'?'YOU EDITING':'LOCKED · '+esc(lock.by).toUpperCase()}</span>`:'';
+  const C=COLORS[ln.color]||COLORS.blue;
+  if(state.groupBy==='driver'){const d=ln.d;const tr=tractorById[d.tractorId],rl=trailerById[d.trailerId];const pill=pillOf(d,lt);const planned=hosPlanned(d.id),bad=planned>(d.hosDrive||0)+0.01;
+    const laneRev=lt.reduce((a,t)=>a+(t.rate||0),0),laneMar=lt.reduce((a,t)=>a+(t.margin||0),0);const unread=d.unread||0;
+    const drvC=d.hosDrive<=0?'text-red-400 bg-red-950/60 border-red-500/40':d.hosDrive<3?'text-amber-400 bg-amber-950/40 border-amber-500/30':'text-emerald-400 bg-emerald-950/40 border-emerald-500/30';
+    const cycC=d.cycLeft<5?'text-red-400 font-bold':'text-slate-300';
+    return `<div class="flex items-start justify-between gap-2">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <div data-fleet="${d.id}" class="h-9 w-9 rounded-lg ${C.av} border flex items-center justify-center font-bold font-mono text-xs shadow-inner cursor-pointer shrink-0" title="Click for Technical Specs">${ln.init}</div>
+        <div class="min-w-0">
+          <div class="text-xs font-bold text-white flex items-center gap-1.5 whitespace-nowrap"><span data-fleet="${d.id}" class="cursor-pointer hover:underline">${esc(d.name)}</span><span class="h-2 w-2 rounded-full ${C.dot} ${d.status==='active'?'animate-pulse':''}" title="${esc(d.tele.t)}"></span><span class="text-[10px] font-mono text-slate-400 font-normal">${tr?'#'+tr.unit+' '+tr.cab:'no tractor'}</span><button class="lane-msg text-[11px] relative ml-0.5" data-msg="${d.id}" title="Message ${esc(d.name)}">💬${unread?`<span class="absolute -top-1.5 -right-2 bg-red-500 text-white text-[8px] font-black rounded-full min-w-[13px] h-[13px] grid place-items-center px-0.5">${unread}</span>`:''}</button></div>
+          <div class="lane-sub text-[10px] font-mono text-slate-400 flex items-center gap-1.5 mt-0.5 whitespace-nowrap"><span class="${rl&&rl.regExpired?'text-red-400 font-bold':'text-slate-300'}">${rl?rl.unit+' ('+(rl.len?rl.len+' ':'')+rl.type+')':'— no trailer —'}</span><span>•</span><span class="${COLORS[d.tele.c]?COLORS[d.tele.c].text:'text-slate-300'} font-bold">${esc(d.tele.t)}</span></div>
+          <div class="lane-badges flex items-center gap-1.5 text-[9px] font-mono text-slate-400 mt-1 whitespace-nowrap overflow-hidden">${(d.badges||[]).map(b=>`<span data-fleet="${d.id}" class="px-1 border rounded cursor-pointer ${BADGE[b.c]||BADGE.slate}">${esc(b.t)}</span>`).join('')}${d.subcon?`<span class="px-1 border rounded border-orange-500/40 text-orange-300">${esc(d.subcon)}</span>`:''}</div>
+        </div>
+      </div>
+      <div class="flex flex-col items-end gap-1 shrink-0"><span class="px-1.5 py-0.5 rounded text-[9px] font-bold font-mono border ${PILL[pill.c]}">${pill.t}</span>${lockBadge}</div>
+    </div>
+    <div class="mt-2 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] font-mono gap-2">
+      <div class="flex items-center gap-1 text-slate-400 min-w-0 truncate">📍 <span class="text-slate-200 font-semibold">${esc(d.loc)}</span>${d.locNote?` <span class="text-slate-500">(${esc(d.locNote)})</span>`:''}</div>
+      <div class="flex items-center gap-1.5 shrink-0"><span class="font-bold px-1.5 py-0.5 rounded border ${drvC}">${TERM.drv}: ${hrs(d.hosDrive||0)}</span><span class="${cycC} bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">${TERM.cyc}: ${d.cycLeft<5?d.cycLeft.toFixed(1)+'h/'+TERM.cycMax+'h':Math.round(d.cycLeft)+'h'}</span></div>
+    </div>
+    <div class="lane-ops mt-1.5 flex items-center justify-between text-[9px] font-mono text-slate-400 gap-2 whitespace-nowrap">
+      <span class="${bad?'hos-bad text-red-400 font-bold':''}" title="Planned drive today vs available hours">HOS <span class="hos-bar"><span style="width:${Math.min(100,d.hosDrive?planned/d.hosDrive*100:100)}%"></span></span> ${planned.toFixed(1)}/${(d.hosDrive||0).toFixed(1)}h${bad?' ⚠':''}</span>
+      <span class="${d.callDue?'text-red-400 font-bold':''}">📞 ${d.lastCall.mins}m · ${esc(d.lastCall.loc)}${d.callDue?' · DUE':''}</span>
+      <span>⏱ ${d.eldToBreak.toFixed(1)}h to break</span>
+      ${laneRev?`<span class="text-slate-300">${money(laneRev)} · <b class="text-emerald-400">${Math.round(laneMar/laneRev*100)}% mgn</b></span>`:'<span class="text-slate-600">no revenue</span>'}
+    </div>`;}
+  if(state.groupBy==='tractor'){const t=ln.t;const drv=D.drivers.find(d=>d.tractorId===t.id);const pill=t.status==='shop'?{t:'IN SHOP',c:'purple'}:lt.some(l=>l.status==='in_progress')?{t:'ROLLING',c:'emerald'}:drv?{t:'ASSIGNED',c:'blue'}:{t:'BOBTAIL',c:'slate'};
+    return `<div class="flex items-start justify-between gap-2"><div class="flex items-center gap-2.5 min-w-0"><div class="h-9 w-9 rounded-lg ${C.av} border flex items-center justify-center text-base shrink-0">🚛</div><div class="min-w-0"><div class="text-xs font-bold text-white whitespace-nowrap">#${t.unit} <span class="text-[10px] font-mono text-slate-400 font-normal">${esc(t.make)} · ${t.cab}</span></div><div class="lane-sub text-[10px] font-mono text-slate-400 mt-0.5">${drv?'🧑‍✈️ '+esc(drv.name):'— no driver —'}</div><div class="lane-badges flex items-center gap-1.5 text-[9px] font-mono mt-1"><span class="px-1 border rounded ${BADGE.emerald}">DOT: ${esc(t.dot)}</span><span class="px-1 border rounded ${t.pmMiles<500?BADGE.amber:BADGE.slate}">PM in ${t.pmMiles.toLocaleString()} ${E().unit}</span></div></div></div><div class="flex flex-col items-end gap-1 shrink-0"><span class="px-1.5 py-0.5 rounded text-[9px] font-bold font-mono border ${PILL[pill.c]}">${pill.t}</span>${lockBadge}</div></div>`;}
+  const r=ln.r;const drv=D.drivers.find(d=>d.trailerId===r.id);const pill=r.regExpired?{t:'REG EXPIRED',c:'red'}:r.status==='idle'?{t:'DROPPED',c:'slate'}:{t:'HOOKED',c:'cyan'};
+  return `<div class="flex items-start justify-between gap-2"><div class="flex items-center gap-2.5 min-w-0"><div class="h-9 w-9 rounded-lg border flex items-center justify-center text-base shrink-0" style="background:${EQ_COLORS[r.type]}22;border-color:${EQ_COLORS[r.type]}66">${EQ_ICON[r.type]||'▭'}</div><div class="min-w-0"><div class="text-xs font-bold text-white whitespace-nowrap">${r.unit} <span class="text-[10px] font-mono text-slate-400 font-normal">${r.type}${r.len?' · '+r.len:''}</span></div><div class="lane-sub text-[10px] font-mono text-slate-400 mt-0.5">${drv?'🧑‍✈️ '+esc(drv.name):(r.yard?'🏗 '+esc(r.yard)+' yard':'— unhooked —')}${r.feat?' · '+esc(r.feat):''}</div><div class="lane-badges flex items-center gap-1.5 text-[9px] font-mono mt-1"><span class="px-1 border rounded ${r.regExpired?BADGE.red:BADGE.slate}">REG: ${esc(r.reg)}</span><span class="px-1 border rounded ${BADGE.slate}">Tare ${esc(r.tare||'')}</span></div></div></div><div class="flex flex-col items-end gap-1 shrink-0"><span class="px-1.5 py-0.5 rounded text-[9px] font-bold font-mono border ${PILL[pill.c]}">${pill.t}</span>${lockBadge}</div></div>`;}
+
+function render(){
+  document.body.setAttribute('data-density',state.density);document.body.setAttribute('data-haz',state.hazLoud?'loud':'subtle');document.body.setAttribute('data-margin',state.marginView?'on':'off');
+  recomputeConflicts();
+  const w=totalW(),key=laneKey();
+  $('#corner').textContent=state.groupBy==='driver'?'Bertschi Fleet Unit (Specs · Compliance · Clocks)':(state.groupBy==='tractor'?TERM.tractor:TERM.trailer)+'s · '+laneList().length;
+  const s=winStart(),e=new Date(s.getTime()+(state.days-1)*MS_DAY);
+  $('#rangeLabel').textContent=(state.days===1?fmtDay(s):fmtDay(s)+' – '+fmtDay(e)).toUpperCase();
+  $('#zoomLabel').textContent=state.pxPerHour+'px/h';
+  // ruler
+  rulerEl.style.width=w+'px';let r='';
+  for(let d=0;d<state.days;d++){const dd=new Date(s.getTime()+d*MS_DAY);const isToday=dayIdx(dd)===0;const wk=dd.getDay()===0||dd.getDay()===6;
+    r+=`<div class="dayband ${isToday?'text-blue-300 bg-blue-500/5':wk?'text-slate-400':'text-slate-300'}" style="left:${d*dayWidth()}px;width:${dayWidth()}px">${fmtDayU(dd)}${isToday?' (TODAY)':wk?' (WEEKEND)':''}${isToday?`<span class="ml-2 text-[9px] bg-blue-500/20 px-1.5 py-0.5 rounded text-blue-400">NOW: ${fmt(NOW)} CST</span>`:''}</div>`;
+    for(let h=DAY_START;h<=DAY_END;h++){const x=d*dayWidth()+(h-DAY_START)*state.pxPerHour;const sep=h===DAY_START&&d>0;const lbl=(h%3===0||state.pxPerHour>40)&&h<DAY_END;r+=`<div class="tick ${sep?'sep':''}" style="left:${x}px">${lbl?`<span class="t ${h===18?'text-blue-400 font-bold':''}">${String(h).padStart(2,'0')}:00</span>`:''}</div>`;}}
+  rulerEl.innerHTML=r;
+  // lanes
+  let html='';let spotted=0;
+  laneList().forEach(ln=>{
+    const lt=D.loads.filter(t=>t[key]===ln.id).sort((a,b)=>a.start-b.start);
+    let planned=0;lt.forEach(t=>{const a=dateToX(t.start),b=dateToX(t.end);if(a!==null||b!==null)planned+=((b??w)-(a??0));});
+    const util=Math.min(100,Math.round(planned/w*100));
+    let grid='';for(let d=0;d<state.days;d++)for(let h=DAY_START;h<=DAY_END;h++){const x=d*dayWidth()+(h-DAY_START)*state.pxPerHour;const sep=h===DAY_START&&d>0;if(h%3===0||sep)grid+=`<div class="hgrid ${sep?'sep':h%6===0?'six':''}" style="left:${x}px"></div>`;}
+    let occ='';D.occupancy.forEach(o=>{if(occKey(o)!==key||occId(o)!==ln.id)return;const a=dateToX(o.start),b=dateToX(o.end);if(a===null&&b===null){if(dayIdx(o.start)<state.dayOffset&&dayIdx(o.end)>=state.dayOffset+state.days){occ+=occHtml(o,0,w,ln.id);}return;}occ+=occHtml(o,a??0,b??w,ln.id);});
+    let bricks='';lt.forEach(t=>{const a=dateToX(t.start),b=dateToX(t.end);if(a===null&&b===null){if(!(dayIdx(t.start)<state.dayOffset&&dayIdx(t.end)>=state.dayOffset+state.days))return;}const L=a??0,R=b??w,W=Math.max(state.pxPerHour/2,R-L);if(state.search&&matchesSearch(t))spotted++;bricks+=brickHtml(t,L,W);});
+    let dh='';if(state.groupBy!=='trailer'){for(let i=1;i<lt.length;i++){const p=lt[i-1],c=lt[i];if(p.to!==c.from){const x1=dateToX(p.end),x2=dateToX(c.start);if(x1!==null&&x2!==null&&x2>x1+2){const dm=distBetween(p.to,c.from);dh+=`<div class="dh" style="left:${x1}px;width:${x2-x1}px"><span class="dh-l">DH ~${dm} ${E().unit} · -${money(dm*cpmOf())} · ${esc(cityShort(p.to))} → ${esc(cityShort(c.from))}</span></div>`;}}}}
+    const m=laneMatch(ln.id);const slot=slotHtml(m,ln.id,w);
+    const isLock=state.groupBy==='driver'&&lockoutOf(ln.id);const spotLane=laneMatchesSearch(ln);
+    html+=`<div class="lane ${isLock?'lockout':''} ${spotLane?'lane-spot':''} bg-[#050812] hover:bg-slate-800/10 transition" data-lane="${ln.id}">
+      <div class="lane-head p-2.5 flex flex-col justify-between bg-[#070c18]">${laneHeadHtml(ln,lt,w)}<div class="util lane-ops" title="Lane utilisation in view: ${util}%"><span style="width:${util}%"></span></div></div>
+      <div class="track" data-track="${ln.id}" style="width:${w}px">${grid}${occ}${dh}${slot}${bricks}</div></div>`;
+  });
+  lanesEl.innerHTML=html;
+  // now line
+  const nx=dateToX(NOW);boardInner.querySelectorAll('.now-flag').forEach(x=>x.remove());
+  if(nx!==null){const nl=ce('div');nl.className='now-line laser-glow';nl.style.left=(LANE_W+nx)+'px';lanesEl.appendChild(nl);const nf=ce('div');nf.className='now-flag';nf.textContent='NOW '+fmt(NOW);nf.style.left=nx+'px';nf.style.top='24px';rulerEl.appendChild(nf);}
+  $('#spotBadge').textContent=state.search?`${spotted} SPOTTED ✕`:'0 SPOTTED';
+  $('#conflictCount').textContent=(()=>{const n=D.loads.filter(t=>t.conflict||t.mismatch||t.hazIssue||t.regIssue).length;return n?`(${n})`:'';})();
+  renderKpis();renderBacklog();renderYard();renderLegend();updateMsgBadge();
+  $('#diesel').textContent='⛽ '+E().cur+E().diesel.toFixed(2)+E().dieselUnit;
+}
+
+// ---------- KPI strip (ROI proof + ops gates) ----------
+function renderKpis(){
+  const inWin=D.loads.filter(t=>dayIdx(t.start)<state.dayOffset+state.days&&dayIdx(t.end)>=state.dayOffset);
+  const active=inWin.filter(t=>t.status!=='completed');
+  const gross=active.reduce((a,t)=>a+(t.rate||0),0),mar=inWin.reduce((a,t)=>a+(t.margin||0),0),rev=inWin.reduce((a,t)=>a+(t.rate||0),0),miles=inWin.reduce((a,t)=>a+(t.dist||0),0);
+  let dhM=0;const key=laneKey();laneList().forEach(ln=>{const lt=D.loads.filter(t=>t[key]===ln.id).sort((a,b)=>a.start-b.start);for(let i=1;i<lt.length;i++)if(lt[i-1].to!==lt[i].from)dhM+=distBetween(lt[i-1].to,lt[i].from);});
+  const dhRatio=miles+dhM?dhM/(miles+dhM):0;
+  const drs=D.drivers.filter(d=>!lockoutOf(d.id)&&d.status!=='offline'),used=drs.filter(d=>D.loads.some(l=>l.driverId===d.id&&dayIdx(l.start)<=state.dayOffset&&dayIdx(l.end)>=state.dayOffset)).length;
+  const viol=hosViolations();
+  const comp=complianceIssues();const crit=comp.filter(c=>c.sev==='red');
+  const tile=(cls,head,headR,v,r,click)=>`<div ${click?`onclick="${click}"`:''} class="rounded-lg border ${cls} px-2.5 py-1.5 flex flex-col justify-between ${click?'cursor-pointer':''}"><div class="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider">${head}${headR||''}</div><div class="flex items-baseline justify-between mt-1 gap-2"><span class="text-base font-bold font-mono whitespace-nowrap">${v}</span><span class="text-[10px] font-mono whitespace-nowrap">${r}</span></div></div>`;
+  $('#kpis').innerHTML=
+    tile('border-emerald-500/40 bg-gradient-to-br from-emerald-950/30 to-teal-950/20 shadow-lg text-emerald-400','<span>Empty '+(E().unit==='mi'?'Mi':'Km')+' Avoided</span>','<span class="text-[9px] bg-emerald-500/20 px-1 rounded font-mono">ROI PROOF</span>',`<span class="text-emerald-300">${Math.round(state.emptyAvoided).toLocaleString()} ${E().unit}</span>`,`<span class="text-emerald-400 font-bold">+${money2(state.emptyAvoided*cpmOf())}</span>`)+
+    tile('border-slate-800 bg-[#020409] text-slate-400','<span>Committed Gross</span>','',`<span class="text-white">${money(gross)}</span>`,`<span class="text-slate-400">${active.length} Active</span>`)+
+    tile('border-slate-800 bg-[#020409] text-slate-400','<span>Net Fleet Margin</span>','',`<span class="${mar>=0?'text-emerald-400':'text-red-400'}">${money(mar)}</span>`,`<span class="${mar>=0?'text-emerald-400':'text-red-400'} font-bold">${rev?Math.round(mar/rev*1000)/10:0}%</span>`)+
+    tile('border-slate-800 bg-[#020409] text-slate-400','<span>Avg '+E().cur+'/Loaded '+(E().unit==='mi'?'Mi':'Km')+'</span>','',`<span class="text-white">${money2(miles?rev/miles:0)}<span class="text-[10px] text-slate-500">/${E().unit}</span></span>`,`<span class="text-emerald-400">▲ vs mkt ${money2(MKT[state.region][D.equip[0]])}</span>`)+
+    tile('border-slate-800 bg-[#020409] text-slate-400','<span>Deadhead Ratio</span>','',`<span class="${dhRatio<.1?'text-emerald-400':dhRatio<.2?'text-amber-400':'text-red-400'}">${(dhRatio*100).toFixed(1)}%</span>`,`<span class="text-slate-500">${Math.round(dhM)} ${E().unit}</span>`)+
+    tile('border-slate-800 bg-[#020409] text-slate-400','<span>Fleet Utilization</span>','',`<span class="text-blue-400">${drs.length?Math.round(used/drs.length*100):0}%</span>`,`<span class="text-slate-400">${used}/${drs.length} Units</span>`)+
+    tile(viol?'border-red-500/40 bg-red-950/20 text-red-400':'border-slate-800 bg-[#020409] text-slate-400','<span>HOS Safety Gate</span>','',`<span class="${viol?'text-red-400':'text-emerald-400'}">${viol} VIOLATION${viol===1?'':'S'}</span>`,`<span class="${viol?'text-red-400':'text-emerald-400'} font-bold">${viol?'⚠ Review':'🛡️ Protected'}</span>`)+
+    tile('border-amber-500/40 bg-amber-950/20 text-amber-400 hover:border-amber-400 transition','<span>Inspection Alert</span>','<span class="h-2 w-2 rounded-full bg-amber-400 animate-ping"></span>',`<span class="text-amber-300">${crit.length} Critical</span>`,`<span class="text-amber-400">${comp.length} open · ${crit[0]?esc(crit[0].unit):'—'}</span>`,"setView('comp')");
+}
+function complianceIssues(){const out=[];
+  D.trailers.forEach(r=>{if(r.regExpired)out.push({sev:'red',unit:r.unit,kind:'Trailer registration',detail:'Expired '+r.reg,who:r.unit});});
+  D.drivers.forEach(d=>{if((d.medDays??999)<0)out.push({sev:'red',unit:d.name,kind:'DOT medical card',detail:'Expired',who:d.name});else if(d.medDays<30)out.push({sev:'amber',unit:d.name,kind:'DOT medical card',detail:'Due in '+d.medDays+' days ('+d.medCard+')',who:d.name});if(d.csa<70)out.push({sev:'amber',unit:d.name,kind:'CSA score',detail:d.csa+' (below 70 intervention threshold)',who:d.name});if(d.cycLeft<5&&!lockoutOf(d.id))out.push({sev:'amber',unit:d.name,kind:TERM.cyc+' hours',detail:d.cycLeft.toFixed(1)+'h left on '+TERM.cycMax+'h clock',who:d.name});});
+  D.tractors.forEach(t=>{if(t.pmMiles>0&&t.pmMiles<500)out.push({sev:'amber',unit:'#'+t.unit,kind:'PM service',detail:'Due in '+t.pmMiles+' '+E().unit,who:'#'+t.unit});if(/Aug 30, 2026|Aug 2026/.test(t.dot))out.push({sev:'amber',unit:'#'+t.unit,kind:'Annual DOT inspection',detail:'Due '+t.dot,who:'#'+t.unit});if(t.status==='shop')out.push({sev:'slate',unit:'#'+t.unit,kind:'In shop',detail:'Unavailable',who:'#'+t.unit});});
+  return out.sort((a,b)=>({red:0,amber:1,slate:2})[a.sev]-({red:0,amber:1,slate:2})[b.sev]);}
+
+// ---------- backlog / yard / legend ----------
+function renderBacklog(){
+  const bl=D.backlog.slice().sort((a,b)=>(a.apptEnd||a.appt||new Date(2099,0,1))-(b.apptEnd||b.appt||new Date(2099,0,1)));
+  $('#blCount').textContent=bl.length+' Open';
+  $('#backlogGrid').innerHTML=bl.length?bl.map(b=>{const ec=EQ_COLORS[b.type]||'#94a3b8';const appt=b.appt||b.apptEnd;const idc=b.haz?'text-amber-400 bg-amber-950/60 border-amber-500/30':'text-blue-400 bg-blue-950/60 border-blue-500/30';
+    return `<div class="bl-card p-2.5 rounded-lg bg-[#020409] border border-slate-800 hover:border-blue-500/50 transition flex items-center justify-between gap-3 ${b.isNew?'ring-1 ring-purple-500/50':''}" data-bid="${b.id}">
+      <div class="flex items-center gap-2.5 min-w-0"><span class="font-mono text-xs font-bold px-2 py-1 rounded border shrink-0 ${idc}">${b.id}</span>
+        <div class="min-w-0"><div class="text-xs font-bold text-white flex items-center gap-2 whitespace-nowrap overflow-hidden">${esc(b.from)} ➔ ${esc(b.to)}${b.isNew?'<span class="text-[9px] bg-purple-600 text-white px-1 rounded font-black">NEW TENDER</span>':''}${appt?`<span class="text-[9px] font-bold font-mono bg-amber-500/10 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/20">${fmtDayU(appt)} ${fmt(appt)} Appt</span>`:''}${b.haz?`<span class="text-[9px] font-bold font-mono bg-red-500/20 text-red-300 px-1.5 py-0.5 rounded border border-red-500/30">⚠️ ${TERM.hazPrefix} CLASS ${b.haz}${b.un?' ('+esc(b.un)+')':''}</span>`:''}</div>
+          <div class="text-[10px] text-slate-400 font-mono mt-0.5 flex items-center gap-2 whitespace-nowrap overflow-hidden"><span style="color:${ec}">${EQ_ICON[b.type]||''} ${esc(b.type)}</span><span>•</span><span>${b.dist} ${E().unit}</span><span>•</span><span>${esc(b.wt||'')} ${esc(b.commodity||'')}</span><span>•</span><span class="text-slate-300">${esc(b.broker||'')}</span><span>•</span><span>${b.stops} stop${b.stops>1?'s':''}</span></div></div></div>
+      <div class="flex items-center gap-3 shrink-0"><div class="text-right"><div class="text-xs font-bold font-mono text-emerald-400">${money(b.rate)}</div><div class="text-[9px] font-mono text-slate-500">${money2(b.rpm)}/${E().unit} · <span class="${b.vsMkt>=0?'text-emerald-500':'text-red-400'}">${b.vsMkt>=0?'+':''}${Math.round(b.vsMkt*100)}% mkt</span></div></div>
+        <button data-suggest="${b.id}" class="bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold font-mono px-3 py-1.5 rounded-lg shadow transition">⚡ Suggest</button></div></div>`;}).join('')
+    :'<div class="text-[11px] text-slate-500 font-mono py-3">Board is clean — every load dispatched. 🎉 (new spot tenders arrive live)</div>';
+}
+function renderYard(){
+  const inUse=new Set(D.loads.filter(l=>l.status!=='completed'&&dayIdx(l.end)>=state.dayOffset).flatMap(l=>[l.tractorId,l.trailerId,l.driverId]));
+  D.drivers.forEach(d=>{if(inUse.has(d.id)){inUse.add(d.tractorId);inUse.add(d.trailerId);}});
+  // equipment hooked to a driver is not "in the yard" — only unassigned, road-legal units are draggable
+  const hooked=new Set(D.drivers.flatMap(d=>[d.tractorId,d.trailerId]));
+  const freeTr=D.tractors.filter(t=>t.status!=='shop'&&!inUse.has(t.id)&&!hooked.has(t.id));const freeRl=D.trailers.filter(t=>!inUse.has(t.id)&&!hooked.has(t.id)&&!t.regExpired);const freeDr=D.drivers.filter(d=>d.status==='active'&&!inUse.has(d.id)&&!lockoutOf(d.id));
+  const chip=(rtype,id,dot,unit,sub,color)=>`<div class="res inline-flex items-center gap-2 border border-slate-800 bg-[#020409] rounded-lg px-2 py-1.5 text-[11px] hover:border-slate-600" data-res="${rtype}" data-rid="${id}"><span class="h-5 w-5 rounded grid place-items-center text-[10px] text-white font-bold" style="background:${color}">${dot}</span><span><span class="font-mono font-bold text-slate-100">${esc(unit)}</span> <span class="text-slate-500 text-[10px]">${esc(sub)}</span></span></div>`;
+  const grp=(lbl,n,items)=>`<div><div class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-2">${lbl}<span class="px-1.5 rounded-full bg-slate-800 text-slate-300 font-mono">${n}</span></div><div class="flex gap-1.5 flex-wrap">${items||'<span class="text-[10px] text-slate-600 font-mono">none</span>'}</div></div>`;
+  $('#yard').innerHTML=grp('🚛 Bobtail '+TERM.tractor.toLowerCase()+'s',freeTr.length,freeTr.map(t=>chip('tractor',t.id,'🚛','#'+t.unit,t.make+' · DOT '+t.dot,'#334155')).join(''))+
+    grp('🔗 Dropped '+TERM.trailer.toLowerCase()+'s',freeRl.length,freeRl.map(t=>chip('trailer',t.id,EQ_ICON[t.type]||'▭',t.unit,t.type+(t.len?' '+t.len:'')+(t.yard?' @ '+cityShort(t.yard):''),EQ_COLORS[t.type]||'#334155')).join(''))+
+    grp('🧑‍✈️ Open '+TERM.driver.toLowerCase()+'s',freeDr.length,freeDr.map(d=>chip('driver',d.id,initials(d.name),d.name,d.sub+' · '+hrs(d.hosDrive)+' '+TERM.drv,'#2563eb')).join(''));
+}
+function renderLegend(){const sw=(c,bg,extra)=>`<span class="inline-block w-4 h-2.5 rounded-sm border" style="border-color:${c};background:${bg};${extra||''}"></span>`;
+  $('#legend').innerHTML=Object.values(STATUS).map(s=>`<span class="flex items-center gap-1.5">${sw(s.c,s.bg)}${s.label}</span>`).join('')+
+    `<span class="flex items-center gap-1.5">${sw('#ef4444','rgba(239,68,68,.2)')}Conflict</span><span class="flex items-center gap-1.5">${sw('#f59e0b','transparent','border-style:dashed')}Equip / hazmat / reg flag</span><span class="flex items-center gap-1.5"><span class="inline-block w-4 h-[2px]" style="background:repeating-linear-gradient(90deg,#64748b,#64748b 3px,transparent 3px,transparent 6px)"></span>Deadhead</span>`+
+    `<span class="flex items-center gap-1.5"><span class="inline-block w-3 h-1 bg-emerald-400"></span><span class="inline-block w-3 h-1 bg-amber-400"></span><span class="inline-block w-3 h-1 bg-slate-600"></span>Milestones done / current / pending</span>`+
+    `<span class="flex items-center gap-1.5">${sw('rgba(245,158,11,.4)','rgba(120,53,15,.3)')}Rest</span><span class="flex items-center gap-1.5">${sw('rgba(168,85,247,.4)','rgba(88,28,135,.3)')}Shop</span><span class="flex items-center gap-1.5">${sw('rgba(239,68,68,.45)','rgba(127,29,29,.4)')}Lockout</span><span class="flex items-center gap-1.5">${sw('rgba(16,185,129,.55)','rgba(6,78,59,.18)','border-style:dashed')}1-click match</span>`+
+    (state.marginView?`<span class="flex items-center gap-1.5"><span class="inline-block w-2.5 h-2.5 rounded-sm bg-emerald-500"></span>≥22% <span class="inline-block w-2.5 h-2.5 rounded-sm bg-yellow-500"></span>12–22% <span class="inline-block w-2.5 h-2.5 rounded-sm bg-red-500"></span>&lt;12% margin</span>`:'')+
+    `<span class="w-px h-3 bg-slate-700"></span>`+D.equip.map(t=>`<span class="flex items-center gap-1"><span class="inline-block w-2.5 h-2.5 rounded-sm" style="background:${EQ_COLORS[t]}"></span>${t}</span>`).join('');}
+
+// ============================================================================
+//  POPOVER · MASTER DRAWER (inspect + edit) · SUGGEST ENGINE · TENDERS · NEW LEG · FLEET HUD
+// ============================================================================
+const pop=$('#pop');
+const loadObj=id=>D.loads.find(t=>t.id===id)||D.backlog.find(b=>b.id===id);
+const chipEl=st=>{const s=STATUS[st]||STATUS.pending;return `<span class="text-[9px] font-black uppercase px-1.5 py-0.5 rounded border" style="color:${s.c};border-color:${s.c}66;background:${s.c}1a">${s.label}</span>`;};
+const mcolor=p=>p>=.22?'#34d399':p>=.12?'#fbbf24':'#f87171';
+function showPop(el){const t=loadObj(el.dataset.id||el.dataset.bid);if(!t)return;const back=!!el.dataset.bid,dr=t.driverId?driverById[t.driverId]:null,tr=t.tractorId?tractorById[t.tractorId]:null,rl=t.trailerId?trailerById[t.trailerId]:null;const U=E().unit;
+  const row=(k,v)=>`<span class="text-slate-500">${k}</span><span class="text-slate-200">${v}</span>`;
+  pop.innerHTML=`<div class="px-3 py-2 border-b border-slate-800 flex items-center justify-between"><span class="font-bold text-white">${t.id}</span>${chipEl(back?'pending':t.status)}</div><div class="px-3 py-2 grid grid-cols-[78px_1fr] gap-x-2 gap-y-1 text-[11px]">
+    ${row('Route',esc(t.from)+' ➔ '+esc(t.to))}${row('Window',back?'Unassigned · '+Math.round(t.dur/60*10)/10+'h':fmtDayU(t.start)+' '+fmt(t.start)+' – '+fmtDayU(t.end)+' '+fmt(t.end))}
+    ${row('Equipment',esc(back?t.type:t.trailerType)+(rl?' · '+rl.unit:''))}${row(TERM.driver,dr?esc(dr.name):'— open —')}${tr?row(TERM.tractor,'#'+tr.unit+' · '+esc(tr.make)):''}
+    ${row('Commodity',esc(t.commodity||'—')+(t.wt?' · '+esc(t.wt):''))}${t.haz?row('Hazmat',`<span class="text-orange-300 font-bold">⬧ ${TERM.hazPrefix} ${t.haz}</span> ${esc(t.un||'')}`):''}
+    ${row('Stops',t.stops+(t.mode?' · '+(t.mode==='dnh'?'drop &amp; hook':'live'):''))}
+    ${row('Rate',`${money(t.rate)} · ${money2(t.rpm)}/${U} · ${t.dist}${U} · <span style="color:${t.vsMkt>=0?'#34d399':'#f87171'}">${t.vsMkt>=0?'+':''}${Math.round(t.vsMkt*100)}% vs mkt</span>`)}
+    ${row('Rate split',`linehaul ${money(t.linehaul)} + FSC ${money(t.fsc)}`)}${row('Margin',`<span style="color:${mcolor(t.pct)}">${money(t.margin)} · ${Math.round(t.pct*100)}%</span>`)}
+    ${t.broker?row('Broker',esc(t.broker)):''}${t.consignee?row('Consignee',esc(t.consignee)):''}
+    ${(t.apptEnd||t.appt)?row('Appt',`<span class="${t.lateRisk?'text-red-400 font-bold':''}">${fmtDT(t.apptEnd||t.appt)}${t.apptStrict?' · STRICT':''}${t.lateRisk?' · LATE RISK':''}</span>`):''}
+    ${t.pro?row('Ref',t.pro+' · '+t.orderRef):''}${t.detention?row('Accessorial','<span class="text-emerald-400">+$150 detention</span>'):''}
+    ${t.conflict?row('Alert',`<span class="text-red-400">⚠ ${t.occConflict?'Overlaps '+esc(t.occConflict.label):'Scheduling conflict on this lane'}</span>`):''}
+    ${t.mismatch?row('Alert',`<span class="text-amber-400">≠ needs ${esc(t.reqEquip)}, hooked ${esc(rl.type)}</span>`):''}${t.hazIssue?row('Alert',`<span class="text-amber-400">⚠ ${TERM.driver} has no hazmat endorsement</span>`):''}${t.regIssue?row('Alert','<span class="text-red-400">⚠ Trailer registration expired</span>'):''}
+    ${!t.trailerId&&!back?row('Alert',`<span class="text-amber-400">No ${TERM.trailer.toLowerCase()} hooked</span>`):''}</div>
+    <div class="px-3 py-1.5 border-t border-slate-800 text-[9px] text-slate-500">${back?'Drag onto a lane to dispatch · ⚡ Suggest ranks drivers':'Click to inspect · drag to move / reassign · edges resize'}</div>`;
+  const r=el.getBoundingClientRect();let left=r.left,top=r.bottom+8;if(left+290>innerWidth-12)left=innerWidth-302;if(top+260>innerHeight)top=Math.max(8,r.top-270);pop.style.left=left+'px';pop.style.top=top+'px';pop.style.display='block';}
+const hidePop=()=>{pop.style.display='none';};
+document.addEventListener('mouseover',e=>{const el=e.target.closest('.brick,.bl-card,.veh-pin');if(el&&!state.drag)showPop(el);});
+document.addEventListener('mouseout',e=>{const el=e.target.closest('.brick,.bl-card,.veh-pin');if(el&&!el.contains(e.relatedTarget))hidePop();});
+
+// ---------- pessimistic locks (Bertschi 409 ENTITY_ALREADY_LOCKED model) ----------
+function acquireLock(laneId){const l=state.locks[laneId];if(l&&l.by!=='you')return false;Object.keys(state.locks).forEach(k=>{if(state.locks[k].by==='you')delete state.locks[k];});if(laneId)state.locks[laneId]={by:'you',since:Date.now()};return true;}
+function releaseMyLocks(){Object.keys(state.locks).forEach(k=>{if(state.locks[k].by==='you')delete state.locks[k];});}
+function lockRefused(laneId){const l=lockedByOther(laneId);toast('conflict','🔒 409 ENTITY_ALREADY_LOCKED',`${laneName(laneId)} is being edited by ${l.by} — try again when the lock releases`,null);}
+
+// ---------- master drawer: inspect + edit ----------
+const drawerBody=$('#drawerBody');let editState=null;
+const hhmm=d=>String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+function parseTime(str,ref){const[h,m]=str.split(':').map(Number);return new Date(ref.getFullYear(),ref.getMonth(),ref.getDate(),h||0,m||0);}
+function buildStopList(t){if(Array.isArray(t.stopList)&&t.stopList.length>=2)return t.stopList.slice();const n=Math.max(2,t.stops||2),a=[];for(let i=0;i<n;i++)a.push(i===0?t.from:i===n-1?t.to:'Intermediate stop '+(i+1));return a;}
+const snapOf=d=>JSON.stringify([d.stopList,+d.start,+d.end,d.driverId||'',d.tractorId||'',d.trailerId||'',d.trailerType,d.reqEquip,d.commodity||'',d.wt||'',d.haz||'',d.apptEnd?+d.apptEnd:0,d.rateFixed||0]);
+const isDirty=()=>editState&&snapOf(editState.draft)!==editState.snap;
+const STEPS8=['Booked','Dispatched','At pickup','Loaded','Rolling','At delivery','Delivered','POD'];
+function stepIdx(t){return t.status==='completed'?((t.checks||[]).find(c=>c.k==='POD')?.ok?7:6):t.status==='in_progress'?Math.min(5,3+Math.round((t.pct||0)*2.4)):t.status==='assigned'?(t.start<=NOW?2:1):0;}
+function edStepperHtml(t){const idx=stepIdx(t);return STEPS8.map((s,i)=>`<div class="st ${i<idx?'done':i===idx?'current':''}"><div class="sc"></div><div class="sl">${s}</div></div>`).join('');}
+function edLegsHtml(d){const t=editState.orig,from=d.stopList[0],to=d.stopList[d.stopList.length-1];const legs=[{ty:'Collection · first mile',rt:esc(t.shipper||from)+' → '+esc(from),cls:'done',ic:'✓'},{ty:'Line-haul · this leg ('+t.id+')',rt:esc(from)+' → '+esc(to),cls:'current',ic:'🚚'},{ty:'Delivery · last mile',rt:esc(to)+' → '+esc(t.consignee||to),cls:'pending',ic:'⌛'}];return legs.map(l=>`<div class="lg ${l.cls}"><div class="dot">${l.ic}</div><div><div class="text-[11px] font-bold ${l.cls==='current'?'text-blue-300':'text-slate-200'}">${l.ty}</div><div class="text-[10px] text-slate-500">${l.rt}</div></div></div>`).join('');}
+function edEconHtml(d){const e=econOf(d.stopList[0],d.stopList[d.stopList.length-1],d.trailerType,d.haz,d.rateFixed),b=editState.base,U=E().unit;
+  const dl=v=>v?` <span class="font-bold" style="color:${v>0?'#34d399':'#f87171'}">${v>0?'▲+':'▼'}${money(Math.abs(v))}</span>`:'';
+  const line=(k,v,c)=>`<div class="flex justify-between"><span class="text-slate-400">${k}</span><span class="${c||'text-white'} font-bold">${v}</span></div>`;
+  return line('Gross Linehaul + FSC:',money2(e.rate)+dl(e.rate-b.rate))+line(`Fuel Burn (${e.dist} ${U} @ ${state.region==='US'?E().mpg+' mpg':E().lp100+' L/100'}):`,'-'+money2(e.fuel),'text-red-400')+line(`Driver Pay (${e.dist} ${U} @ ${money2(E().pay)}):`,'-'+money2(e.pay),'text-red-400')+line(`Fixed Overhead (${money2(E().overhead)}/${U}):`,'-'+money2(e.ovh),'text-red-400')+
+    `<div class="border-t border-slate-800 pt-1 mt-1 flex justify-between font-bold"><span style="color:${mcolor(e.pct)}">Net Estimated Profit:</span><span style="color:${mcolor(e.pct)}">${e.margin>=0?'+':''}${money2(e.margin)} (${(e.pct*100).toFixed(1)}%)${dl(e.margin-b.margin)}</span></div>`+
+    `<div class="flex justify-between text-[10px] mt-1"><span class="text-slate-500">Rate ${money2(e.rpm)}/${U} vs spot ${money2(e.marketRpm)}/${U}</span><span style="color:${e.vsMkt>=0?'#34d399':'#f87171'}">${e.vsMkt>=0?'+':''}${Math.round(e.vsMkt*100)}% vs market</span></div>`;}
+function selectLeg(id){const t=D.loads.find(x=>x.id===id);if(!t)return;const laneId=t[laneKey()];if(laneId&&lockedByOther(laneId)){lockRefused(laneId);state.selected=id;editState=null;renderReadOnly(t);render();return;}acquireLock(laneId);state.selected=id;openEditPanel(id);render();}
+function renderReadOnly(t){const l=lockedByOther(t[laneKey()]);drawerBody.innerHTML=`<div class="flex items-center justify-between pb-3 border-b border-slate-800"><div class="flex items-center gap-2"><span class="text-xs font-bold text-white font-mono">INSPECT: LEG ${t.id}</span><span class="px-1.5 rounded text-[9px] font-mono bg-red-500/20 text-red-300 font-bold">🔒 LOCKED · ${esc(l.by).toUpperCase()}</span></div><button onclick="closeDrawer()" class="text-slate-400 hover:text-white text-xs font-mono">✕</button></div>
+  <div class="mt-3 p-3 rounded-lg bg-red-950/20 border border-red-500/30 text-[11px] font-mono text-slate-300">Read-only: ${esc(l.by)} holds the pessimistic lock on <b class="text-white">${esc(laneName(t[laneKey()]))}</b>. Your view is frozen until the lock is released (optimistic freeze).</div>
+  <div class="mt-3 p-2.5 rounded-lg bg-[#020409] border border-slate-800 text-xs font-mono"><div class="text-white font-bold">${esc(t.from)} ➔ ${esc(t.to)}</div><div class="text-slate-400 mt-1">${fmtDT(t.start)} → ${fmtDT(t.end)} · ${money(t.rate)} · ${esc(t.commodity||'')}</div></div>`;}
+function openEditPanel(id){const t=D.loads.find(x=>x.id===id);if(!t)return;
+  const draft={stopList:buildStopList(t),start:new Date(t.start),end:new Date(t.end),driverId:t.driverId||'',tractorId:t.tractorId||'',trailerId:t.trailerId||'',trailerType:t.trailerType,reqEquip:t.reqEquip||t.trailerType,commodity:t.commodity||'',wt:t.wt||'',haz:t.haz||'',apptEnd:t.apptEnd?new Date(t.apptEnd):null,rateFixed:t.rateFixed||t.rate};
+  const be=econOf(t.from,t.to,t.trailerType,t.haz,t.rateFixed);editState={id,orig:t,draft,base:{rate:be.rate,margin:be.margin},snap:''};editState.snap=snapOf(draft);renderPanel();}
+function renderPanel(){const t=editState.orig,d=editState.draft,st=STATUS[t.status]||STATUS.pending;const tr=tractorById[d.tractorId],rl=trailerById[d.trailerId],dr=driverById[d.driverId];const U=E().unit;
+  const opt=(list,val,fmtF,empty)=>`<option value="">${empty}</option>`+list.map(x=>`<option value="${x.id}" ${x.id===val?'selected':''}>${fmtF(x)}</option>`).join('');
+  const span=d.end-d.start,n=d.stopList.length;
+  const stops=d.stopList.map((a,i)=>{const eta=new Date(d.start.getTime()+span*(n>1?i/(n-1):0));const role=i===0?'PICKUP':i===n-1?'DROP':'STOP '+(i+1);const rc=i===0?'text-emerald-400':i===n-1?'text-blue-400':'text-slate-400';const ap=i===n-1&&d.apptEnd?` · ${t.apptStrict?'Strict Appt':'Window'} ${fmt(d.apptEnd)}`:i===0&&t.apptStrict?' · Strict Appt':'';
+    return `<div class="flex items-center gap-2 mb-1.5"><span class="${rc} font-bold w-14 shrink-0 text-[10px]">${i+1}. ${role}</span><input class="ed-in" data-stop="${i}" value="${esc(a)}"/><span class="text-[10px] text-slate-500 w-[92px] shrink-0 text-right">${fmtDT(eta)}${ap}</span>${n>2?`<button class="text-red-400 text-xs" data-rmstop="${i}" title="Remove stop">✕</button>`:'<span class="w-3"></span>'}</div>`;}).join('');
+  const checks=(t.checks||[]).map((c,i)=>`<label class="flex items-center gap-2 ${c.ok?'text-slate-200':'text-slate-400'} cursor-pointer"><input type="checkbox" ${c.ok?'checked':''} data-check="${i}" class="checklist-item rounded bg-slate-900 border-slate-800 text-blue-600 focus:ring-0"><span>${esc(c.label)}</span></label>`).join('');
+  const done=(t.checks||[]).filter(c=>c.ok).length,tot=(t.checks||[]).length;
+  const sec=(title,right,body)=>`<div class="mt-3 p-2.5 rounded-lg bg-[#020409] border border-slate-800 text-xs font-mono"><div class="text-slate-400 text-[10px] uppercase font-bold tracking-wider flex items-center justify-between">${title}${right||''}</div>${body}</div>`;
+  drawerBody.innerHTML=`<div class="flex items-center justify-between pb-3 border-b border-slate-800"><div class="flex items-center gap-2 min-w-0"><span class="text-xs font-bold text-white font-mono">INSPECT: LEG ${t.id}</span><span class="px-1.5 rounded text-[9px] font-mono bg-blue-500/20 text-blue-400 font-bold">PESSIMISTIC LOCK</span></div><button onclick="closeDrawer()" class="text-slate-400 hover:text-white text-xs font-mono">✕</button></div>
+    <div class="mt-2.5"><div id="edRoute" class="text-sm font-bold text-white truncate">${esc(d.stopList[0])} ➔ ${esc(d.stopList[n-1])}</div><div class="text-[10px] text-slate-500 font-mono">${t.orderRef} · ${t.pro} · ${esc(t.broker||'')}</div>
+      <div class="mt-1.5 flex items-center gap-1.5 flex-wrap">${chipEl(t.status)}<span class="text-[9px] px-1.5 py-0.5 rounded" style="background:${EQ_COLORS[d.trailerType]}33;color:${EQ_COLORS[d.trailerType]}">${EQ_ICON[d.trailerType]||''} ${esc(d.trailerType).toUpperCase()}</span>${d.haz?`<span class="text-[9px] bg-orange-500/20 text-orange-300 border border-orange-500/40 px-1.5 py-0.5 rounded font-black">⬧ ${TERM.hazPrefix} ${d.haz}</span>`:''}${t.conflict?'<span class="text-[9px] bg-red-500/30 text-red-300 px-1.5 py-0.5 rounded font-black">⚠ CONFLICT</span>':''}${t.lateRisk?'<span class="text-[9px] bg-red-600 text-white px-1.5 py-0.5 rounded font-black">⏰ LATE RISK</span>':''}</div>
+      <div class="mt-2 flex items-center gap-1.5 flex-wrap">${t.status==='tendered'?`<button class="qbtn text-emerald-400" id="edAccept">✓ Accept tender</button><button class="qbtn danger" id="edReject">✕ Reject</button>`:''}<button class="qbtn" id="edMsg">💬 Message driver</button><button class="qbtn" id="edAdvance">▶ Advance status</button><button class="qbtn" id="edJump">🎯 Locate</button><button class="qbtn danger" id="edDelete">🗑 Delete</button></div></div>
+    ${sec('Lifecycle',`<span class="text-blue-300">${STEPS8[stepIdx(t)]}</span>`,`<div class="stepper mt-2">${edStepperHtml(t)}</div>`)}
+    ${sec('Physical Asset Specs',`<span class="${rl?'text-emerald-400':'text-amber-400'}">${rl?'Active Hooked':'No trailer'}</span>`,`<div class="mt-2 grid grid-cols-2 gap-2 text-[11px]"><div><span class="text-slate-500">Tractor:</span><div class="text-slate-200 font-bold">${tr?'#'+tr.unit+' '+tr.cab:'— bobtail —'}</div><div class="text-[9px] text-slate-400">${tr?esc(tr.make)+' · DOT: '+esc(tr.dot):''}</div></div><div><span class="text-slate-500">Trailer:</span><div class="text-slate-200 font-bold ${rl&&rl.regExpired?'text-red-400':''}">${rl?rl.unit+' '+(rl.len?rl.len+' ':'')+rl.type:'— none —'}</div><div class="text-[9px] text-slate-400">${rl?'Tare: '+esc(rl.tare||'—')+(rl.feat?' · '+esc(rl.feat):'')+(rl.regExpired?' · ⚠ REG EXPIRED':''):''}</div></div></div>${dr?`<div class="mt-2 text-[10px] text-slate-400">Driver ${esc(dr.name)} · ${TERM.drv} ${hrs(dr.hosDrive)} · ${TERM.cyc} ${Math.round(dr.cycLeft)}h · CSA ${dr.csa}${dr.hazmat?' · ☣ endorsed':''}</div>`:''}`)}
+    ${sec('Route Milestones',`<span class="text-slate-500">${n} stops · edits drive the route</span>`,`<div class="mt-2" id="edStops">${stops}</div><button class="qbtn" id="edAddStop">+ Add stop</button>`)}
+    ${sec('Schedule &amp; Assignment','',`<div class="mt-2 grid grid-cols-2 gap-2"><div><span class="ed-lbl">Start</span><input type="time" class="ed-in" id="edStart" value="${hhmm(d.start)}"/></div><div><span class="ed-lbl">End</span><input type="time" class="ed-in" id="edEnd" value="${hhmm(d.end)}"/></div><div><span class="ed-lbl">Start day</span><input class="ed-in" value="${fmtDay(d.start)}" disabled/></div><div><span class="ed-lbl">End day</span><input class="ed-in" value="${fmtDay(d.end)}" disabled/></div>
+      <div class="col-span-2"><span class="ed-lbl">${TERM.driver}</span><select class="ed-in" id="edDriver">${opt(D.drivers,d.driverId,x=>esc(x.name)+(x.hazmat?' ☣':'')+' · '+hrs(x.hosDrive),'— open —')}</select></div><div><span class="ed-lbl">${TERM.tractor}</span><select class="ed-in" id="edTractor">${opt(D.tractors,d.tractorId,x=>'#'+x.unit+' · '+x.make,'— bobtail —')}</select></div><div><span class="ed-lbl">${TERM.trailer}</span><select class="ed-in" id="edTrailer">${opt(D.trailers,d.trailerId,x=>x.unit+' · '+x.type,'— none —')}</select></div></div>`)}
+    ${sec('Freight','',`<div class="mt-2 grid grid-cols-2 gap-2"><div><span class="ed-lbl">Equipment</span><select class="ed-in" id="edEquip">${D.equip.map(x=>`<option ${x===d.trailerType?'selected':''}>${x}</option>`).join('')}</select></div><div><span class="ed-lbl">Hazmat</span><select class="ed-in" id="edHaz"><option value="">none</option>${['1','2','3','4','5','6','7','8','9'].map(x=>`<option value="${x}" ${x===d.haz?'selected':''}>${TERM.hazPrefix} ${x}</option>`).join('')}</select></div><div class="col-span-2"><span class="ed-lbl">Commodity</span><input class="ed-in" id="edComm" value="${esc(d.commodity)}"/></div><div><span class="ed-lbl">Weight</span><input class="ed-in" id="edWt" value="${esc(d.wt)}" placeholder="42,000 lbs"/></div><div><span class="ed-lbl">Appt by</span><input type="time" class="ed-in" id="edAppt" value="${d.apptEnd?hhmm(d.apptEnd):''}"/></div><div class="col-span-2"><span class="ed-lbl">Agreed rate (${E().cur})</span><input type="number" class="ed-in" id="edRate" value="${d.rateFixed||''}"/></div></div>`)}
+    ${sec('Transport Checklists',`<span id="checklistCount" class="${done===tot?'text-emerald-400':'text-amber-400'} font-bold">${done}/${tot} Completed</span>`,`<div class="mt-2 flex flex-col gap-1.5 text-[11px]" id="edChecks">${checks}</div>`)}
+    ${sec('Economics &amp; Cost Model — live','',`<div class="mt-2 flex flex-col gap-1 text-[11px]" id="edEcon">${edEconHtml(d)}</div>`)}
+    ${sec('Order legs — '+t.orderRef,'',`<div class="legchain mt-2" id="edLegs">${edLegsHtml(d)}</div>`)}
+    <div class="mt-3 pt-2 border-t border-slate-800 flex flex-col gap-2 font-mono sticky bottom-0 bg-[#060a14]">
+      <div class="flex gap-2"><button id="edCancel" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs py-2 rounded-lg transition">Cancel</button><button id="edSave" disabled class="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs py-2 rounded-lg shadow-lg shadow-emerald-600/30 transition">💾 Save changes</button></div>
+      <button id="edPush" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs py-2 rounded-lg shadow-lg shadow-blue-600/30 transition">⚡ Push Updates to Driver App</button>
+      <button onclick="window.print()" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs py-1.5 rounded-lg transition">Print Rate Confirmation PDF</button></div>`;
+  wirePanel();}
+function updateLive(){if(!editState)return;const d=editState.draft;const ec=$('#edEcon');if(ec)ec.innerHTML=edEconHtml(d);const lg=$('#edLegs');if(lg)lg.innerHTML=edLegsHtml(d);const r=$('#edRoute');if(r)r.textContent=d.stopList[0]+' ➔ '+d.stopList[d.stopList.length-1];const s=$('#edSave');if(s)s.disabled=!isDirty();}
+function wirePanel(){const d=editState.draft,t=editState.orig;
+  $('#edCancel').onclick=()=>{closeDrawer();};
+  $('#edMsg').onclick=()=>{if(d.driverId)openMsg(d.driverId);else toast('feed','No driver assigned','assign a driver first',null);};
+  $('#edAdvance').onclick=()=>advanceStatus(editState.id);$('#edDelete').onclick=()=>deleteLoad(editState.id);$('#edJump').onclick=()=>jumpToTrip(editState.id);
+  const ac=$('#edAccept'),rj=$('#edReject');if(ac)ac.onclick=()=>acceptTender(t.id);if(rj)rj.onclick=()=>rejectTender(t.id,'declined by carrier');
+  $('#edSave').onclick=saveEdit;$('#edPush').onclick=()=>{toast('plan','⚡ Pushed to driver app',`${t.id} synced to Motive ELD & ${driverById[d.driverId]?.name||'driver'} mobile`,t.id);notify('feed',`${t.id} pushed to driver`,'route, stops & rate con synced · you',t.id);};
+  $('#edAddStop').onclick=()=>{d.stopList.splice(d.stopList.length-1,0,'New stop');renderPanel();};
+  const stops=$('#edStops');stops.addEventListener('input',e=>{const i=e.target.dataset.stop;if(i!=null){d.stopList[+i]=e.target.value;updateLive();}});
+  stops.addEventListener('click',e=>{const b=e.target.closest('[data-rmstop]');if(b&&d.stopList.length>2){d.stopList.splice(+b.dataset.rmstop,1);renderPanel();}});
+  $('#edChecks').addEventListener('change',e=>{const i=e.target.dataset.check;if(i==null)return;t.checks[+i].ok=e.target.checked;const done=t.checks.filter(c=>c.ok).length;const cc=$('#checklistCount');cc.textContent=`${done}/${t.checks.length} Completed`;cc.className=(done===t.checks.length?'text-emerald-400':'text-amber-400')+' font-bold';render();notify('feed',`${t.id} checklist`,`${t.checks[+i].k} ${e.target.checked?'✓ completed':'○ reopened'} · you`,t.id);});
+  $('#edStart').onchange=e=>{if(!e.target.value)return;d.start=parseTime(e.target.value,d.start);if(d.end<=d.start)d.end=new Date(d.start.getTime()+3600000);updateLive();};
+  $('#edEnd').onchange=e=>{if(!e.target.value)return;const ne=parseTime(e.target.value,d.end);if(ne>d.start)d.end=ne;updateLive();};
+  $('#edDriver').onchange=e=>{d.driverId=e.target.value;const dr=driverById[d.driverId];if(dr){if(dr.tractorId)d.tractorId=dr.tractorId;if(dr.trailerId){d.trailerId=dr.trailerId;}renderPanel();return;}updateLive();};
+  $('#edTractor').onchange=e=>{d.tractorId=e.target.value;updateLive();};
+  $('#edTrailer').onchange=e=>{d.trailerId=e.target.value;const rl=trailerById[e.target.value];if(rl){d.trailerType=rl.type;$('#edEquip').value=rl.type;}updateLive();};
+  $('#edEquip').onchange=e=>{d.trailerType=e.target.value;d.reqEquip=e.target.value;updateLive();};
+  $('#edHaz').onchange=e=>{d.haz=e.target.value;updateLive();};
+  $('#edComm').oninput=e=>{d.commodity=e.target.value;updateLive();};$('#edWt').oninput=e=>{d.wt=e.target.value;updateLive();};
+  $('#edAppt').onchange=e=>{d.apptEnd=e.target.value?parseTime(e.target.value,d.end):null;updateLive();};
+  $('#edRate').oninput=e=>{d.rateFixed=+e.target.value||0;updateLive();};
+  updateLive();}
+function saveEdit(){const d=editState.draft,t=D.loads.find(x=>x.id===editState.id);if(!t){closeDrawer();return;}
+  t.stopList=d.stopList.slice();t.from=d.stopList[0];t.to=d.stopList[d.stopList.length-1];t.stops=d.stopList.length;t.start=d.start;t.end=d.end;
+  t.driverId=d.driverId||null;t.tractorId=d.tractorId||null;t.trailerId=d.trailerId||null;t.trailerType=d.trailerType;t.reqEquip=d.reqEquip;t.commodity=d.commodity;t.wt=d.wt;t.haz=d.haz||undefined;t.rateFixed=d.rateFixed||undefined;t.detApplied=false;
+  if(d.apptEnd){t.apptEnd=d.apptEnd;t.apptStart=new Date(d.apptEnd.getTime()-3600000);t.apptManual=true;}else{t.apptEnd=undefined;t.apptStart=undefined;t.apptManual=false;}
+  computeEconomics();enrich();render();refreshView();openEditPanel(t.id);notify('move',`${t.id} updated`,`${cityShort(t.from)} → ${cityShort(t.to)} · ${fmt(t.start)}–${fmt(t.end)} · you`,t.id);checkConflict(t);}
+function deleteLoad(id){const i=D.loads.findIndex(x=>x.id===id);if(i<0)return;D.loads.splice(i,1);closeDrawer();render();refreshView();notify('conflict',`${id} removed`,'leg deleted from the board · you',null);}
+function advanceStatus(id){const t=D.loads.find(x=>x.id===id);if(!t)return;
+  if(t.status==='tendered'||t.status==='pending')t.status='assigned';else if(t.status==='assigned'){t.status='in_progress';t.pct=.1;t.checks.forEach(c=>{if(c.k==='DVIR'||c.k==='SEAL'||c.k==='PLACARD'||c.k==='PRE-COOL')c.ok=true;});}
+  else if(t.status==='in_progress'){if((t.pct||0)<.85)t.pct=Math.min(.95,(t.pct||.1)+.3);else{t.status='completed';t.checks.forEach(c=>c.ok=true);}}
+  render();refreshView();if(editState&&editState.id===id)renderPanel();notify('feed',`${t.id} → ${STATUS[t.status].label}`,'status advanced · you',t.id);}
+function closeDrawer(){editState=null;state.selected=null;releaseMyLocks();drawerBody.innerHTML=`<div class="flex items-center justify-between pb-3 border-b border-slate-800"><span class="text-xs font-bold text-white font-mono">MASTER DRAWER</span><span class="px-1.5 rounded text-[9px] font-mono bg-slate-800 text-slate-400">IDLE</span></div><div class="mt-3 text-[11px] font-mono text-slate-500 leading-relaxed">Click any leg brick to inspect &amp; edit it (acquires a pessimistic lock on that lane).<br><br>• Drag bricks to reschedule / reassign · edges resize<br>• Drag backlog loads or yard resources onto a lane<br>• ⚡ Suggest ranks drivers by deadhead, HOS, equipment &amp; margin<br>• 🔍 Spot highlights matches across the board</div><div class="mt-4 p-2.5 rounded-lg bg-[#020409] border border-slate-800 text-[10px] font-mono text-slate-400" id="drawerFeed"></div>`;render();}
+
+// ---------- ⚡ suggest engine: ranked candidates (deterministic FMCSA & margin scorer) ----------
+function driverFree(d){const wins=laneWindowsFor('driverId',d.id,d);return wins;}
+function laneWindowsFor(key,laneId,d){const lt=D.loads.filter(l=>l[key]===laneId).sort((a,b)=>a.start-b.start);let cur=new Date(NOW),city=d?d.locCity:null;const wins=[];
+  lt.forEach(l=>{if(l.end<=NOW){cur=new Date(Math.max(cur.getTime(),l.end.getTime()+(l.turn||30)*60000));city=l.to;return;}if(city&&l.start-cur>45*60000)wins.push({start:new Date(cur),end:new Date(l.start),city,next:l});cur=new Date(l.end.getTime()+(l.turn||30)*60000);city=l.to;});
+  D.occupancy.forEach(o=>{if(occKey(o)===key&&occId(o)===laneId&&o.end>cur)cur=new Date(o.end);});wins.push({start:cur,end:null,city});return wins;}
+function planFor(d,b){const wins=laneWindowsFor('driverId',d.id,d);let best=null;
+  wins.forEach(w=>{if(!w.city)return;const dh=distBetween(w.city,b.from);const start=roundUp15(new Date(w.start.getTime()+dh/E().speed*3600000));const end=new Date(start.getTime()+b.dur*60000);if(w.end&&end>w.end)return;const late=b.apptEnd?Math.max(0,(end-b.apptEnd)/3600000):0;const s=dh+late*40+(w.end?0:5);if(!best||s<best.s)best={win:w,dh,start,end,late,s};});
+  if(!best){const w=wins[wins.length-1];const dh=w.city?distBetween(w.city,b.from):250;const start=roundUp15(new Date(w.start.getTime()+dh/E().speed*3600000));best={win:w,dh,start,end:new Date(start.getTime()+b.dur*60000),late:b.apptEnd?Math.max(0,(start.getTime()+b.dur*60000-b.apptEnd)/3600000):0,s:999};}
+  return best;}
+function rankCandidates(b){return D.drivers.map(d=>{const plan=planFor(d,b);const lock=lockoutOf(d.id);const tr=trailerById[d.trailerId];const eqOk=!!(tr&&tr.type===b.type);const swap=!eqOk?D.trailers.find(t=>t.type===b.type&&t.status==='idle'&&!t.regExpired):null;const need=b.dur/60+plan.dh/E().speed;const room=d.hosDrive||0;const hosShort=room<need;const reasons=[];let blocked=false;
+    if(lock){blocked=true;reasons.push('Hard locked: '+lock.label.replace(/^⛔\s*/,''));}if(b.haz&&!d.hazmat){blocked=true;reasons.push('No '+TERM.hazPrefix+' endorsement');}if(d.status==='offline'){blocked=true;reasons.push('Off duty');}
+    if(hosShort&&!blocked)reasons.push(`HOS: ${room.toFixed(1)}h (needs ${need.toFixed(1)}h · Rest Required)`);if(!eqOk&&!blocked)reasons.push(swap?`Swap to ${swap.unit} (${swap.type})`:`No ${b.type} available`);if(plan.late>0&&!blocked)reasons.push(`Misses appt by ${plan.late.toFixed(1)}h`);
+    const margin=Math.round((b.margin||0)-plan.dh*cpmOf());const score=blocked?0:Math.max(1,Math.round(98-plan.dh/8-(hosShort?30:0)-(!eqOk?(swap?12:28):0)-plan.late*6));
+    return{d,plan,dh:plan.dh,room,eqOk,swap,tr,blocked,reasons,margin,score,lockedBy:lockedByOther(d.id)};}).sort((a,c)=>c.score-a.score);}
+const suggestModal=$('#suggestModal'),suggestCard=$('#suggestCard');
+function openSuggestModal(loadId){const b=D.backlog.find(x=>x.id===loadId);if(!b)return;const cands=rankCandidates(b);const U=E().unit;
+  suggestCard.innerHTML=`<div class="flex items-center justify-between pb-3 border-b border-slate-800"><div><div class="text-sm font-bold text-white flex items-center gap-2"><span>⚡ Dispatch Engine Matcher: <span class="text-blue-400 font-mono">${b.id}</span></span>${b.haz?`<span class="text-[9px] bg-red-500/20 text-red-300 px-1.5 py-0.5 rounded border border-red-500/30">☣ ${TERM.hazPrefix} ${b.haz}</span>`:''}</div><div class="text-[11px] text-slate-400 mt-0.5">${esc(b.from)} ➔ ${esc(b.to)} · ${esc(b.wt||'')} ${esc(b.commodity||'')} · ${money2(b.rate)} (${money2(b.rpm)}/${U}) · ${b.dist} ${U}${b.apptEnd?' · Appt '+fmtDT(b.apptEnd):''}</div></div><button onclick="closeSuggestModal()" class="text-slate-400 hover:text-white font-bold">✕</button></div>
+    <div class="mt-4 flex flex-col gap-2"><div class="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Ranked ${TERM.driver}s (Deterministic ${TERM.reg} &amp; Margin Scorer) · ${cands.filter(c=>!c.blocked).length} feasible</div>
+    ${cands.map((c,i)=>{const top=i===0&&!c.blocked&&c.score>=70;const warn=!c.blocked&&!top;const cls=c.blocked?'bg-red-950/20 border-red-500/30 opacity-60':top?'bg-emerald-950/20 border-emerald-500/40':'bg-slate-900 border-slate-800 opacity-90';
+      return `<div class="p-3 rounded-lg border ${cls} flex items-center justify-between gap-3 text-xs"><div class="min-w-0"><div class="font-bold ${c.blocked?'text-red-300':top?'text-emerald-300':'text-slate-200'} flex items-center gap-2 flex-wrap"><span>${c.blocked?'⛔ ':'#'+(i+1)+' '}${esc(c.d.name)}</span>${c.blocked?'<span class="px-1.5 bg-red-500/20 text-red-400 rounded text-[9px]">INFEASIBLE</span>':`<span class="px-1.5 bg-${top?'emerald':'amber'}-500/20 text-${top?'emerald':'amber'}-400 rounded text-[9px] font-bold">SCORE: ${c.score}/100</span>`}${c.lockedBy?`<span class="px-1.5 bg-red-500/10 text-red-300 rounded text-[9px]">🔒 ${esc(c.lockedBy.by)}</span>`:''}${c.d.subcon?`<span class="px-1 border border-orange-500/40 text-orange-300 rounded text-[9px]">${esc(c.d.subcon)}</span>`:''}</div>
+        <div class="text-[10px] ${c.blocked?'text-red-400/80':'text-slate-400'} mt-1">${c.blocked?'Blocked: '+c.reasons.join(' + '):`Deadhead: <span class="${c.dh<50?'text-emerald-400':'text-amber-400'} font-bold">${c.dh} ${U}</span> from ${esc(cityShort(c.plan.win.city||'?'))} · HOS: <span class="${c.room>=c.plan.dh/E().speed+b.dur/60?'text-emerald-400':'text-amber-400'} font-bold">${c.room.toFixed(1)}h Available</span> · ${c.tr?c.tr.unit+' '+c.tr.type:'no trailer'}${c.eqOk?' ✓':c.swap?' → swap '+c.swap.unit:' ✗'} · Start ${fmtDayU(c.plan.start)} ${fmt(c.plan.start)}${c.reasons.length?'<br><span class="text-amber-400">⚠ '+c.reasons.join(' · ')+'</span>':''}`}</div></div>
+        <div class="text-right shrink-0">${c.blocked?'<span class="text-[10px] font-bold text-red-400">Hard Locked</span>':`<div class="font-bold font-mono ${c.margin>=0?'text-emerald-400':'text-amber-400'}">${c.margin>=0?'+':''}${money2(c.margin)} Margin</div><div class="mt-1.5 flex gap-1 justify-end"><button data-tender="${b.id}" data-driver="${c.d.id}" class="px-2 py-1 bg-purple-600/40 hover:bg-purple-600 text-purple-100 font-bold rounded shadow transition text-[10px]">📤 Tender</button><button data-commit="${b.id}" data-driver="${c.d.id}" class="px-3 py-1 ${top?'bg-emerald-600 hover:bg-emerald-500':'bg-blue-600 hover:bg-blue-500'} text-white font-bold rounded shadow transition text-[10px]">Commit &amp; Assign</button></div>`}</div></div>`;}).join('')}</div>
+    <div class="mt-5 pt-3 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-500"><span>Priced with ${money2(E().diesel)} Diesel · ${money2(E().pay)} Driver Pay · ${money2(E().overhead)}/${U} overhead · DH at ${money2(cpmOf())}/${U}</span><button onclick="closeSuggestModal()" class="text-slate-400 hover:text-white">Cancel</button></div>`;
+  suggestModal.classList.remove('hidden');}
+function openLaneFinder(laneId){const d=driverById[laneId];if(!d)return;const wins=laneWindowsFor('driverId',d.id,d);const U=E().unit;
+  const rows=D.backlog.map(b=>{const plan=planFor(d,b);const blocked=(b.haz&&!d.hazmat)||!!lockoutOf(d.id);const tr=trailerById[d.trailerId];const eqOk=!!(tr&&tr.type===b.type);const swap=!eqOk?D.trailers.find(t=>t.type===b.type&&t.status==='idle'&&!t.regExpired):null;const margin=Math.round((b.margin||0)-plan.dh*cpmOf());return{b,plan,blocked,eqOk,swap,margin,score:blocked?0:Math.max(1,Math.round(98-plan.dh/8-(!eqOk?(swap?12:28):0)-plan.late*6))};}).sort((a,c)=>c.score-a.score);
+  suggestCard.innerHTML=`<div class="flex items-center justify-between pb-3 border-b border-slate-800"><div><div class="text-sm font-bold text-white">⚡ Load Finder: <span class="text-blue-400">${esc(d.name)}</span></div><div class="text-[11px] text-slate-400 mt-0.5">Free windows: ${wins.map(w=>`${esc(cityShort(w.city||'?'))} ${fmtDayU(w.start)} ${fmt(w.start)}${w.end?'→'+fmt(w.end):' (open)'}`).join(' · ')} · ${TERM.drv} ${hrs(d.hosDrive)} · ${trailerById[d.trailerId]?trailerById[d.trailerId].type:'no trailer'}</div></div><button onclick="closeSuggestModal()" class="text-slate-400 hover:text-white font-bold">✕</button></div>
+    <div class="mt-4 flex flex-col gap-2"><div class="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Backlog ranked for this lane</div>${rows.length?rows.map((r,i)=>`<div class="p-3 rounded-lg border ${r.blocked?'bg-red-950/20 border-red-500/30 opacity-60':i===0?'bg-emerald-950/20 border-emerald-500/40':'bg-slate-900 border-slate-800'} flex items-center justify-between gap-3 text-xs"><div class="min-w-0"><div class="font-bold ${r.blocked?'text-red-300':i===0?'text-emerald-300':'text-slate-200'}">${r.blocked?'⛔ ':'#'+(i+1)+' '}${r.b.id} · ${esc(r.b.from)} ➔ ${esc(r.b.to)} ${r.b.haz?`<span class="text-[9px] bg-orange-500/20 text-orange-300 px-1 rounded">☣ ${r.b.haz}</span>`:''}</div><div class="text-[10px] text-slate-400 mt-1">${r.blocked?'Blocked: '+(lockoutOf(d.id)?'hard lockout':'no '+TERM.hazPrefix+' endorsement'):`DH ${r.plan.dh} ${U} · start ${fmtDayU(r.plan.start)} ${fmt(r.plan.start)} · ${esc(r.b.type)}${r.eqOk?' ✓':r.swap?' → swap '+r.swap.unit:' ✗ no equipment'}${r.plan.late?` · <span class="text-amber-400">misses appt by ${r.plan.late.toFixed(1)}h</span>`:''} · ${money(r.b.rate)}`}</div></div><div class="text-right shrink-0">${r.blocked?'':`<div class="font-bold font-mono ${r.margin>=0?'text-emerald-400':'text-amber-400'}">${r.margin>=0?'+':''}${money2(r.margin)}</div><button data-commit="${r.b.id}" data-driver="${d.id}" class="mt-1.5 px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded shadow transition text-[10px]">Commit &amp; Assign</button>`}</div></div>`).join(''):'<div class="text-slate-500 text-xs">Backlog is empty.</div>'}</div>
+    <div class="mt-5 pt-3 border-t border-slate-800 flex justify-end"><button onclick="closeSuggestModal()" class="text-slate-400 hover:text-white text-[11px]">Cancel</button></div>`;
+  suggestModal.classList.remove('hidden');}
+function closeSuggestModal(){suggestModal.classList.add('hidden');}
+suggestModal.addEventListener('click',e=>{if(e.target===suggestModal)closeSuggestModal();const c=e.target.closest('[data-commit]');if(c){commitDispatch(c.dataset.commit,c.dataset.driver,false);return;}const t=e.target.closest('[data-tender]');if(t)commitDispatch(t.dataset.tender,t.dataset.driver,true);});
+
+function dispatchLoad(b,driverId,trailerId,tractorId,start,tender){const nt={id:b.id,driverId,tractorId:tractorId||null,trailerId:trailerId||null,trailerType:b.type,reqEquip:b.type,from:b.from,to:b.to,start,end:new Date(start.getTime()+b.dur*60000),stops:b.stops,status:tender?'tendered':'assigned',haz:b.haz,un:b.un,commodity:b.commodity,wt:b.wt,broker:b.broker,rateFixed:b.rateFixed,appt:b.appt,apptStrict:b.apptStrict,mode:'live'};
+  ensureCrew(nt);D.loads.push(nt);const bi=D.backlog.indexOf(b);if(bi>=0)D.backlog.splice(bi,1);computeEconomics();enrich();return nt;}
+function ensureCrew(l){if(!l.driverId){const d=D.drivers.find(x=>x.status==='active'&&!lockoutOf(x.id)&&!D.loads.some(o=>o.driverId===x.id&&o.status!=='completed'))||D.drivers.find(x=>x.status==='active');if(d)l.driverId=d.id;}
+  const dr=driverById[l.driverId];if(!l.tractorId){if(dr&&dr.tractorId)l.tractorId=dr.tractorId;else{const t=D.tractors.find(x=>x.status!=='shop'&&!D.drivers.some(d=>d.tractorId===x.id))||D.tractors[0];if(t)l.tractorId=t.id;}}
+  if(!l.trailerId){const own=dr&&dr.trailerId?trailerById[dr.trailerId]:null;if(own&&own.type===l.reqEquip)l.trailerId=own.id;else{const r=D.trailers.find(x=>x.type===l.reqEquip&&x.status==='idle'&&!x.regExpired)||own||D.trailers.find(x=>x.type===l.reqEquip)||D.trailers.find(x=>x.status==='idle');if(r){l.trailerId=r.id;}}}}
+function commitDispatch(loadId,driverId,tender){const b=D.backlog.find(x=>x.id===loadId);const d=driverById[driverId];if(!b||!d)return;
+  if(lockedByOther(driverId)){lockRefused(driverId);return;}
+  const c=rankCandidates(b).find(x=>x.d.id===driverId);if(c.blocked){toast('conflict','⛔ Dispatch refused',`${d.name}: ${c.reasons.join(' + ')}`,null);return;}
+  let trailerId=d.trailerId;if(!c.eqOk){if(c.swap){const old=trailerById[d.trailerId];if(old){old.status='idle';old.yard=c.plan.win.city;}c.swap.status='active';d.trailerId=c.swap.id;trailerId=c.swap.id;}}
+  // ROI proof: empty miles avoided = the deadhead this chained match removes (gap between two legs), else the
+  // deadhead the next-best feasible driver would have run to reach the same pickup.
+  const nextBest=rankCandidates(b).filter(x=>!x.blocked&&x.d.id!==driverId)[0];
+  const gap=c.plan.win.next&&c.plan.win.next.from===b.to&&c.plan.win.city===b.from?distBetween(c.plan.win.city,c.plan.win.next.from):0;
+  const avoided=Math.max(0,Math.round(gap>0?gap:nextBest?nextBest.dh-c.dh:0));state.emptyAvoided+=avoided;
+  const nt=dispatchLoad(b,driverId,trailerId,d.tractorId,clampStart(c.plan.start,b.dur*60000),tender);
+  closeSuggestModal();if(state.groupBy!=='driver'){state.groupBy='driver';buildGroupSeg();}
+  render();refreshView();
+  if(tender){notify('feed',`${nt.id} tendered`,`→ ${d.name} · awaiting response · you`,nt.id);scheduleTenderResponse(nt.id);}
+  else{notify('plan',`✓ ${nt.id} dispatched`,`→ ${d.name} · ${fmtDayU(nt.start)} ${fmt(nt.start)}–${fmt(nt.end)} · ${c.score}% fit${avoided?' · +'+avoided+' '+E().unit+' empty avoided':''} · you`,nt.id);toast('plan','⚡ Dispatch Committed & Locked',`${nt.id} → ${d.name} · route & fuel burn synced with Motive ELD${c.swap?' · swapped to '+c.swap.unit:''}`,nt.id);}
+  checkConflict(nt);selectLeg(nt.id);}
+
+// ---------- load tender lifecycle ----------
+function acceptTender(id){const t=D.loads.find(x=>x.id===id);if(!t||t.status!=='tendered')return;t.status='assigned';t.checks=defaultChecks(t);render();refreshView();if(editState&&editState.id===id)openEditPanel(id);notify('plan',`${t.id} accepted`,`${driverById[t.driverId]?.name||'Carrier'} accepted the tender · ${fmt(t.start)}–${fmt(t.end)}`,t.id);}
+function rejectTender(id,reason){const i=D.loads.findIndex(x=>x.id===id);if(i<0)return;const t=D.loads[i];D.loads.splice(i,1);D.backlog.push({id:t.id,from:t.from,to:t.to,stops:t.stops,dur:Math.round((t.end-t.start)/60000),type:t.trailerType,haz:t.haz,un:t.un,commodity:t.commodity,wt:t.wt,broker:t.broker,rateFixed:t.rateFixed,appt:t.appt,apptStrict:t.apptStrict});computeEconomics();enrich();if(editState&&editState.id===id)closeDrawer();render();refreshView();notify('conflict',`${t.id} declined`,`${driverById[t.driverId]?.name||'Carrier'} declined${reason?' — '+reason:''} · back on the board`,null);}
+function scheduleTenderResponse(id){const rg=state.region,delay=5000+(hsh(id)%5)*1500;setTimeout(()=>{if(state.region!==rg)return;const t=D.loads.find(x=>x.id===id);if(!t||t.status!=='tendered')return;if((hsh(id)%10)<7)acceptTender(id);else rejectTender(id,['out of hours','equipment conflict','rate too low'][hsh(id)%3]);},delay);}
+function addInboundTender(){const cities=Object.keys(D.cities);if(D.backlog.length>6)return;const a=cities[Math.floor(Math.random()*cities.length)];let b=cities[Math.floor(Math.random()*cities.length)];if(b===a)b=cities[(cities.indexOf(a)+1)%cities.length];const type=D.equip[Math.floor(Math.random()*D.equip.length)],brk=BROKERS[Math.floor(Math.random()*BROKERS.length)];const dur=Math.max(90,Math.round(distBetween(a,b)/E().speed*60/15)*15+60);
+  const nb={id:'L-'+(uT++),from:a,to:b,stops:1+Math.floor(Math.random()*3),dur,type,commodity:'Spot freight',wt:state.region==='US'?(30+Math.floor(Math.random()*15))+',000 lbs':(14+Math.floor(Math.random()*10))+' t',broker:brk,isNew:true,appt:mk(1+Math.floor(Math.random()*2),['09:00','11:00','14:00'][Math.floor(Math.random()*3)])};
+  Object.assign(nb,econOf(nb.from,nb.to,nb.type,nb.haz));nb.apptEnd=nb.appt;D.backlog.push(nb);renderBacklog();render();notify('feed',`New spot tender · ${nb.id}`,`${cityShort(a)} → ${cityShort(b)} · ${type} · ${brk} · ${money(nb.rate)}`,null);}
+
+// ---------- + New Transport Leg ----------
+const newLegModal=$('#newLegModal'),newLegCard=$('#newLegCard');
+function openNewLegModal(){const cities=Object.keys(D.cities);const sel=(id,val)=>`<select class="ed-in" id="${id}">${cities.map(c=>`<option ${c===val?'selected':''}>${c}</option>`).join('')}</select>`;
+  newLegCard.innerHTML=`<div class="flex items-center justify-between pb-3 border-b border-slate-800"><div><div class="text-sm font-bold text-white">+ New Transport Leg</div><div class="text-[11px] text-slate-400 mt-0.5">Manual entry (rate-con OCR ingest → same form). Lands in the backlog; ⚡ Suggest or drag to dispatch.</div></div><button onclick="closeNewLegModal()" class="text-slate-400 hover:text-white font-bold">✕</button></div>
+    <div class="mt-4 grid grid-cols-2 gap-3 text-xs"><div><span class="ed-lbl">Pickup</span>${sel('nlFrom',cities[0])}</div><div><span class="ed-lbl">Delivery</span>${sel('nlTo',cities[1])}</div>
+      <div><span class="ed-lbl">Equipment</span><select class="ed-in" id="nlType">${D.equip.map(x=>`<option>${x}</option>`).join('')}</select></div><div><span class="ed-lbl">Hazmat class</span><select class="ed-in" id="nlHaz"><option value="">none</option>${['1','2','3','4','5','6','7','8','9'].map(x=>`<option value="${x}">${TERM.hazPrefix} ${x}</option>`).join('')}</select></div>
+      <div><span class="ed-lbl">Commodity</span><input class="ed-in" id="nlComm" value="General freight"/></div><div><span class="ed-lbl">Weight</span><input class="ed-in" id="nlWt" value="${state.region==='US'?'40,000 lbs':'20 t'}"/></div>
+      <div><span class="ed-lbl">Broker / customer</span><select class="ed-in" id="nlBroker">${BROKERS.map(b=>`<option>${b}</option>`).join('')}</select></div><div><span class="ed-lbl">Stops</span><input type="number" class="ed-in" id="nlStops" value="1" min="1" max="6"/></div>
+      <div><span class="ed-lbl">Appt day</span><select class="ed-in" id="nlDay">${[0,1,2,3,4].map(o=>`<option value="${o}" ${o===1?'selected':''}>${fmtDay(new Date(BASE.getTime()+o*MS_DAY))}</option>`).join('')}</select></div><div><span class="ed-lbl">Appt time</span><input type="time" class="ed-in" id="nlTime" value="10:00"/></div>
+      <div><span class="ed-lbl">Agreed rate (${E().cur}) — blank = market</span><input type="number" class="ed-in" id="nlRate" placeholder="auto"/></div><div><span class="ed-lbl">Duration (min) — blank = auto</span><input type="number" class="ed-in" id="nlDur" placeholder="auto"/></div></div>
+    <div class="mt-3 p-2.5 rounded-lg bg-[#020409] border border-slate-800 text-[11px] font-mono text-slate-400" id="nlPreview"></div>
+    <div class="mt-4 pt-3 border-t border-slate-800 flex justify-end gap-2"><button onclick="closeNewLegModal()" class="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-bold">Cancel</button><button id="nlCreate" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold">Create leg → backlog</button></div>`;
+  const prev=()=>{const f=$('#nlFrom').value,t=$('#nlTo').value,ty=$('#nlType').value,hz=$('#nlHaz').value,rt=+$('#nlRate').value||undefined;const e=econOf(f,t,ty,hz,rt);$('#nlPreview').innerHTML=`${e.dist} ${E().unit} · rate <b class="text-white">${money(e.rate)}</b> (${money2(e.rpm)}/${E().unit}, spot ${money2(e.marketRpm)}) · cost ${money(e.cost)} · margin <b style="color:${mcolor(e.pct)}">${money(e.margin)} (${Math.round(e.pct*100)}%)</b> · est. ${Math.round(e.dist/E().speed*10)/10}h drive`;};
+  newLegCard.querySelectorAll('select,input').forEach(el=>el.addEventListener('input',prev));prev();
+  $('#nlCreate').onclick=()=>{const f=$('#nlFrom').value,t=$('#nlTo').value;if(f===t){toast('conflict','Pickup = delivery','choose two different cities',null);return;}const ty=$('#nlType').value,hz=$('#nlHaz').value||undefined;const e=econOf(f,t,ty,hz);const dur=+$('#nlDur').value||Math.max(60,Math.round(e.dist/E().speed*60/15)*15+45);
+    const nb={id:'L-'+(uT++),from:f,to:t,stops:Math.max(1,+$('#nlStops').value||1),dur,type:ty,haz:hz,commodity:$('#nlComm').value,wt:$('#nlWt').value,broker:$('#nlBroker').value,rateFixed:+$('#nlRate').value||undefined,appt:mk(+$('#nlDay').value,$('#nlTime').value||'10:00'),isNew:true};
+    Object.assign(nb,econOf(nb.from,nb.to,nb.type,nb.haz,nb.rateFixed));nb.apptEnd=nb.appt;D.backlog.push(nb);closeNewLegModal();render();notify('plan',`${nb.id} created`,`${cityShort(f)} → ${cityShort(t)} · ${ty} · ${money(nb.rate)} · you`,null);};
+  newLegModal.classList.remove('hidden');}
+function closeNewLegModal(){newLegModal.classList.add('hidden');}
+newLegModal.addEventListener('click',e=>{if(e.target===newLegModal)closeNewLegModal();});
+
+// ---------- fleet technical HUD ----------
+const HUD={
+  d1:{title:'Jake Morrow · Unit Specs & Compliance Schedule',body:`<div class="grid grid-cols-2 gap-2 bg-[#020409] p-3 rounded-lg border border-slate-800"><div><span class="text-slate-500">Power Unit:</span> <span class="text-white font-bold">#1207 Peterbilt 579 Sleeper</span></div><div><span class="text-slate-500">Trailer:</span> <span class="text-white font-bold">DV-4450 53' Air-Ride Van</span></div><div><span class="text-slate-500">Tare Weight:</span> <span class="text-white">14,200 lbs</span></div><div><span class="text-slate-500">Max Gross:</span> <span class="text-white">80,000 lbs</span></div></div><div class="bg-[#020409] p-3 rounded-lg border border-slate-800"><div class="text-[10px] uppercase text-slate-400 font-bold mb-1.5">Upcoming Compliance & Inspections</div><div class="flex justify-between py-0.5"><span class="text-slate-400">Annual DOT Inspection:</span> <span class="text-emerald-400 font-bold">Nov 15, 2026 (Valid)</span></div><div class="flex justify-between py-0.5"><span class="text-slate-400">Trailer Registration:</span> <span class="text-emerald-400 font-bold">Dec 31, 2026 (Valid)</span></div><div class="flex justify-between py-0.5"><span class="text-slate-400">Driver DOT Medical Card:</span> <span class="text-emerald-400 font-bold">Oct 2027 (Valid)</span></div><div class="flex justify-between py-0.5"><span class="text-slate-400">Next PM Service:</span> <span class="text-slate-300">4,200 mi remaining</span></div></div>`},
+  d2:{title:'Tyrone Banks · Reefer Unit Specs & FSMA Audit',body:`<div class="grid grid-cols-2 gap-2 bg-[#020409] p-3 rounded-lg border border-slate-800"><div><span class="text-slate-500">Power Unit:</span> <span class="text-white font-bold">#1212 Kenworth T680</span></div><div><span class="text-slate-500">Trailer:</span> <span class="text-white font-bold">RF-2201 53' Utility Reefer</span></div><div><span class="text-slate-500">Reefer Unit:</span> <span class="text-cyan-300 font-bold">Carrier Transicold X4 7500</span></div><div><span class="text-slate-500">Sensor Status:</span> <span class="text-emerald-400 font-bold">-9.8°F / -10°F Setpoint</span></div></div><div class="bg-[#020409] p-3 rounded-lg border border-slate-800"><div class="text-[10px] uppercase text-slate-400 font-bold mb-1.5">Sanitation & Inspection Verification</div><div class="flex justify-between py-0.5"><span class="text-slate-400">FSMA Washout Certificate:</span> <span class="text-emerald-400 font-bold">St. Louis Blue Beacon (Aug 27)</span></div><div class="flex justify-between py-0.5"><span class="text-slate-400">Annual DOT Inspection:</span> <span class="text-emerald-400 font-bold">Oct 10, 2026 (Valid)</span></div><div class="flex justify-between py-0.5"><span class="text-slate-400">Pre-Cool Log:</span> <span class="text-emerald-400 font-bold">Passed (45 min continuous)</span></div></div>`},
+  d3:{title:'Maria Delgado · Maintenance Bay Schedule & Medical Alert',body:`<div class="bg-amber-950/20 border border-amber-500/40 p-3 rounded-lg"><div class="text-amber-300 font-bold">⚠️ Action Required: Driver Medical Card Expiring</div><div class="text-[11px] text-slate-400 mt-1">Maria's DOT Physical expires in 7 days (Sept 04). Scheduled clinic exam in Des Moines hub.</div></div><div class="bg-[#020409] p-3 rounded-lg border border-slate-800 mt-2"><div class="text-[10px] uppercase text-slate-400 font-bold mb-1.5">Scheduled Maintenance Bay</div><div class="flex justify-between py-0.5"><span class="text-slate-400">Shop Location:</span> <span class="text-white font-bold">Des Moines Freightliner Service</span></div><div class="flex justify-between py-0.5"><span class="text-slate-400">Bay Allocation:</span> <span class="text-purple-300 font-bold">Bay 3 (PM B-Service) · Sat 08:00</span></div><div class="flex justify-between py-0.5"><span class="text-slate-400">Estimated Duration:</span> <span class="text-slate-300">4.0 Hours</span></div></div>`},
+  d4:{title:'Dale Hutchins · Out-of-Service Compliance Lockout',body:`<div class="bg-red-950/30 border border-red-500/50 p-3 rounded-lg"><div class="text-red-300 font-bold">⛔ Dual Critical Compliance Blocker</div><ul class="list-disc list-inside text-[11px] text-slate-300 mt-1.5 flex flex-col gap-1"><li><strong class="text-red-400">Trailer FB-3310 Registration Expired:</strong> Expired on Aug 12, 2026. Renewal pending Nebraska DMV.</li><li><strong class="text-red-400">FMCSA 34-Hour Weekly Restart:</strong> 69.2h driven on 70h clock. Unlocked Sunday Aug 30 @ 08:00.</li></ul></div><div class="bg-[#020409] p-3 rounded-lg border border-slate-800 mt-2 text-slate-400">Dispatching Dale before both blocks are resolved will incur up to $15,000 in DOT safety fines.</div>`}};
+function genericHud(d){const tr=tractorById[d.tractorId],rl=trailerById[d.trailerId];const row=(k,v,c)=>`<div class="flex justify-between py-0.5"><span class="text-slate-400">${k}</span><span class="${c||'text-slate-200'} font-bold">${v}</span></div>`;
+  return{title:`${d.name} · Unit Specs & Compliance`,body:`<div class="grid grid-cols-2 gap-2 bg-[#020409] p-3 rounded-lg border border-slate-800"><div><span class="text-slate-500">Power Unit:</span> <span class="text-white font-bold">${tr?'#'+tr.unit+' '+esc(tr.make)+' '+tr.cab:'— bobtail —'}</span></div><div><span class="text-slate-500">Trailer:</span> <span class="text-white font-bold">${rl?rl.unit+' '+(rl.len||'')+' '+rl.type:'— none —'}</span></div><div><span class="text-slate-500">Location:</span> <span class="text-white">${esc(d.loc)}</span></div><div><span class="text-slate-500">Telemetry:</span> <span class="text-white">${esc(d.tele.t)}</span></div></div><div class="bg-[#020409] p-3 rounded-lg border border-slate-800"><div class="text-[10px] uppercase text-slate-400 font-bold mb-1.5">Compliance</div>${row('Annual DOT Inspection:',tr?tr.dot:'—',/Aug 30, 2026/.test(tr?tr.dot:'')?'text-amber-400':'text-emerald-400')}${row('Trailer Registration:',rl?rl.reg+(rl.regExpired?' (EXPIRED)':' (Valid)'):'—',rl&&rl.regExpired?'text-red-400':'text-emerald-400')}${row('Driver Medical Card:',d.medCard+(d.medDays<30?' ⚠':''),d.medDays<30?'text-amber-400':'text-emerald-400')}${row('CSA Score:',d.csa,d.csa<70?'text-amber-400':'text-emerald-400')}${row(TERM.drv+' / '+TERM.cyc+':',hrs(d.hosDrive)+' / '+Math.round(d.cycLeft)+'h','text-slate-200')}${row('Hazmat endorsement:',d.hazmat?'✓ Endorsed':'—',d.hazmat?'text-emerald-400':'text-slate-400')}${tr?row('Next PM Service:',tr.pmMiles.toLocaleString()+' '+E().unit+' remaining',tr.pmMiles<500?'text-amber-400':'text-slate-300'):''}</div>`};}
+function showFleetInfo(key){const d=driverById[key];if(!d)return;const h=(state.region==='US'&&HUD[key])?HUD[key]:genericHud(d);$('#modalFleetTitle').innerText=h.title;$('#modalFleetBody').innerHTML=h.body;$('#modalFleetMsg').onclick=()=>{closeFleetModal();openMsg(key);};$('#fleetModal').classList.remove('hidden');}
+function closeFleetModal(){$('#fleetModal').classList.add('hidden');}
+$('#fleetModal').addEventListener('click',e=>{if(e.target===$('#fleetModal'))closeFleetModal();});
+
+// ============================================================================
+//  NOTIFICATIONS · TOASTS · DRAG & DROP · MESSAGING · VIEWS · CONTROLS · LIVE FEED
+// ============================================================================
+const laneName=id=>{const l=laneList().find(x=>x.id===id);return l?l.name:id;};
+const notifPanel=$('#notifPanel'),ntList=$('#ntList');
+const NIC={move:{i:'🔀',c:'bg-blue-500/15'},plan:{i:'📌',c:'bg-emerald-500/15'},resize:{i:'↔',c:'bg-cyan-500/15'},conflict:{i:'⚠',c:'bg-red-500/20'},hook:{i:'🔗',c:'bg-teal-500/15'},feed:{i:'📡',c:'bg-slate-500/20'}};
+const ago=t=>{const s=Math.floor((Date.now()-t)/1000);return s<60?'just now':s<3600?Math.floor(s/60)+'m ago':Math.floor(s/3600)+'h ago';};
+function notify(kind,title,sub,tripId){state.notifs.unshift({id:state.nextNotifId++,kind,title,sub,tripId,read:false,time:Date.now()});if(state.notifs.length>60)state.notifs.pop();renderNotifs();toast(kind,title,sub,tripId);}
+function renderNotifs(){const unread=state.notifs.filter(n=>!n.read).length;const b=$('#bellBadge');b.textContent=unread;b.style.display=unread?'grid':'none';
+  ntList.innerHTML=state.notifs.length?state.notifs.map(n=>{const ic=NIC[n.kind]||NIC.feed;return `<div class="px-3.5 py-2.5 border-b border-slate-800/80 flex gap-2.5 cursor-pointer hover:bg-slate-800/40 ${n.read?'':'bg-blue-500/5'}" data-nid="${n.id}" data-trip="${n.tripId||''}"><div class="h-6 w-6 rounded-md ${ic.c} grid place-items-center text-xs shrink-0">${ic.i}</div><div class="min-w-0"><div class="text-[11px] font-bold ${n.read?'text-slate-300':'text-white'} truncate">${esc(n.title)}</div><div class="text-[10px] text-slate-500 font-mono truncate">${esc(n.sub)} · ${ago(n.time)}</div></div></div>`;}).join(''):'<div class="p-6 text-center text-slate-500 text-[11px] font-mono">No activity yet.</div>';
+  const df=$('#drawerFeed');if(df)df.innerHTML='<div class="text-slate-500 uppercase tracking-wider text-[9px] font-bold mb-1">Latest activity</div>'+(state.notifs.slice(0,5).map(n=>`<div class="truncate">${(NIC[n.kind]||NIC.feed).i} ${esc(n.title)} <span class="text-slate-600">· ${ago(n.time)}</span></div>`).join('')||'—');}
+ntList.addEventListener('click',e=>{const it=e.target.closest('[data-nid]');if(!it)return;const n=state.notifs.find(x=>x.id==it.dataset.nid);if(n)n.read=true;renderNotifs();if(it.dataset.trip)jumpToTrip(it.dataset.trip);notifPanel.classList.add('hidden');});
+$('#ntClear').onclick=()=>{state.notifs.forEach(n=>n.read=true);renderNotifs();};
+$('#bellBtn').onclick=e=>{e.stopPropagation();notifPanel.classList.toggle('hidden');notifPanel.classList.toggle('flex');};
+document.addEventListener('click',e=>{if(!notifPanel.classList.contains('hidden')&&!e.target.closest('#notifPanel')&&!e.target.closest('#bellBtn')){notifPanel.classList.add('hidden');notifPanel.classList.remove('flex');}});
+function jumpToTrip(id){if(state.view!=='board')setView('board');const t=D.loads.find(x=>x.id===id);if(!t)return;const off=dayIdx(t.start);if(off<state.dayOffset||off>=state.dayOffset+state.days){state.dayOffset=Math.max(0,off);render();}
+  setTimeout(()=>{const el=$(`.brick[data-id="${id}"]`);if(el){el.scrollIntoView({behavior:'smooth',inline:'center',block:'center'});el.classList.remove('updated');void el.offsetWidth;el.classList.add('updated');}},60);}
+const toasts=$('#toasts');
+function toast(kind,title,sub,tripId){const el=ce('div');el.className='toast bg-[#090d1a] border border-slate-700 border-l-4 rounded-lg popover-shadow px-3 py-2 text-xs max-w-[340px] cursor-pointer font-mono '+(kind==='conflict'?'border-l-red-500':kind==='plan'?'border-l-emerald-500':'border-l-blue-500');el.innerHTML=`<div class="font-bold text-white">${esc(title)}</div><div class="text-[10px] text-slate-400 mt-0.5">${esc(sub)}${tripId?' · click to locate':''}</div>`;el.onclick=()=>{if(tripId)jumpToTrip(tripId);el.remove();};toasts.appendChild(el);setTimeout(()=>{el.style.transition='opacity .4s';el.style.opacity='0';setTimeout(()=>el.remove(),400);},5000);while(toasts.children.length>4)toasts.firstChild.remove();}
+function checkConflict(t){recomputeConflicts();if(t.conflict)notify('conflict',`⚠ ${t.id} conflict`,t.occConflict?`overlaps ${t.occConflict.label} on ${laneName(t[laneKey()])}`:`overlaps another ${TERM.load.toLowerCase()} on ${laneName(t[laneKey()])}`,t.id);if(t.mismatch)notify('conflict',`⚠ ${t.id} wrong equipment`,`needs ${t.reqEquip}, hooked ${trailerById[t.trailerId].type} (${trailerById[t.trailerId].unit})`,t.id);if(t.hazIssue)notify('conflict',`⚠ ${t.id} hazmat endorsement`,`${driverById[t.driverId].name} has no ${TERM.hazPrefix} endorsement`,t.id);if(t.regIssue)notify('conflict',`⚠ ${t.id} trailer registration`,`${trailerById[t.trailerId].unit} registration expired`,t.id);const dr=driverById[t.driverId];if(dr&&hosPlanned(dr.id)>dr.hosDrive+0.01)notify('conflict',`⚠ ${dr.name} HOS`,`planned ${hosPlanned(dr.id).toFixed(1)}h > ${hrs(dr.hosDrive)} available — ${TERM.reg} gate`,t.id);}
+
+// ---------- drag & resize (generic brick drag machine + drop validation + locks) ----------
+const ghost=$('#ghost'),dragTimeEl=$('#dragTime');
+document.addEventListener('pointerdown',e=>{if(e.button!==0)return;if(e.target.closest('button,input,select,label,a'))return;const handle=e.target.closest('.handle'),brick=e.target.closest('.brick'),card=e.target.closest('.bl-card'),res=e.target.closest('.res');
+  if(handle&&brick){startResize(e,brick,handle.dataset.h);return;}if(brick){startMove(e,brick);return;}if(card){startBacklog(e,card);return;}if(res){startRes(e,res);return;}});
+const trackAt=(x,y)=>{const el=document.elementFromPoint(x,y);return el?el.closest('.track[data-track]'):null;};
+const timeFromTrack=(track,cx)=>{const r=track.getBoundingClientRect();return xToDate(cx-r.left);};
+const clearZones=()=>document.querySelectorAll('.lane.dropzone,.lane.dropzone-eq,.lane.dropzone-blocked').forEach(l=>l.classList.remove('dropzone','dropzone-eq','dropzone-blocked'));
+function zoneFor(track,eq){const lane=track.closest('.lane'),id=track.dataset.track;clearZones();const blocked=lockedByOther(id)||(state.groupBy==='driver'&&lockoutOf(id));lane.classList.add(blocked?'dropzone-blocked':eq?'dropzone-eq':'dropzone');return !blocked;}
+function showDragTime(e,track,t){const ok=zoneFor(track,false);dragTimeEl.style.display='block';dragTimeEl.textContent=(ok?'':'🔒 ')+fmtDayU(t)+' '+fmt(t)+' · '+laneName(track.dataset.track);dragTimeEl.style.background=ok?'#2563eb':'#dc2626';dragTimeEl.style.left=(e.clientX+14)+'px';dragTimeEl.style.top=(e.clientY-10)+'px';}
+function startMove(e,brick){const t=D.loads.find(x=>x.id===brick.dataset.id);if(!t)return;const laneId=t[laneKey()];if(lockedByOther(laneId)){lockRefused(laneId);return;}hidePop();state.drag={type:'move',t,dur:t.end-t.start,brick,moved:false};brick.classList.add('dragging');const r=brick.getBoundingClientRect();ghost.style.cssText=`display:block;left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;background:${getComputedStyle(brick).background};border:1px solid #60a5fa;`;ghost.innerHTML=`<div class="px-2 py-1 text-[11px] font-mono font-bold text-white">${t.id} · ${esc(cityShort(t.from))} ➔ ${esc(cityShort(t.to))}</div>`;state.drag.offX=e.clientX-r.left;state.drag.offY=e.clientY-r.top;window.addEventListener('pointermove',onMove);window.addEventListener('pointerup',endMove);}
+function onMove(e){const d=state.drag;ghost.style.left=(e.clientX-d.offX)+'px';ghost.style.top=(e.clientY-d.offY)+'px';d.moved=true;const track=trackAt(e.clientX,e.clientY);if(track)showDragTime(e,track,timeFromTrack(track,e.clientX-d.offX+2));else{clearZones();dragTimeEl.style.display='none';}}
+function endMove(e){window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',endMove);ghost.style.display='none';ghost.innerHTML='';dragTimeEl.style.display='none';clearZones();const d=state.drag;state.drag=null;const t=d.t;d.brick.classList.remove('dragging');
+  if(!d.moved){selectLeg(t.id);return;}const track=trackAt(e.clientX,e.clientY);if(!track){render();return;}const laneId=track.dataset.track;
+  if(lockedByOther(laneId)){lockRefused(laneId);render();return;}if(state.groupBy==='driver'&&lockoutOf(laneId)){toast('conflict','⛔ Lane hard-locked',`${laneName(laneId)} is under ${TERM.reg} lockout — dispatch blocked`,null);render();return;}
+  const ns=clampStart(timeFromTrack(track,e.clientX-d.offX+2),d.dur);const moved=Math.abs(ns-t.start)>60000,reassigned=laneId!==t[laneKey()];t.start=ns;t.end=new Date(ns.getTime()+d.dur);setLane(t,laneId);acquireLock(laneId);computeEconomics();enrich();render();refreshView();
+  if(moved||reassigned){notify('move',`${t.id} ${reassigned?'reassigned':'rescheduled'}`,`${reassigned?'→ '+laneName(laneId)+' · ':''}${fmtDayU(t.start)} ${fmt(t.start)}–${fmt(t.end)} · you`,t.id);checkConflict(t);}if(editState&&editState.id===t.id)openEditPanel(t.id);}
+function startResize(e,brick,side){const t=D.loads.find(x=>x.id===brick.dataset.id);if(!t)return;if(lockedByOther(t[laneKey()])){lockRefused(t[laneKey()]);return;}hidePop();state.drag={type:'resize',t,side};window.addEventListener('pointermove',onResize);window.addEventListener('pointerup',endResize);e.preventDefault();e.stopPropagation();}
+function onResize(e){const t=state.drag.t,track=$(`.track[data-track="${t[laneKey()]}"]`);if(!track)return;const nd=timeFromTrack(track,e.clientX);if(state.drag.side==='l'){if(nd.getTime()<t.end.getTime()-900000)t.start=nd;}else{if(nd.getTime()>t.start.getTime()+900000)t.end=nd;}render();}
+function endResize(){window.removeEventListener('pointermove',onResize);window.removeEventListener('pointerup',endResize);const t=state.drag.t;state.drag=null;enrich();render();notify('resize',`${t.id} window changed`,`${fmt(t.start)}–${fmt(t.end)} · you`,t.id);checkConflict(t);if(editState&&editState.id===t.id)openEditPanel(t.id);}
+function startBacklog(e,card){const b=D.backlog.find(x=>x.id===card.dataset.bid);if(!b)return;hidePop();state.drag={type:'backlog',b,card,moved:false};card.classList.add('dragging');const r=card.getBoundingClientRect();ghost.style.cssText=`display:block;left:${r.left}px;top:${r.top}px;width:220px;height:56px;background:rgba(120,53,15,.6);border:1px solid #f59e0b;padding:6px 8px;font-size:11px;`;ghost.innerHTML=`<div class="font-mono font-bold text-amber-300">${b.id} · ${esc(b.type)}</div><div class="text-slate-200">${esc(b.from)} ➔ ${esc(b.to)}</div>`;state.drag.offX=e.clientX-r.left;state.drag.offY=e.clientY-r.top;window.addEventListener('pointermove',onBacklog);window.addEventListener('pointerup',endBacklog);}
+function onBacklog(e){const d=state.drag;ghost.style.left=(e.clientX-d.offX)+'px';ghost.style.top=(e.clientY-d.offY)+'px';d.moved=true;const track=trackAt(e.clientX,e.clientY);if(track)showDragTime(e,track,timeFromTrack(track,e.clientX-d.offX+2));else{clearZones();dragTimeEl.style.display='none';}}
+function endBacklog(e){window.removeEventListener('pointermove',onBacklog);window.removeEventListener('pointerup',endBacklog);ghost.style.display='none';ghost.innerHTML='';dragTimeEl.style.display='none';clearZones();const d=state.drag;state.drag=null;d.card.classList.remove('dragging');const track=trackAt(e.clientX,e.clientY);
+  if(!track||!d.moved){if(!d.moved)openSuggestModal(d.b.id);return;}const b=d.b,laneId=track.dataset.track;
+  if(lockedByOther(laneId)){lockRefused(laneId);return;}if(state.groupBy==='driver'&&lockoutOf(laneId)){toast('conflict','⛔ Dispatch refused',`${laneName(laneId)} is under ${TERM.reg} hard lockout`,null);return;}
+  const start=clampStart(timeFromTrack(track,e.clientX-d.offX+2),b.dur*60000);const nt={id:b.id,driverId:null,tractorId:null,trailerId:null,trailerType:b.type,reqEquip:b.type,from:b.from,to:b.to,start,end:new Date(start.getTime()+b.dur*60000),stops:b.stops,status:'assigned',haz:b.haz,un:b.un,commodity:b.commodity,wt:b.wt,broker:b.broker,rateFixed:b.rateFixed,appt:b.appt,apptStrict:b.apptStrict,mode:'live'};
+  setLane(nt,laneId);ensureCrew(nt);D.loads.push(nt);D.backlog.splice(D.backlog.indexOf(b),1);computeEconomics();enrich();acquireLock(laneId);render();refreshView();notify('plan',`${nt.id} dispatched`,`${laneName(laneId)} · ${fmtDayU(nt.start)} ${fmt(nt.start)}–${fmt(nt.end)} · you`,nt.id);checkConflict(nt);selectLeg(nt.id);}
+function startRes(e,resEl){const rtype=resEl.dataset.res,rid=resEl.dataset.rid;hidePop();state.drag={type:'res',rtype,rid,el:resEl,moved:false};resEl.classList.add('dragging');const r=resEl.getBoundingClientRect();ghost.style.cssText=`display:block;left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;background:#0b1120;border:1px solid #475569;`;ghost.innerHTML=resEl.innerHTML;ghost.style.padding='6px 8px';state.drag.offX=e.clientX-r.left;state.drag.offY=e.clientY-r.top;window.addEventListener('pointermove',onRes);window.addEventListener('pointerup',endRes);}
+function onRes(e){const d=state.drag;ghost.style.left=(e.clientX-d.offX)+'px';ghost.style.top=(e.clientY-d.offY)+'px';d.moved=true;const track=trackAt(e.clientX,e.clientY);if(track)zoneFor(track,true);else clearZones();}
+function endRes(e){window.removeEventListener('pointermove',onRes);window.removeEventListener('pointerup',endRes);ghost.style.display='none';ghost.innerHTML='';const d=state.drag;state.drag=null;d.el.classList.remove('dragging');clearZones();const track=trackAt(e.clientX,e.clientY);if(track&&d.moved){const laneId=track.dataset.track;if(lockedByOther(laneId)){lockRefused(laneId);return;}hookResource(d.rtype,d.rid,laneId);}}
+function hookResource(rtype,rid,laneId){const key=laneKey();const targets=D.loads.filter(l=>l[key]===laneId&&l.status!=='completed'&&dayIdx(l.end)>=state.dayOffset);let label='';const drv=state.groupBy==='driver'?driverById[laneId]:null;
+  if(rtype==='tractor'){const tr=tractorById[rid];label='#'+tr.unit;if(drv){const oldT=D.drivers.find(d=>d.tractorId===rid);if(oldT&&oldT!==drv)oldT.tractorId=null;drv.tractorId=rid;}targets.forEach(l=>l.tractorId=rid);}
+  if(rtype==='trailer'){const rl=trailerById[rid];label=rl.unit+' ('+rl.type+')';if(drv){const old=trailerById[drv.trailerId];if(old&&old!==rl){old.status='idle';old.yard=drv.locCity;}const oldT=D.drivers.find(d=>d.trailerId===rid);if(oldT&&oldT!==drv)oldT.trailerId=null;drv.trailerId=rid;}rl.status='active';rl.yard=undefined;targets.forEach(l=>{l.trailerId=rid;l.trailerType=rl.type;});}
+  if(rtype==='driver'){const dr=driverById[rid];label=dr.name;if(state.groupBy==='driver'){toast('feed','Drop a driver on a tractor / trailer lane','switch Group to Tractor or Trailer to assign a driver to equipment',null);return;}if(state.groupBy==='tractor')dr.tractorId=laneId;else dr.trailerId=laneId;targets.forEach(l=>l.driverId=rid);}
+  computeEconomics();enrich();render();
+  targets.forEach(l=>{recomputeConflicts();if(l.mismatch)notify('conflict',`⚠ ${l.id} wrong equipment`,`needs ${l.reqEquip}, hooked ${trailerById[l.trailerId].type}`,l.id);if(l.hazIssue)notify('conflict',`⚠ ${l.id} hazmat endorsement`,`${driverById[l.driverId].name} has no ${TERM.hazPrefix} endorsement`,l.id);});
+  notify('hook',`${label} hooked`,`→ ${laneName(laneId)}${targets.length?' · '+targets.length+' '+TERM.load.toLowerCase()+(targets.length>1?'s':''):' (no open legs)'} · you`,targets[0]?targets[0].id:null);}
+function setLane(t,laneId){if(state.groupBy==='driver'){t.driverId=laneId;const d=driverById[laneId];if(d){if(d.tractorId)t.tractorId=d.tractorId;if(d.trailerId&&(!t.trailerId||trailerById[t.trailerId]?.type!==t.reqEquip))t.trailerId=d.trailerId;}}else if(state.groupBy==='tractor'){t.tractorId=laneId;const d=D.drivers.find(x=>x.tractorId===laneId);if(d)t.driverId=d.id;}else{t.trailerId=laneId;const rl=trailerById[laneId];if(rl)t.trailerType=rl.type;const d=D.drivers.find(x=>x.trailerId===laneId);if(d)t.driverId=d.id;}}
+
+// board click delegation: bricks, lane header buttons, slots
+lanesEl.addEventListener('click',e=>{const f=e.target.closest('[data-fleet]');if(f){showFleetInfo(f.dataset.fleet);return;}const m=e.target.closest('.lane-msg');if(m){e.stopPropagation();openMsg(m.dataset.msg);return;}const c=e.target.closest('[data-commit]');if(c){commitDispatch(c.dataset.commit,c.dataset.driver,false);return;}const ff=e.target.closest('[data-findfor]');if(ff){openLaneFinder(ff.dataset.findfor);return;}const s=e.target.closest('[data-slot]');if(s){openSuggestModal(s.dataset.slot);}});
+$('#backlogGrid').addEventListener('click',e=>{const b=e.target.closest('[data-suggest]');if(b){e.stopPropagation();openSuggestModal(b.dataset.suggest);}});
+
+// ---------- driver messaging (threads + inbox) ----------
+const msgPanel=$('#msgPanel');
+function seedMessages(){D.drivers.forEach((dr,i)=>{if(dr.msgs)return;const cur=D.loads.find(l=>l.driverId===dr.id&&l.status!=='completed');const loc=cur?cityShort(cur.to):'the yard';dr.msgs=dr.status==='active'?[{from:'driver',text:`Rolling toward ${loc}, on schedule.`,mins:44-i*4},{from:'disp',text:'Copy. Send a POD when you deliver.',mins:40-i*4}]:[{from:'driver',text:'Starting my 34h restart. Back Sunday.',mins:300}];dr.unread=dr.status==='active'&&i%3===0?1:0;});}
+function updateMsgBadge(){const u=D.drivers.reduce((a,d)=>a+(d.unread||0),0),el=$('#msgBadge');el.textContent=u;el.style.display=u?'grid':'none';}
+function openMsg(driverId){const dr=driverById[driverId];if(!dr)return;dr.unread=0;dr.msgs=dr.msgs||[];const C=COLORS[dr.color]||COLORS.blue;
+  const thread=dr.msgs.map(m=>`<div class="max-w-[82%] px-3 py-2 rounded-xl text-[12px] leading-snug ${m.from==='disp'?'self-end bg-blue-600 text-white rounded-br-sm':'self-start bg-slate-800 text-slate-100 rounded-bl-sm'}">${esc(m.text)}<div class="text-[9px] opacity-70 mt-0.5 font-mono">${m.from==='disp'?'You':dr.name.split(' ')[0]} · ${m.mins?m.mins+'m ago':'now'}</div></div>`).join('')||'<div class="text-slate-500 text-[11px] text-center mt-6 font-mono">No messages yet.</div>';
+  msgPanel.innerHTML=`<div class="px-4 py-3 border-b border-slate-800 flex items-center gap-3"><button id="msgBack" class="text-slate-400 hover:text-white text-xs font-mono">◀</button><div class="h-8 w-8 rounded-lg ${C.av} border grid place-items-center text-[11px] font-bold font-mono">${initials(dr.name)}</div><div class="min-w-0 flex-1"><div class="text-xs font-bold text-white">${esc(dr.name)}</div><div class="text-[10px] text-slate-400 font-mono truncate">${esc(dr.sub)} · CSA ${dr.csa}${dr.overdue?` · <span class="text-red-400">⚠ medical ${dr.medDays<0?'expired':'due '+dr.medDays+'d'}</span>`:''} · 📞 ${dr.lastCall.mins}m · ${esc(dr.tele.t)}</div></div><button id="msgX" class="text-slate-400 hover:text-white text-sm">✕</button></div>
+    <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-2" id="msgThread">${thread}</div>
+    <div class="px-4 pt-2 flex gap-1.5 flex-wrap">${['ETA?','Send POD','Call me','Fuel stop OK','Reefer temp?','Scale ticket'].map(q=>`<button data-q="${q}" class="text-[10px] border border-slate-700 bg-[#020409] rounded-full px-2.5 py-1 text-slate-300 hover:border-slate-500 font-mono">${q}</button>`).join('')}</div>
+    <div class="p-4 border-t border-slate-800 flex gap-2"><input id="msgInput" class="ed-in flex-1" placeholder="Message ${esc(dr.name.split(' ')[0])}… (Motive / driver app)"/><button id="msgSend" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 rounded-lg">Send</button></div>`;
+  msgPanel.classList.remove('translate-x-full');$('#msgX').onclick=closeMsg;$('#msgBack').onclick=openInbox;
+  const send=txt=>{if(!txt||!txt.trim())return;const rg=state.region;dr.msgs.push({from:'disp',text:txt,mins:0});openMsg(driverId);setTimeout(()=>{if(state.region!==rg)return;dr.msgs.push({from:'driver',text:['10-4.','On it.','Copy that.','Will do — thanks.','ETA holds, traffic light.'][hsh(txt+dr.id)%5],mins:0});dr.lastCall={loc:cityShort(dr.loc),mins:0};dr.callDue=false;if(!msgPanel.classList.contains('translate-x-full')&&msgPanel.querySelector('#msgThread'))openMsg(driverId);else{dr.unread=(dr.unread||0)+1;updateMsgBadge();render();}},1500);};
+  $('#msgSend').onclick=()=>send($('#msgInput').value);$('#msgInput').addEventListener('keydown',e=>{if(e.key==='Enter')send(e.target.value);});msgPanel.querySelectorAll('[data-q]').forEach(b=>b.onclick=()=>send(b.dataset.q));
+  const th=$('#msgThread');if(th)th.scrollTop=99999;updateMsgBadge();render();}
+function openInbox(){const items=D.drivers.map(dr=>{const C=COLORS[dr.color]||COLORS.blue;return `<div class="flex items-center gap-3 px-4 py-2.5 border-b border-slate-800/80 cursor-pointer hover:bg-slate-800/40" data-inbox="${dr.id}"><div class="h-8 w-8 rounded-lg ${C.av} border grid place-items-center text-[11px] font-bold font-mono shrink-0">${initials(dr.name)}</div><div class="flex-1 min-w-0"><div class="text-xs font-bold text-white">${esc(dr.name)} <span class="text-[9px] text-slate-500 font-normal font-mono">${esc(dr.loc)}</span></div><div class="text-[10px] text-slate-400 truncate font-mono">${dr.msgs&&dr.msgs.length?esc(dr.msgs[dr.msgs.length-1].text):'No messages'}</div></div>${dr.unread?`<span class="min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[9px] font-black grid place-items-center">${dr.unread}</span>`:''}</div>`;}).join('');
+  msgPanel.innerHTML=`<div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between"><b class="text-xs text-white font-mono">💬 Driver Messages · ${D.drivers.reduce((a,d)=>a+(d.unread||0),0)} unread</b><button id="msgX" class="text-slate-400 hover:text-white text-sm">✕</button></div><div class="overflow-y-auto flex-1">${items}</div>`;
+  msgPanel.classList.remove('translate-x-full');$('#msgX').onclick=closeMsg;msgPanel.querySelectorAll('[data-inbox]').forEach(it=>it.onclick=()=>openMsg(it.dataset.inbox));}
+function closeMsg(){msgPanel.classList.add('translate-x-full');}
+$('#msgBtn').onclick=openInbox;
+
+// ---------- GPS telemetry radar (schematic network map) ----------
+const MW=1000,MH=520;
+function renderMap(){const[LON0,LON1,LAT0,LAT1]=D.box;const px=lo=>(lo-LON0)/(LON1-LON0)*MW,py=la=>(LAT1-la)/(LAT1-LAT0)*MH;const CITY=D.cities;
+  const dayLoads=D.loads.filter(t=>dayIdx(t.start)<state.dayOffset+state.days&&dayIdx(t.end)>=state.dayOffset);let routes='',pins='',cities='';const used=new Set();dayLoads.forEach(t=>{used.add(t.from);used.add(t.to);});D.drivers.forEach(d=>used.add(d.locCity));
+  used.forEach(name=>{const c=CITY[name];if(!c)return;cities+=`<circle cx="${px(c[0])}" cy="${py(c[1])}" r="3" fill="#64748b"/><text x="${px(c[0])+6}" y="${py(c[1])+3}" fill="#94a3b8" font-size="10" font-family="Inter">${esc(cityShort(name))}</text>`;});
+  dayLoads.forEach(t=>{const a=CITY[t.from],b=CITY[t.to];if(!a||!b)return;const x1=px(a[0]),y1=py(a[1]),x2=px(b[0]),y2=py(b[1]),mx=(x1+x2)/2+(y2-y1)*0.12,my=(y1+y2)/2-(x2-x1)*0.12,col=(STATUS[t.status]||STATUS.pending).c;routes+=`<path d="M${x1},${y1} Q${mx},${my} ${x2},${y2}" fill="none" stroke="${col}" stroke-width="${t.status==='completed'?1.5:2.6}" stroke-dasharray="${t.status==='completed'?'4 4':t.status==='tendered'?'6 3':''}" opacity=".85" stroke-linecap="round"/>`;
+    if(t.status==='in_progress'&&t.pct){const tt=t.pct,qx=(1-tt)*(1-tt)*x1+2*(1-tt)*tt*mx+tt*tt*x2,qy=(1-tt)*(1-tt)*y1+2*(1-tt)*tt*my+tt*tt*y2;pins+=`<g class="veh-pin cursor-pointer" data-id="${t.id}"><circle cx="${qx}" cy="${qy}" r="11" fill="${col}" opacity=".25"><animate attributeName="r" values="9;16;9" dur="2s" repeatCount="indefinite"/></circle><circle cx="${qx}" cy="${qy}" r="8" fill="${col}" stroke="#fff" stroke-width="2"/><text x="${qx}" y="${qy+3}" text-anchor="middle" font-size="9">🚚</text><text x="${qx+12}" y="${qy-8}" fill="#e2e8f0" font-size="10" font-family="JetBrains Mono" font-weight="700">${t.id} · ${driverById[t.driverId]?esc(driverById[t.driverId].name.split(' ')[0]):''}</text></g>`;}
+    pins+=`<circle class="veh-pin cursor-pointer" data-id="${t.id}" cx="${x2}" cy="${y2}" r="4.5" fill="${col}" stroke="#fff" stroke-width="1.5"/>`;});
+  D.drivers.forEach(d=>{if(D.loads.some(l=>l.driverId===d.id&&l.status==='in_progress'))return;const c=CITY[d.locCity];if(!c)return;const col=lockoutOf(d.id)?'#ef4444':'#94a3b8';pins+=`<g data-fleet="${d.id}" class="cursor-pointer"><rect x="${px(c[0])-7}" y="${py(c[1])-7}" width="14" height="14" rx="3" fill="${col}" opacity=".9"/><text x="${px(c[0])}" y="${py(c[1])+3.5}" text-anchor="middle" font-size="8" fill="#0f172a" font-weight="800" font-family="JetBrains Mono">${initials(d.name)}</text></g>`;});
+  const tele=D.drivers.map(d=>{const rl=trailerById[d.trailerId];const C=COLORS[d.color]||COLORS.blue;return `<tr data-fleet="${d.id}" class="cursor-pointer"><td class="font-bold text-white">${esc(d.name)}</td><td class="text-slate-300">${esc(d.loc)}</td><td class="${C.text} font-bold">${esc(d.tele.t)}</td><td class="text-slate-400">${rl?rl.unit+' '+rl.type:'—'}${d.reefer?` · <span class="text-cyan-300">${d.reefer.cur}°F / set ${d.reefer.set}°F</span>`:''}</td><td class="text-slate-400">${TERM.drv} ${hrs(d.hosDrive)}</td><td class="text-slate-500">📞 ${d.lastCall.mins}m</td></tr>`;}).join('');
+  $('#mapView').innerHTML=`<div class="flex items-center justify-between pb-2 border-b border-slate-800 text-xs"><div class="font-bold text-white">🗺️ GPS Telemetry Radar <span class="text-[10px] text-slate-500 font-mono font-normal">schematic ${state.region} network · ${dayLoads.length} legs in view · real build → Mapbox / Leaflet + OSM tiles + Motive ELD pings</span></div><div class="text-[10px] font-mono text-slate-400 flex gap-3">${Object.values(STATUS).map(s=>`<span class="flex items-center gap-1"><span class="inline-block w-3 h-[3px] rounded" style="background:${s.c}"></span>${s.label}</span>`).join('')}<span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-slate-400"></span>Idle unit</span></div></div>
+    <svg viewBox="0 0 ${MW} ${MH}" width="100%" class="block mt-2 rounded-lg" style="background:#020409"><defs><pattern id="g" width="50" height="50" patternUnits="userSpaceOnUse"><path d="M50 0H0V50" fill="none" stroke="rgba(255,255,255,.04)" stroke-width="1"/></pattern></defs><rect width="${MW}" height="${MH}" fill="url(#g)"/>${routes}${cities}${pins}</svg>
+    <div class="mt-3 overflow-x-auto"><table class="mtable w-full font-mono"><thead><tr><th>Unit</th><th>Position</th><th>Telemetry</th><th>Trailer / Reefer</th><th>Clocks</th><th>Check-call</th></tr></thead><tbody>${tele}</tbody></table></div>`;
+  $('#mapView').querySelectorAll('.veh-pin').forEach(p=>p.addEventListener('click',()=>{setView('board');selectLeg(p.dataset.id);jumpToTrip(p.dataset.id);}));
+  $('#mapView').querySelectorAll('[data-fleet]').forEach(p=>p.addEventListener('click',()=>showFleetInfo(p.dataset.fleet)));}
+
+// ---------- market intelligence ----------
+function renderMarket(){const U=E().unit;const byO={};D.loads.concat(D.backlog).forEach(l=>{const c=l.from;(byO[c]=byO[c]||{loads:0,rev:0,dist:0});byO[c].loads++;byO[c].rev+=l.rate||0;byO[c].dist+=l.dist||0;});
+  const rows=Object.entries(byO).map(([c,m])=>({c,loads:m.loads,rpm:m.dist?m.rev/m.dist:0,ratio:(m.loads*1.7).toFixed(1)})).sort((a,b)=>b.loads-a.loads);const maxL=Math.max(1,...rows.map(r=>r.loads));const temp=r=>r.loads>=3?'hot':r.loads>=2?'warm':'cold',tl={hot:'🔥 Hot',warm:'Balanced',cold:'❄ Soft'},tc={hot:'bg-orange-500/20 text-orange-300',warm:'bg-amber-500/20 text-amber-300',cold:'bg-sky-500/20 text-sky-300'};
+  const idleTr=D.trailers.filter(t=>t.status==='idle').length,idleTk=D.tractors.filter(t=>t.status!=='shop'&&!D.drivers.some(d=>d.tractorId===t.id)).length,openDr=D.drivers.filter(d=>!lockoutOf(d.id)&&!D.loads.some(l=>l.driverId===d.id&&l.status!=='completed')).length;const hot=rows.filter(r=>temp(r)==='hot').map(r=>cityShort(r.c));
+  const lanes=D.equip.map(t=>{const mine=D.loads.filter(l=>l.trailerType===t);const my=mine.length?mine.reduce((a,l)=>a+l.rate,0)/mine.reduce((a,l)=>a+l.dist,0):0;const mkt=MKT[state.region][t];return `<tr><td><span style="color:${EQ_COLORS[t]}">${EQ_ICON[t]} ${t}</span></td><td class="num">${mine.length}</td><td class="num">${my?money2(my):'—'}</td><td class="num">${money2(mkt)}</td><td class="num ${my>=mkt?'text-emerald-400':'text-red-400'}">${my?(my>=mkt?'+':'')+Math.round((my-mkt)/mkt*100)+'%':'—'}</td><td class="num">${money2(mkt+(hsh(t)%20-8)/100)}</td></tr>`;}).join('');
+  $('#marketView').innerHTML=`<div class="pb-2 border-b border-slate-800"><div class="text-sm font-bold text-white">📈 Market Intelligence</div><div class="text-[11px] text-slate-400 font-mono">Where the freight is, what it pays, and where to reposition idle capacity. Spot benchmarks illustrative (DAT / Truckstop feed in the real build).</div></div>
+    <div class="grid grid-cols-1 xl:grid-cols-2 gap-5 mt-3"><div><div class="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-1">Origin markets</div><table class="mtable w-full font-mono"><thead><tr><th>Origin market</th><th class="num">Loads out</th><th>Rate/${U}</th><th class="num">Load:truck</th><th>Market</th></tr></thead><tbody>${rows.map(r=>`<tr><td class="text-white">${esc(r.c)}</td><td class="num">${r.loads}</td><td><div class="flex items-center gap-2"><span>${money2(r.rpm)}</span><div class="h-1.5 rounded bg-blue-500/70" style="width:${Math.round(r.loads/maxL*80)+20}px"></div></div></td><td class="num">${r.ratio}:1</td><td><span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${tc[temp(r)]}">${tl[temp(r)]}</span></td></tr>`).join('')}</tbody></table></div>
+    <div><div class="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-1">Reposition idle capacity</div><div class="p-3 rounded-lg bg-[#020409] border border-slate-800 text-[12px] leading-relaxed text-slate-300">${idleTk} bobtail ${TERM.tractor.toLowerCase()}${idleTk!==1?'s':''} · ${idleTr} dropped ${TERM.trailer.toLowerCase()}${idleTr!==1?'s':''} · ${openDr} open ${TERM.driver.toLowerCase()}${openDr!==1?'s':''} sitting.<br><br>${hot.length?`Hot markets pulling freight: <b class="text-orange-300">${hot.join(', ')}</b>.<br>↳ Deadhead idle equipment toward <b class="text-white">${hot[0]}</b> — highest load-to-truck ratio, rates at <b>${money2(rows[0].rpm)}/${U}</b> vs the ${money2(MKT[state.region][D.equip[0]])} market floor.`:'Balanced network — hold capacity in place.'}</div>
+      <div class="text-[10px] uppercase tracking-wider text-slate-400 font-bold mt-4 mb-1">Rate benchmark by equipment</div><table class="mtable w-full font-mono"><thead><tr><th>Equipment</th><th class="num">My loads</th><th class="num">My ${E().cur}/${U}</th><th class="num">Spot</th><th class="num">vs spot</th><th class="num">7-day fcst</th></tr></thead><tbody>${lanes}</tbody></table></div></div>`;}
+
+// ---------- settlements & invoicing ----------
+function renderMoney(){const L=D.loads,U=E().unit;const rev=L.reduce((a,l)=>a+(l.rate||0),0),pay=L.reduce((a,l)=>a+(l.pay||0),0),fuel=L.reduce((a,l)=>a+(l.fuel||0),0),ovh=L.reduce((a,l)=>a+(l.ovh||0),0),net=rev-pay-fuel-ovh;
+  const byD={};L.forEach(l=>{if(!l.driverId)return;const d=byD[l.driverId]=byD[l.driverId]||{loads:0,dist:0,pay:0,det:0};d.loads++;d.dist+=l.dist||0;d.pay+=l.pay||0;if(l.detention)d.det+=150;});
+  const byC={};L.forEach(l=>{const c=l.broker||l.consignee||l.to;const x=byC[c]=byC[c]||{loads:0,amt:0,fsc:0,pod:0};x.loads++;x.amt+=l.rate||0;x.fsc+=l.fsc||0;if((l.checks||[]).find(k=>k.k==='POD')?.ok)x.pod++;});
+  const card=(cls,n,l)=>`<div class="rounded-lg border ${cls} px-3 py-2"><div class="text-base font-bold font-mono text-white">${n}</div><div class="text-[10px] uppercase tracking-wider text-slate-400">${l}</div></div>`;
+  $('#moneyView').innerHTML=`<div class="pb-2 border-b border-slate-800"><div class="text-sm font-bold text-white">💵 Settlements &amp; Invoicing</div><div class="text-[11px] text-slate-400 font-mono">Revenue in, driver pay + fuel + overhead out, net to the carrier. Same cost model as the drawer (${money2(E().diesel)} diesel · ${money2(E().pay)}/${U} pay · ${money2(E().overhead)}/${U} overhead).</div></div>
+    <div class="grid grid-cols-2 lg:grid-cols-5 gap-2.5 mt-3">${card('border-emerald-500/30 bg-emerald-950/20',money(rev),'Revenue')}${card('border-blue-500/30 bg-[#020409]',money(pay),'Driver pay')}${card('border-amber-500/30 bg-[#020409]',money(fuel),'Fuel')}${card('border-slate-700 bg-[#020409]',money(ovh),'Fixed overhead')}${card('border-emerald-500/40 bg-emerald-950/30',money(net)+' <span class="text-xs text-emerald-400">'+Math.round(rev?net/rev*100:0)+'%</span>','Net to carrier')}</div>
+    <div class="grid grid-cols-1 xl:grid-cols-2 gap-5 mt-4"><div><div class="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-1">Driver settlements (weekly)</div><table class="mtable w-full font-mono"><thead><tr><th>${TERM.driver}</th><th class="num">Loads</th><th class="num">${U}</th><th class="num">Line pay</th><th class="num">Detention</th><th class="num">Gross</th></tr></thead><tbody>${Object.entries(byD).map(([id,m])=>`<tr><td class="text-white">${esc(driverById[id]?.name||id)}${driverById[id]?.subcon?' <span class="text-[9px] text-orange-300">'+esc(driverById[id].subcon)+'</span>':''}</td><td class="num">${m.loads}</td><td class="num">${Math.round(m.dist).toLocaleString()}</td><td class="num">${money(m.pay)}</td><td class="num text-emerald-400">${m.det?'+'+money(m.det):'—'}</td><td class="num text-white font-bold">${money(m.pay+m.det)}</td></tr>`).join('')}</tbody></table></div>
+    <div><div class="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-1">Customer / broker invoices</div><table class="mtable w-full font-mono"><thead><tr><th>Bill-to</th><th class="num">Loads</th><th class="num">Linehaul</th><th class="num">FSC</th><th class="num">POD ready</th><th class="num">Amount</th></tr></thead><tbody>${Object.entries(byC).sort((a,b)=>b[1].amt-a[1].amt).slice(0,10).map(([c,m])=>`<tr><td class="text-white">${esc(c)}</td><td class="num">${m.loads}</td><td class="num">${money(m.amt-m.fsc)}</td><td class="num">${money(m.fsc)}</td><td class="num ${m.pod===m.loads?'text-emerald-400':'text-amber-400'}">${m.pod}/${m.loads}</td><td class="num text-white font-bold">${money(m.amt)}</td></tr>`).join('')}</tbody></table><div class="text-[10px] text-slate-500 font-mono mt-2">Invoices release when POD is checked on the leg (Transport Checklists). Factoring: net-30 → 2.5% quick-pay available.</div></div></div>`;}
+
+// ---------- fuel & IFTA ----------
+function renderFuel(){const diesel=E().diesel,L=D.loads,U=E().unit,miles=L.reduce((a,l)=>a+(l.dist||0),0);const card=(cls,n,l)=>`<div class="rounded-lg border ${cls} px-3 py-2"><div class="text-base font-bold font-mono text-white">${n}</div><div class="text-[10px] uppercase tracking-wider text-slate-400">${l}</div></div>`;let body;
+  if(state.region==='US'){const gal=miles/E().mpg,spend=gal*diesel;const byState={};L.forEach(l=>{const so=l.from.split(', ')[1]||'?',sd=l.to.split(', ')[1]||'?',half=(l.dist||0)/2;byState[so]=(byState[so]||0)+half;byState[sd]=(byState[sd]||0)+half;});
+    const rows=Object.entries(byState).map(([s,mi])=>{const g=mi/E().mpg,rate=STATE_TAX[s]||.30;return{s,mi,g,rate,tax:g*rate};}).sort((a,b)=>b.mi-a.mi);const totalTax=rows.reduce((a,r)=>a+r.tax,0);const fsc=L.reduce((a,l)=>a+(l.fsc||0),0);
+    body=`<div class="grid grid-cols-2 lg:grid-cols-5 gap-2.5 mt-3">${card('border-amber-500/30 bg-[#020409]',Math.round(gal).toLocaleString(),'Gallons burned')}${card('border-emerald-500/30 bg-[#020409]',money(spend),'Fuel spend')}${card('border-blue-500/30 bg-[#020409]',E().mpg,'Fleet MPG')}${card('border-emerald-500/30 bg-emerald-950/20',money(fsc),'FSC recovered')}${card('border-amber-500/40 bg-amber-950/20',money(totalTax),'IFTA due · qtr')}</div>
+      <div class="text-[10px] uppercase tracking-wider text-slate-400 font-bold mt-4 mb-1">IFTA — miles &amp; fuel tax by jurisdiction</div><div class="text-[11px] text-slate-500 font-mono mb-2">Miles apportioned per state (half origin / half destination — real build uses ELD GPS breadcrumbs), taxable gallons at ${E().mpg} MPG, taxed at each state's diesel rate.</div>
+      <table class="mtable w-full font-mono"><thead><tr><th>State</th><th class="num">Miles</th><th class="num">Taxable gal</th><th class="num">$/gal</th><th class="num">Tax owed</th><th>Share</th></tr></thead><tbody>${rows.map(r=>`<tr><td class="text-white font-bold">${r.s}</td><td class="num">${Math.round(r.mi).toLocaleString()}</td><td class="num">${Math.round(r.g).toLocaleString()}</td><td class="num">$${r.rate.toFixed(3)}</td><td class="num text-amber-300">${money(r.tax)}</td><td><div class="h-1.5 rounded bg-amber-500/70" style="width:${Math.round(r.mi/rows[0].mi*100)}%"></div></td></tr>`).join('')}</tbody></table>`;
+  }else{const litres=miles*E().lp100/100,spend=litres*diesel,toll=miles*0.25,lsva=miles*0.03*40;body=`<div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 mt-3">${card('border-amber-500/30 bg-[#020409]',Math.round(litres).toLocaleString()+' L','Diesel litres')}${card('border-emerald-500/30 bg-[#020409]',money(spend),'Fuel spend')}${card('border-blue-500/30 bg-[#020409]',E().lp100+' L/100km','Fleet consumption')}${card('border-amber-500/40 bg-amber-950/20',money(toll+lsva),'LSVA / tolls')}</div><div class="text-[11px] text-slate-500 font-mono mt-3">EU: fuel + distance-based heavy-vehicle charge (LSVA / Maut / vignette). IFTA is a US &amp; Canada fuel-tax agreement — not applicable here.</div>`;}
+  $('#fuelView').innerHTML=`<div class="pb-2 border-b border-slate-800"><div class="text-sm font-bold text-white">⛽ Fuel &amp; IFTA</div><div class="text-[11px] text-slate-400 font-mono">Diesel ${money2(diesel)}${E().dieselUnit} live · fuel surcharge (FSC ${money2(E().fscRate)}/${U}) baked into every leg rate · illustrative.</div></div>${body}`;}
+
+// ---------- compliance & maintenance ----------
+function renderCompliance(){const issues=complianceIssues();const sevCls={red:'border-red-500/40 bg-red-950/20 text-red-300',amber:'border-amber-500/40 bg-amber-950/20 text-amber-300',slate:'border-slate-700 bg-[#020409] text-slate-300'};
+  const cnt=s=>issues.filter(i=>i.sev===s).length;const card=(cls,n,l)=>`<div class="rounded-lg border ${cls} px-3 py-2"><div class="text-base font-bold font-mono">${n}</div><div class="text-[10px] uppercase tracking-wider opacity-80">${l}</div></div>`;
+  const drv=D.drivers.map(d=>{const lo=lockoutOf(d.id);return `<tr data-fleet="${d.id}" class="cursor-pointer"><td class="text-white font-bold">${esc(d.name)}${d.subcon?' <span class="text-[9px] text-orange-300">'+esc(d.subcon)+'</span>':''}</td><td><span class="px-1.5 rounded text-[9px] font-bold border ${lo?PILL.red:d.status==='active'?PILL.emerald:PILL.amber}">${lo?'LOCKOUT':d.status.toUpperCase()}</span></td><td class="${d.medDays<0?'text-red-400 font-bold':d.medDays<30?'text-amber-400 font-bold':'text-emerald-400'}">${esc(d.medCard)}${d.medDays<30?' ('+d.medDays+'d)':''}</td><td class="${d.csa<70?'text-amber-400 font-bold':'text-emerald-400'}">${d.csa}</td><td class="${d.cycLeft<5?'text-red-400 font-bold':'text-slate-300'}">${d.cycLeft.toFixed(1)}h / ${TERM.cycMax}h</td><td class="text-slate-300">${hrs(d.hosDrive)}</td><td>${d.hazmat?'<span class="text-violet-300">☣ ✓</span>':'—'}</td><td class="text-slate-400">${d.lastCall.mins}m${d.callDue?' <span class="text-red-400">DUE</span>':''}</td></tr>`;}).join('');
+  const trk=D.tractors.map(t=>{const d=D.drivers.find(x=>x.tractorId===t.id);const soon=/Aug 30, 2026|Aug 2026|Sep 20, 2026/.test(t.dot);return `<tr><td class="text-white font-bold">#${t.unit}</td><td class="text-slate-300">${esc(t.make)} · ${t.cab}</td><td><span class="px-1.5 rounded text-[9px] font-bold border ${t.status==='shop'?PILL.purple:PILL.emerald}">${t.status.toUpperCase()}</span></td><td class="${soon?'text-amber-400 font-bold':'text-emerald-400'}">${esc(t.dot)}</td><td class="${t.pmMiles>0&&t.pmMiles<500?'text-amber-400 font-bold':'text-slate-300'}">${t.pmMiles?t.pmMiles.toLocaleString()+' '+E().unit:'in shop'}</td><td class="text-slate-400">${d?esc(d.name):'— bobtail —'}</td></tr>`;}).join('');
+  const trl=D.trailers.map(r=>{const d=D.drivers.find(x=>x.trailerId===r.id);return `<tr><td class="text-white font-bold">${r.unit}</td><td><span style="color:${EQ_COLORS[r.type]}">${EQ_ICON[r.type]} ${r.type}</span> ${r.len||''}</td><td><span class="px-1.5 rounded text-[9px] font-bold border ${r.regExpired?PILL.red:r.status==='idle'?PILL.slate:PILL.cyan}">${r.regExpired?'REG EXPIRED':r.status==='idle'?'DROPPED':'HOOKED'}</span></td><td class="${r.regExpired?'text-red-400 font-bold':'text-emerald-400'}">${esc(r.reg)}</td><td class="text-slate-400">${esc(r.feat||'—')}</td><td class="text-slate-400">${d?esc(d.name):(r.yard?'🏗 '+esc(cityShort(r.yard)):'—')}</td></tr>`;}).join('');
+  $('#compView').innerHTML=`<div class="pb-2 border-b border-slate-800"><div class="text-sm font-bold text-white">🛡️ Compliance &amp; Maintenance</div><div class="text-[11px] text-slate-400 font-mono">${TERM.reg} gates the dispatch engine: anything red here is hard-blocked on the board; amber is warned in ⚡ Suggest.</div></div>
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 mt-3">${card(sevCls.red,cnt('red'),'Critical · hard blocks')}${card(sevCls.amber,cnt('amber'),'Warnings · due soon')}${card(sevCls.slate,cnt('slate'),'Info · unavailable')}${card('border-emerald-500/40 bg-emerald-950/20 text-emerald-300',hosViolations(),'HOS violations planned')}</div>
+    <div class="mt-3 flex flex-col gap-1.5">${issues.map(i=>`<div class="flex items-center gap-3 px-3 py-2 rounded-lg border text-[11px] font-mono ${sevCls[i.sev]}"><span class="font-black">${i.sev==='red'?'⛔':i.sev==='amber'?'⚠':'ℹ'}</span><span class="font-bold text-white w-32 truncate">${esc(i.unit)}</span><span class="w-44">${esc(i.kind)}</span><span class="flex-1 opacity-90">${esc(i.detail)}</span></div>`).join('')||'<div class="text-slate-500 text-xs font-mono">All clear.</div>'}</div>
+    <div class="text-[10px] uppercase tracking-wider text-slate-400 font-bold mt-5 mb-1">${TERM.driver}s</div><table class="mtable w-full font-mono"><thead><tr><th>${TERM.driver}</th><th>Status</th><th>Medical card</th><th>CSA</th><th>${TERM.cyc} left</th><th>${TERM.drv} left</th><th>Hazmat</th><th>Check-call</th></tr></thead><tbody>${drv}</tbody></table>
+    <div class="grid grid-cols-1 xl:grid-cols-2 gap-5 mt-5"><div><div class="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-1">${TERM.tractor}s</div><table class="mtable w-full font-mono"><thead><tr><th>Unit</th><th>Make</th><th>Status</th><th>Annual DOT</th><th>Next PM</th><th>${TERM.driver}</th></tr></thead><tbody>${trk}</tbody></table></div><div><div class="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-1">${TERM.trailer}s</div><table class="mtable w-full font-mono"><thead><tr><th>Unit</th><th>Type</th><th>Status</th><th>Registration</th><th>Features</th><th>With</th></tr></thead><tbody>${trl}</tbody></table></div></div>`;
+  $('#compView').querySelectorAll('[data-fleet]').forEach(p=>p.addEventListener('click',()=>showFleetInfo(p.dataset.fleet)));}
+
+// ---------- controls ----------
+const SEG_ON='px-2 py-1 rounded font-bold text-white bg-slate-800',SEG_OFF='px-2 py-1 rounded text-slate-400 hover:text-white';
+function segSet(id,attr,val){$(id).querySelectorAll('button').forEach(b=>{b.className=b.dataset[attr]===val?SEG_ON:SEG_OFF;});}
+function buildGroupSeg(){$('#groupSeg').innerHTML=`<button data-group="driver">${TERM.driver}</button><button data-group="tractor">${TERM.tractor}</button><button data-group="trailer">${TERM.trailer}</button>`;segSet('#groupSeg','group',state.groupBy);}
+function buildEquipSel(){$('#equipSel').innerHTML=`<option value="all">All equipment</option>`+D.equip.map(t=>`<option value="${t}">${EQ_ICON[t]} ${t}</option>`).join('');$('#equipSel').value=state.equip;}
+function refreshView(){if(state.view==='map')renderMap();else if(state.view==='market')renderMarket();else if(state.view==='money')renderMoney();else if(state.view==='fuel')renderFuel();else if(state.view==='comp')renderCompliance();}
+function setView(v){state.view=v;$('#viewSeg').querySelectorAll('button').forEach(b=>{b.className=b.dataset.view===v?'px-2.5 py-1 rounded font-bold text-white bg-slate-800 shadow':'px-2.5 py-1 rounded text-slate-400 hover:text-white transition';});
+  ['board','map','market','money','fuel','comp'].forEach(k=>$('#'+k+'View').classList.toggle('hidden',k!==v));$('#toolbar').style.display=v==='board'?'':'none';$('#detailDrawer').style.display=v==='board'?'':'none';refreshView();}
+function switchRegion(rg){closeDrawer();closeMsg();closeSuggestModal();state.region=rg;state.dayOffset=0;state.equip='all';state.filter='all';state.search='';$('#spotInput').value='';bind();buildGroupSeg();buildEquipSel();segSet('#regionSeg','region',rg);
+  $('#chips').querySelectorAll('.chip').forEach(c=>c.className='chip px-2.5 py-0.5 rounded-full border '+(c.dataset.filter==='all'?'border-blue-500 bg-blue-600 text-white font-bold':'border-slate-700 bg-[#020409] text-slate-300 hover:border-slate-500'));
+  $('#chips button[data-filter="in_progress"]').textContent=TERM.rolling;$('#hazBtn').textContent='☣ '+TERM.placard+': '+(state.hazLoud?'loud':'subtle');render();refreshView();}
+$('#regionSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(b&&b.dataset.region!==state.region)switchRegion(b.dataset.region);});
+$('#viewSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setView(b.dataset.view);});
+$('#groupSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;state.groupBy=b.dataset.group;segSet('#groupSeg','group',state.groupBy);render();});
+$('#daySeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;state.days=+b.dataset.days;segSet('#daySeg','days',b.dataset.days);const px={1:60,3:22,5:14,7:11}[state.days];state.pxPerHour=px;$('#zoomSlider').value=px;render();refreshView();});
+$('#densSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;state.density=b.dataset.den;$('#densSeg').querySelectorAll('button').forEach(x=>x.className=x===b?'px-2 py-0.5 rounded font-bold text-white bg-slate-800':'px-2 py-0.5 rounded text-slate-400 hover:text-white');render();});
+$('#prevDay').onclick=()=>{state.dayOffset=Math.max(-1,state.dayOffset-1);render();refreshView();};
+$('#nextDay').onclick=()=>{state.dayOffset=Math.min(5,state.dayOffset+1);render();refreshView();};
+$('#zoomSlider').addEventListener('input',e=>{state.pxPerHour=+e.target.value;render();});
+$('#equipSel').addEventListener('change',e=>{state.equip=e.target.value;render();});
+$('#hazBtn').onclick=()=>{state.hazLoud=!state.hazLoud;$('#hazBtn').textContent='☣ '+TERM.placard+': '+(state.hazLoud?'loud':'subtle');$('#hazBtn').classList.toggle('border-orange-500',state.hazLoud);$('#hazBtn').classList.toggle('text-orange-300',state.hazLoud);render();};
+$('#marginBtn').onclick=()=>{state.marginView=!state.marginView;$('#marginBtn').classList.toggle('border-emerald-500',state.marginView);$('#marginBtn').classList.toggle('text-emerald-300',state.marginView);render();};
+function scrollToNow(){const nx=dateToX(NOW);if(nx===null){state.dayOffset=0;render();}const sc=$('#boardScroll');sc.scrollTo({left:Math.max(0,(dateToX(NOW)||0)-200),behavior:'smooth'});}
+$('#nowBtn').onclick=scrollToNow;
+$('#chips').addEventListener('click',e=>{const b=e.target.closest('.chip');if(!b)return;state.filter=b.dataset.filter;$('#chips').querySelectorAll('.chip').forEach(x=>x.className='chip px-2.5 py-0.5 rounded-full border '+(x===b?(x.dataset.filter==='haz'?'border-orange-500 bg-orange-600 text-white font-bold':x.dataset.filter==='conflict'?'border-red-500 bg-red-600 text-white font-bold':x.dataset.filter==='tendered'?'border-purple-500 bg-purple-600 text-white font-bold':'border-blue-500 bg-blue-600 text-white font-bold'):'border-slate-700 bg-[#020409] text-slate-300 hover:border-slate-500'));render();});
+const spotInput=$('#spotInput');spotInput.addEventListener('input',e=>{state.search=e.target.value.trim();render();});
+function clearSpot(){spotInput.value='';state.search='';render();}
+document.addEventListener('keydown',e=>{const typing=/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName);
+  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();spotInput.focus();spotInput.select();return;}
+  if(e.key==='Escape'){closeSuggestModal();closeFleetModal();closeNewLegModal();closeMsg();notifPanel.classList.add('hidden');notifPanel.classList.remove('flex');hidePop();if(typing)document.activeElement.blur();return;}
+  if(e.key===' '&&!typing){e.preventDefault();if(state.view!=='board')setView('board');scrollToNow();}});
+setInterval(()=>{const d=new Date(NOW.getTime()+(Date.now()-BOOT));$('#clock').textContent=d.toTimeString().slice(0,8)+' CST';},1000);const BOOT=Date.now();
+
+// ---------- live feed (ELD pings · check calls · reefer telemetry · inbound tenders · lock releases) ----------
+const disp=['M. Keller','S. Rivera','you','A. Brunner','Dispatch #2'];
+function feedTick(){const pool=D.loads.filter(t=>(t.status==='assigned'||t.status==='in_progress')&&t.end>NOW);if(pool.length){const t=pool[Math.floor(Math.random()*pool.length)],who=disp[Math.floor(Math.random()*disp.length)];const dr=driverById[t.driverId];if(dr){dr.lastCall={loc:cityShort(dr.loc||t.from),mins:0};dr.callDue=false;}
+    const opts=[()=>{if(t.status==='in_progress'){t.pct=Math.min(.95,(t.pct||.1)+.12);}return[`${t.id} ELD ping`,`${cityShort(t.from)} → ${cityShort(t.to)} · ${Math.round((t.pct||0)*100)}% · ${who}`];},()=>[`${t.id} ETA revised`,`~${fmt(new Date(t.end.getTime()+900000))} · ${who}`],()=>[`${t.id} check call`,`${dr?dr.name.split(' ')[0]:'driver'} on I-${40+Math.floor(Math.random()*40)} · ${who}`],()=>{if(dr&&dr.reefer){dr.reefer.cur=Math.round((dr.reefer.set+(Math.random()*2-1)*1.5)*10)/10;const ok=Math.abs(dr.reefer.cur-dr.reefer.set)<1.2;dr.tele={t:`TEMP: ${dr.reefer.cur}°F (${ok?'OK':'DRIFT ⚠'})`,c:ok?'cyan':'amber'};return[`${t.id} reefer telemetry`,`${dr.reefer.cur}°F vs set ${dr.reefer.set}°F · Carrier X4`];}return[`${t.id} geofence`,`arrived ${cityShort(t.to)} yard · ${who}`];}];
+    const[title,sub]=opts[Math.floor(Math.random()*opts.length)]();notify('feed',title,sub,t.id);}
+  D.drivers.forEach(d=>{if(d.lastCall.mins<200)d.lastCall.mins+=2;d.callDue=d.lastCall.mins>90;});
+  if(Math.random()<0.22)addInboundTender();
+  // other dispatchers acquire / release pessimistic locks (viaSocket) — a locked lane refuses drops with a 409
+  Object.keys(state.locks).forEach(k=>{const l=state.locks[k];if(l.by!=='you'&&Date.now()-l.since>45000){delete state.locks[k];notify('feed',`🔓 Lock released`,`${l.by} finished editing ${laneName(k)}`,null);}});
+  if(Math.random()<0.08&&Object.values(state.locks).filter(l=>l.by!=='you').length<2){const free=laneList().filter(l=>!state.locks[l.id]);if(free.length){const l=free[Math.floor(Math.random()*free.length)];const by=['M. Keller','S. Rivera','A. Brunner'][Math.floor(Math.random()*3)];state.locks[l.id]={by,since:Date.now()};notify('feed',`🔒 ${by} editing`,`${l.name} lane locked (pessimistic)`,null);}}
+  if(state.view==='board')render();else refreshView();}
+setTimeout(()=>{feedTick();setInterval(feedTick,8000);},5000);
+
+// ---------- go ----------
+bind();buildGroupSeg();buildEquipSel();closeDrawer();render();renderNotifs();
+selectLeg('L-51217');
+setTimeout(()=>{scrollToNow();notify('feed','Cockpit online','Bertschi-TP core · pessimistic locking ON · Motive ELD feed connected',null);},300);
+</script>
+</body>
+</html>

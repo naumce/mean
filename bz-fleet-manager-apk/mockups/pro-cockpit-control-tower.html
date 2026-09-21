@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Control Tower Pro — Ultimate Flight Deck</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    .scanline {
+      background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0, 0, 0, 0.2) 50%, rgba(0, 0, 0, 0.2));
+      background-size: 100% 4px;
+    }
+    .grid-lines {
+      background-size: 40px 40px;
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    }
+    .custom-scrollbar::-webkit-scrollbar { height: 6px; width: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: #090d16; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #334155; }
+  </style>
+</head>
+<body class="bg-[#070a11] text-slate-100 min-h-screen flex flex-col antialiased selection:bg-blue-600 selection:text-white">
+
+  <!-- TOP COMMAND BAR: Telemetry & Global Controls -->
+  <header class="border-b border-slate-800/80 bg-[#0b0f19] px-4 py-2.5 flex items-center justify-between sticky top-0 z-50 shadow-2xl">
+    <!-- Brand & Status -->
+    <div class="flex items-center gap-4">
+      <div class="flex items-center gap-2.5">
+        <div class="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/20 ring-1 ring-white/20">
+          ⚡
+        </div>
+        <div>
+          <div class="text-xs font-extrabold tracking-tight text-white flex items-center gap-2">
+            CONTROL TOWER PRO
+            <span class="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <span class="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span> 5/5 UNITS CONNECTED
+            </span>
+            <span class="text-[10px] font-mono text-slate-500">v3.8-PRO</span>
+          </div>
+          <div class="text-[10px] font-mono text-slate-400 flex items-center gap-2">
+            <span>ELD: MOTIVE LIVE</span>
+            <span>•</span>
+            <span>TMS: SYNCED (0.4s)</span>
+            <span>•</span>
+            <span class="text-blue-400">OSRM ROUTING ACTIVE</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Central Cockpit Toolbar -->
+    <div class="flex items-center gap-3">
+      <!-- Search & Command Filter -->
+      <div class="flex items-center gap-2 bg-[#05080e] border border-slate-800 px-3 py-1.5 rounded-lg text-xs w-72 focus-within:border-blue-500 transition">
+        <span class="text-slate-500 font-mono">⌘K</span>
+        <input type="text" placeholder="Search load, trailer, driver, city..." class="bg-transparent text-slate-200 placeholder:text-slate-600 outline-none w-full text-xs font-medium">
+      </div>
+
+      <!-- Quick View Toggles -->
+      <div class="flex rounded-lg border border-slate-800 bg-[#05080e] p-0.5 text-xs">
+        <button class="px-2.5 py-1 rounded bg-slate-800 font-bold text-white flex items-center gap-1.5 shadow">
+          <span>📅 Timeline Grid</span>
+        </button>
+        <button class="px-2.5 py-1 rounded text-slate-400 hover:text-white flex items-center gap-1.5 transition">
+          <span>🗺️ Live Map Radar</span>
+        </button>
+        <button class="px-2.5 py-1 rounded text-slate-400 hover:text-white flex items-center gap-1.5 transition">
+          <span>📊 Financials & ROI</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Time Horizon & Zoom Engine -->
+    <div class="flex items-center gap-3">
+      <div class="flex items-center gap-1.5 bg-[#05080e] border border-slate-800 rounded-lg px-2 py-1 text-xs">
+        <span class="text-[10px] font-bold text-slate-500 uppercase font-mono">Zoom</span>
+        <input type="range" min="1" max="5" value="3" class="w-20 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500">
+        <span class="text-[10px] font-mono text-blue-400 font-bold">3-DAY (HOS)</span>
+      </div>
+
+      <div class="flex items-center gap-1 bg-[#05080e] border border-slate-800 rounded-lg p-0.5 text-xs font-mono">
+        <button class="px-2 py-1 rounded text-slate-400 hover:text-white hover:bg-slate-800">◀</button>
+        <span class="px-2 font-bold text-slate-200">TODAY: AUG 28</span>
+        <button class="px-2 py-1 rounded text-slate-400 hover:text-white hover:bg-slate-800">▶</button>
+      </div>
+
+      <button class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-lg shadow-blue-600/30 transition flex items-center gap-1.5">
+        <span>⚡ Quick Match</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- LIVE TELEMETRY TICKER (Financials & Safety Pulse) -->
+  <section class="bg-[#090d16] border-b border-slate-800/80 px-4 py-2 text-xs">
+    <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5">
+      
+      <!-- HERO 1: Empty Miles Avoided -->
+      <div class="rounded-lg border border-emerald-500/40 bg-emerald-950/20 px-2.5 py-1.5 flex flex-col justify-between">
+        <div class="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+          <span>Empty Mi Saved</span>
+          <span class="text-[9px] bg-emerald-500/20 px-1 rounded font-mono">THIS WK</span>
+        </div>
+        <div class="flex items-baseline justify-between mt-1">
+          <span class="text-base font-bold font-mono text-emerald-300">428 mi</span>
+          <span class="text-[10px] font-bold text-emerald-400 font-mono">+$714.76</span>
+        </div>
+      </div>
+
+      <!-- METRIC 2: Committed Revenue -->
+      <div class="rounded-lg border border-slate-800 bg-[#05080e] px-2.5 py-1.5 flex flex-col justify-between">
+        <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Committed Gross</div>
+        <div class="flex items-baseline justify-between mt-1">
+          <span class="text-base font-bold font-mono text-white">$14,820</span>
+          <span class="text-[10px] text-slate-400">5 loads</span>
+        </div>
+      </div>
+
+      <!-- METRIC 3: Real Operating Margin -->
+      <div class="rounded-lg border border-slate-800 bg-[#05080e] px-2.5 py-1.5 flex flex-col justify-between">
+        <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Net Profit Margin</div>
+        <div class="flex items-baseline justify-between mt-1">
+          <span class="text-base font-bold font-mono text-emerald-400">$3,420</span>
+          <span class="text-[10px] font-bold text-emerald-400 font-mono">23.1%</span>
+        </div>
+      </div>
+
+      <!-- METRIC 4: RPM -->
+      <div class="rounded-lg border border-slate-800 bg-[#05080e] px-2.5 py-1.5 flex flex-col justify-between">
+        <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Rate / Loaded Mi</div>
+        <div class="flex items-baseline justify-between mt-1">
+          <span class="text-base font-bold font-mono text-white">$2.84<span class="text-[10px] text-slate-500">/mi</span></span>
+          <span class="text-[10px] text-emerald-400 font-mono">▲ +18¢</span>
+        </div>
+      </div>
+
+      <!-- METRIC 5: Deadhead % -->
+      <div class="rounded-lg border border-slate-800 bg-[#05080e] px-2.5 py-1.5 flex flex-col justify-between">
+        <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Deadhead Ratio</div>
+        <div class="flex items-baseline justify-between mt-1">
+          <span class="text-base font-bold font-mono text-emerald-400">6.8%</span>
+          <span class="text-[10px] text-slate-500 font-mono">312 mi ttl</span>
+        </div>
+      </div>
+
+      <!-- METRIC 6: Fleet Utilization -->
+      <div class="rounded-lg border border-slate-800 bg-[#05080e] px-2.5 py-1.5 flex flex-col justify-between">
+        <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Asset Utilization</div>
+        <div class="flex items-baseline justify-between mt-1">
+          <span class="text-base font-bold font-mono text-blue-400">80%</span>
+          <span class="text-[10px] text-slate-400">4/5 Rolling</span>
+        </div>
+      </div>
+
+      <!-- METRIC 7: Safety & Compliance -->
+      <div class="rounded-lg border border-slate-800 bg-[#05080e] px-2.5 py-1.5 flex flex-col justify-between">
+        <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">HOS Violations</div>
+        <div class="flex items-baseline justify-between mt-1">
+          <span class="text-base font-bold font-mono text-emerald-400">0 DETECTED</span>
+          <span class="text-[10px] text-emerald-500">🛡️ 100% Legal</span>
+        </div>
+      </div>
+
+      <!-- METRIC 8: Attention Alerts -->
+      <div class="rounded-lg border border-amber-500/40 bg-amber-950/20 px-2.5 py-1.5 flex flex-col justify-between cursor-pointer hover:border-amber-400 transition">
+        <div class="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-amber-400">
+          <span>Alerts Feed</span>
+          <span class="h-2 w-2 rounded-full bg-amber-400 animate-ping"></span>
+        </div>
+        <div class="flex items-baseline justify-between mt-1">
+          <span class="text-base font-bold font-mono text-amber-300">2 Actions</span>
+          <span class="text-[10px] text-amber-400">1 Stale · 1 Maint</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- MAIN DUAL-PANE COCKPIT -->
+  <div class="flex-1 p-3 flex flex-col gap-3 w-full">
+    
+    <!-- TOP SECTION: Multi-Day Interactive Gantt & Flight Deck -->
+    <div class="rounded-xl border border-slate-800/80 bg-[#090d16] overflow-hidden shadow-2xl flex flex-col">
+      
+      <!-- Timeline Header / Time Ruler -->
+      <div class="grid grid-cols-12 border-b border-slate-800 bg-[#0b0f19] text-xs font-semibold select-none">
+        <!-- Lane Details Column Header -->
+        <div class="col-span-4 p-2.5 border-r border-slate-800 flex items-center justify-between">
+          <span class="text-[11px] font-bold uppercase tracking-widest text-slate-400">Driver / Tractor / Trailer / Telemetry</span>
+          <div class="flex items-center gap-2 text-[10px] text-slate-500 font-mono">
+            <span>HOS CLOCKS</span>
+            <span>•</span>
+            <span>GPS PING</span>
+          </div>
+        </div>
+
+        <!-- Time Grid Ruler across 3 Days (24h blocks with shift notches) -->
+        <div class="col-span-8 grid grid-cols-3 text-center font-mono">
+          <!-- FRIDAY 28 (TODAY) -->
+          <div class="border-r border-slate-800 bg-blue-500/5 relative p-2">
+            <div class="flex items-center justify-between text-[11px] font-bold text-blue-300 px-2">
+              <span>FRI 28 (TODAY)</span>
+              <span class="text-[9px] bg-blue-500/20 px-1.5 py-0.5 rounded text-blue-400">NOW: 14:32 CST</span>
+            </div>
+            <div class="grid grid-cols-4 text-[9px] text-slate-500 mt-1 border-t border-slate-800/60 pt-1">
+              <span>06:00</span>
+              <span>12:00</span>
+              <span class="text-blue-400 font-bold">18:00</span>
+              <span>24:00</span>
+            </div>
+          </div>
+
+          <!-- SATURDAY 29 -->
+          <div class="border-r border-slate-800 p-2">
+            <div class="flex items-center justify-between text-[11px] font-bold text-slate-300 px-2">
+              <span>SAT 29 (WEEKEND)</span>
+              <span class="text-[9px] text-slate-500">Regional Shift</span>
+            </div>
+            <div class="grid grid-cols-4 text-[9px] text-slate-500 mt-1 border-t border-slate-800/60 pt-1">
+              <span>06:00</span>
+              <span>12:00</span>
+              <span>18:00</span>
+              <span>24:00</span>
+            </div>
+          </div>
+
+          <!-- SUNDAY 30 -->
+          <div class="p-2">
+            <div class="flex items-center justify-between text-[11px] font-bold text-slate-300 px-2">
+              <span>SUN 30 (OTR RUNS)</span>
+              <span class="text-[9px] text-slate-500">Delivery Slots</span>
+            </div>
+            <div class="grid grid-cols-4 text-[9px] text-slate-500 mt-1 border-t border-slate-800/60 pt-1">
+              <span>06:00</span>
+              <span>12:00</span>
+              <span>18:00</span>
+              <span>24:00</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- LANE 1: JAKE MORROW (Rolling active load + future slot preview) -->
+      <div class="grid grid-cols-12 border-b border-slate-800/60 bg-[#070a12] hover:bg-slate-800/20 transition group relative">
+        
+        <!-- Lane Specs & Telemetry Badge -->
+        <div class="col-span-4 p-2.5 border-r border-slate-800 flex flex-col justify-between bg-[#080c16]/70">
+          <div class="flex items-start justify-between">
+            <div class="flex items-center gap-2.5">
+              <div class="h-9 w-9 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold font-mono text-xs shadow-inner">
+                JM
+              </div>
+              <div>
+                <div class="text-xs font-bold text-white flex items-center gap-1.5">
+                  Jake Morrow
+                  <span class="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" title="Engine Running · 58 MPH"></span>
+                  <span class="text-[10px] font-mono text-slate-400 font-normal">#1207 Sleeper</span>
+                </div>
+                <div class="text-[10px] font-mono text-slate-400 flex items-center gap-1.5 mt-0.5">
+                  <span class="text-slate-300">DV-4450 (53' Van)</span>
+                  <span>•</span>
+                  <span class="text-emerald-400 font-bold">58 MPH I-70 E</span>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Audio/Msg Quick Ping -->
+            <div class="flex items-center gap-1">
+              <button class="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[10px] font-mono" title="Message Driver App">💬</button>
+              <span class="px-1.5 py-0.5 rounded text-[9px] font-bold font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">ROLLING</span>
+            </div>
+          </div>
+
+          <!-- Live HOS Gauge Strips -->
+          <div class="mt-2 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] font-mono">
+            <div class="flex items-center gap-1 text-slate-400">
+              📍 <span class="text-slate-200 font-semibold">Columbia, MO</span> <span class="text-slate-500">(Ping 4m)</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-emerald-400 font-bold bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-500/30">DRIVE: 8h 15m</span>
+              <span class="text-slate-300 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">CYC: 46h</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Interactive Schedule Track -->
+        <div class="col-span-8 p-2.5 grid grid-cols-3 gap-2 items-center relative grid-lines">
+          
+          <!-- Red Laser Now-Line -->
+          <div class="absolute top-0 bottom-0 left-[24%] w-px bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] z-20 pointer-events-none">
+            <div class="bg-red-500 text-white text-[8px] font-mono font-bold px-1 rounded absolute -top-2 -left-3">NOW</div>
+          </div>
+
+          <!-- Active Load Brick (L-51217: KC -> CHI) -->
+          <div class="col-span-1 rounded-lg bg-gradient-to-r from-blue-900/60 to-indigo-900/60 border border-blue-500/50 p-2 relative shadow-xl hover:border-blue-400 transition cursor-pointer">
+            <div class="flex items-center justify-between text-[11px]">
+              <span class="font-bold text-white font-mono flex items-center gap-1">
+                L-51217 <span class="text-[9px] text-blue-300 bg-blue-950 px-1 rounded">DRY</span>
+              </span>
+              <span class="font-bold text-emerald-400 font-mono">$1,450 ($2.78/m)</span>
+            </div>
+            <div class="text-[11px] text-slate-200 font-medium truncate mt-0.5">
+              Kansas City ➔ Chicago, IL
+            </div>
+            <div class="text-[10px] text-slate-400 mt-1 flex items-center justify-between font-mono">
+              <span>ETA: Sat 09:00</span>
+              <span class="text-emerald-400 font-bold">+$320 MARGIN</span>
+            </div>
+          </div>
+
+          <!-- Future Available Slot with Next Load Recommendation -->
+          <div class="col-span-2 rounded-lg border border-dashed border-emerald-500/40 bg-emerald-950/10 p-2 flex items-center justify-between">
+            <div>
+              <div class="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                <span>⚡ Next Best Match: L-51220 (Chicago ➔ Indy)</span>
+                <span class="text-[9px] bg-emerald-500/20 text-emerald-400 px-1 rounded font-mono font-bold">12 mi DH</span>
+              </div>
+              <div class="text-[10px] text-slate-400 font-mono mt-0.5">
+                Free Sat 10:00 in Chicago · Auto Parts · $750 ($4.07/mi)
+              </div>
+            </div>
+            <button class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold font-mono px-3 py-1.5 rounded-lg shadow-md transition">
+              ⚡ Lock In & Dispatch
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- LANE 2: TYRONE BANKS (Reefer Telemetry & Temperature Sensor) -->
+      <div class="grid grid-cols-12 border-b border-slate-800/60 bg-[#070a12] hover:bg-slate-800/20 transition group relative">
+        <div class="col-span-4 p-2.5 border-r border-slate-800 flex flex-col justify-between bg-[#080c16]/70">
+          <div class="flex items-start justify-between">
+            <div class="flex items-center gap-2.5">
+              <div class="h-9 w-9 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 flex items-center justify-center font-bold font-mono text-xs shadow-inner">
+                TB
+              </div>
+              <div>
+                <div class="text-xs font-bold text-white flex items-center gap-1.5">
+                  Tyrone Banks
+                  <span class="h-2 w-2 rounded-full bg-cyan-400 animate-pulse"></span>
+                  <span class="text-[10px] font-mono text-slate-400 font-normal">#1212 Sleeper</span>
+                </div>
+                <div class="text-[10px] font-mono text-slate-400 flex items-center gap-1.5 mt-0.5">
+                  <span class="text-cyan-300">RF-2201 (53' Reefer)</span>
+                  <span>•</span>
+                  <span class="text-cyan-400 font-bold">TEMP: -9.8°F (OK)</span>
+                </div>
+              </div>
+            </div>
+            <span class="px-1.5 py-0.5 rounded text-[9px] font-bold font-mono bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">FROZEN</span>
+          </div>
+
+          <div class="mt-2 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] font-mono">
+            <div class="flex items-center gap-1 text-slate-400">
+              📍 <span class="text-slate-200 font-semibold">St. Louis, MO Yard</span> <span class="text-slate-500">(Docked)</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-emerald-400 font-bold bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-500/30">DRIVE: 11h 00m</span>
+              <span class="text-slate-300 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">CYC: 58h</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3-Day Long Haul Run -->
+        <div class="col-span-8 p-2.5 grid grid-cols-3 gap-2 items-center relative grid-lines">
+          <!-- Multi-day Load Bar spanning Fri through Sun -->
+          <div class="col-span-2 rounded-lg bg-gradient-to-r from-cyan-950/80 via-blue-950/80 to-indigo-950/80 border border-cyan-500/50 p-2 shadow-xl">
+            <div class="flex items-center justify-between text-[11px]">
+              <span class="font-bold text-white font-mono flex items-center gap-1.5">
+                L-51219 <span class="text-[9px] bg-cyan-500/20 text-cyan-300 px-1 rounded">REEFER (-10°F)</span>
+                <span class="text-[9px] bg-slate-800 text-slate-300 px-1 rounded">Tyson Foods</span>
+              </span>
+              <span class="font-bold text-emerald-400 font-mono">$2,890 ($2.95/mi)</span>
+            </div>
+            <div class="text-[11px] text-slate-200 font-medium mt-0.5">
+              St. Louis, MO ➔ Atlanta, GA (Frozen Poultry · 42,000 lbs)
+            </div>
+            <div class="text-[10px] text-slate-400 mt-1 flex items-center justify-between font-mono">
+              <span>Pickup: Today 18:00</span>
+              <span class="text-cyan-300 font-bold">Strict Appt Drop: Sun 06:00</span>
+              <span class="text-emerald-400 font-bold">+$610 NET MARGIN</span>
+            </div>
+          </div>
+
+          <!-- Empty in Atlanta -->
+          <div class="col-span-1 rounded-lg border border-dashed border-slate-700/60 p-2 flex flex-col justify-between text-[11px] font-mono text-slate-400 bg-slate-950/40">
+            <span class="text-slate-300">Free in Atlanta, GA</span>
+            <span class="text-[10px] text-slate-500">Sun 08:00 (Post-Drop)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- LANE 3: DALE HUTCHINS (FMCSA Violation Engine Lockout) -->
+      <div class="grid grid-cols-12 border-b border-slate-800/60 bg-red-950/10 hover:bg-red-950/20 transition group relative">
+        <div class="col-span-4 p-2.5 border-r border-slate-800 flex flex-col justify-between bg-red-950/20">
+          <div class="flex items-start justify-between">
+            <div class="flex items-center gap-2.5">
+              <div class="h-9 w-9 rounded-lg bg-red-500/10 text-red-400 border border-red-500/30 flex items-center justify-center font-bold font-mono text-xs shadow-inner">
+                DH
+              </div>
+              <div>
+                <div class="text-xs font-bold text-white flex items-center gap-1.5">
+                  Dale Hutchins
+                  <span class="h-2 w-2 rounded-full bg-red-500"></span>
+                  <span class="text-[10px] font-mono text-slate-400 font-normal">#1199 DayCab</span>
+                </div>
+                <div class="text-[10px] font-mono text-red-400 flex items-center gap-1.5 mt-0.5 font-bold">
+                  <span>FB-3310 (Flatbed)</span>
+                  <span>•</span>
+                  <span>34h RESTART ACTIVE</span>
+                </div>
+              </div>
+            </div>
+            <span class="px-1.5 py-0.5 rounded text-[9px] font-bold font-mono bg-red-500/20 text-red-400 border border-red-500/30">LOCKED</span>
+          </div>
+
+          <div class="mt-2 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] font-mono">
+            <div class="flex items-center gap-1 text-slate-400">
+              📍 <span class="text-slate-200 font-semibold">Omaha, NE Terminal</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-red-400 font-bold bg-red-950/60 px-1.5 py-0.5 rounded border border-red-500/40">DRIVE: 0.0h</span>
+              <span class="text-red-400 font-bold">CYC: 69.2h/70h</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Violation Shield Bar -->
+        <div class="col-span-8 p-2.5 grid grid-cols-3 gap-2 items-center relative grid-lines">
+          <div class="col-span-2 rounded-lg bg-red-950/40 border border-red-500/40 p-2 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="text-base">⛔</span>
+              <div>
+                <div class="text-xs font-bold text-red-300 font-mono">FMCSA HARD LOCKOUT — 34-Hour Restart in Progress</div>
+                <div class="text-[10px] text-slate-400">System has blocked all dispatch dispatches to prevent DOT out-of-service fines.</div>
+              </div>
+            </div>
+          </div>
+          <div class="col-span-1 rounded-lg border border-slate-800 p-2 text-right text-[11px] font-mono text-slate-400">
+            Available: <span class="text-emerald-400 font-bold">Sun 08:00</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- BOTTOM CONTROL DECK: Unassigned Load Pool + ⚡ Instant Scorer Panel -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">
+      
+      <!-- Unassigned Freight Pool (7 Cols) -->
+      <div class="lg:col-span-7 rounded-xl border border-slate-800 bg-[#090d16] p-3 shadow-xl flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between pb-2 border-b border-slate-800 text-xs">
+            <div class="flex items-center gap-2 font-bold text-white">
+              <span>📦 Unassigned Freight Pipeline</span>
+              <span class="px-1.5 py-0.2 rounded-full bg-blue-500/10 text-blue-400 font-mono text-[10px] border border-blue-500/20">3 Open</span>
+            </div>
+            <div class="flex items-center gap-2 text-[10px] font-mono text-slate-400">
+              <span>SORT: EARLIEST APPOINTMENT</span>
+            </div>
+          </div>
+
+          <!-- Freight Row 1 -->
+          <div class="mt-2.5 flex flex-col gap-2">
+            
+            <div class="p-2.5 rounded-lg bg-[#05080e] border border-slate-800 hover:border-blue-500/50 transition flex items-center justify-between gap-3">
+              <div class="flex items-center gap-2.5">
+                <span class="font-mono text-xs font-bold text-blue-400 bg-blue-950/60 px-2 py-1 rounded border border-blue-500/30">L-51220</span>
+                <div>
+                  <div class="text-xs font-bold text-white flex items-center gap-2">
+                    Chicago, IL ➔ Indianapolis, IN
+                    <span class="text-[9px] font-bold font-mono bg-amber-500/10 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/20">Pickup: Sat 11:00</span>
+                  </div>
+                  <div class="text-[10px] text-slate-400 font-mono mt-0.5 flex items-center gap-2">
+                    <span>184 mi loaded</span>
+                    <span>•</span>
+                    <span>42k lbs Auto Parts</span>
+                    <span>•</span>
+                    <span class="text-slate-300">CH Robinson</span>
+                  </div>
+                </div>
+              </div>
+              <div class="flex items-center gap-3">
+                <div class="text-right">
+                  <div class="text-xs font-bold font-mono text-emerald-400">$750</div>
+                  <div class="text-[9px] font-mono text-slate-500">$4.07/mi</div>
+                </div>
+                <button class="bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold font-mono px-3 py-1.5 rounded-lg shadow transition flex items-center gap-1">
+                  <span>⚡ Suggest</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Freight Row 2 (Hazmat) -->
+            <div class="p-2.5 rounded-lg bg-[#05080e] border border-slate-800 hover:border-amber-500/50 transition flex items-center justify-between gap-3">
+              <div class="flex items-center gap-2.5">
+                <span class="font-mono text-xs font-bold text-amber-400 bg-amber-950/60 px-2 py-1 rounded border border-amber-500/30">L-51221</span>
+                <div>
+                  <div class="text-xs font-bold text-white flex items-center gap-2">
+                    Wichita, KS ➔ St. Louis, MO
+                    <span class="text-[9px] font-bold font-mono bg-red-500/20 text-red-300 px-1.5 py-0.5 rounded border border-red-500/30">⚠️ HAZMAT CLASS 8</span>
+                  </div>
+                  <div class="text-[10px] text-slate-400 font-mono mt-0.5 flex items-center gap-2">
+                    <span>440 mi loaded</span>
+                    <span>•</span>
+                    <span>38k lbs Corrosive Liquids</span>
+                    <span>•</span>
+                    <span class="text-slate-300">Landstar</span>
+                  </div>
+                </div>
+              </div>
+              <div class="flex items-center gap-3">
+                <div class="text-right">
+                  <div class="text-xs font-bold font-mono text-emerald-400">$1,680</div>
+                  <div class="text-[9px] font-mono text-slate-500">$3.81/mi</div>
+                </div>
+                <button class="bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold font-mono px-3 py-1.5 rounded-lg shadow transition flex items-center gap-1">
+                  <span>⚡ Suggest</span>
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ⚡ Live Optimization Radar (5 Cols) -->
+      <div class="lg:col-span-5 rounded-xl border border-blue-500/30 bg-[#090d16] p-3 shadow-xl flex flex-col justify-between relative overflow-hidden">
+        <div>
+          <div class="flex items-center justify-between pb-2 border-b border-slate-800 text-xs">
+            <span class="font-bold text-white flex items-center gap-1.5">
+              <span>⚡ Engine Dispatch Verdict</span>
+              <span class="text-[9px] font-mono bg-emerald-500/10 text-emerald-400 px-1 rounded border border-emerald-500/20">PRE-CHECK PASSED</span>
+            </span>
+            <span class="text-[10px] font-mono text-slate-500">DETERMINISTIC FMCSA RULES</span>
+          </div>
+
+          <div class="mt-2.5 p-2 rounded-lg bg-[#05080e] border border-slate-800">
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-bold text-white font-mono">#1 MATCH: JAKE MORROW</span>
+              <span class="font-bold text-emerald-400 font-mono">SCORE: 98/100</span>
+            </div>
+
+            <!-- Proof Matrix -->
+            <div class="grid grid-cols-3 gap-2 mt-2 text-[10px] font-mono">
+              <div class="p-1.5 rounded bg-slate-900 border border-slate-800 text-center">
+                <div class="text-slate-500">DEADHEAD</div>
+                <div class="text-emerald-400 font-bold mt-0.5">12 mi</div>
+              </div>
+              <div class="p-1.5 rounded bg-slate-900 border border-slate-800 text-center">
+                <div class="text-slate-500">HOS HEADROOM</div>
+                <div class="text-emerald-400 font-bold mt-0.5">9.5h Drive</div>
+              </div>
+              <div class="p-1.5 rounded bg-slate-900 border border-slate-800 text-center">
+                <div class="text-slate-500">PROJECTED NET</div>
+                <div class="text-emerald-400 font-bold mt-0.5">+$240.00</div>
+              </div>
+            </div>
+
+            <div class="mt-2.5 pt-2 border-t border-slate-800/80 flex items-center justify-between">
+              <span class="text-[10px] text-slate-400 font-mono">Priced @ $4.00/gal Diesel · $0.60/mi Pay</span>
+              <button class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold font-mono text-xs px-4 py-1.5 rounded-lg shadow-lg shadow-emerald-600/30 transition">
+                ✓ Confirm & Push to ELD
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="text-[10px] font-mono text-slate-500 flex items-center justify-between pt-2 border-t border-slate-800/60 mt-2">
+          <span>Routing: OSRM High-Precision Matrix</span>
+          <span class="text-blue-400 font-bold">Zero Guesses</span>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+</body>
+</html>

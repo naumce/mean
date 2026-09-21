@@ -1,0 +1,10 @@
+{
+  "loadRef": "T-01",
+  "origin": { "name": "Skopje", "lat": 41.9981, "lng": 21.4254 },
+  "destination": { "name": "Tetovo", "lat": 42.0100, "lng": 20.9715 },
+  "equipment": "DryVan",
+  "departAt": "now",
+  "deadlineAt": "+60m",
+  "customerEmail": null,
+  "minutesSinceBreakAtDepart": null
+}

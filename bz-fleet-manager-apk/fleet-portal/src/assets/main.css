@@ -2,6 +2,61 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Semantic colour tokens as space-separated RGB so Tailwind can apply alpha.
+   Light = today's portal look. Dark = the Bertschi cockpit palette
+   (mockups/bertschi-master-cockpit.html). Status/accent tokens carry the
+   same meaning in both modes but are tuned per background, with
+   --tk-s-completed happening to share a literal value across the two. */
+:root {
+  --tk-bg: 248 250 252;
+  --tk-surface: 255 255 255;
+  --tk-surface-2: 249 250 251;
+  --tk-surface-3: 243 244 246;
+  --tk-line: 229 231 235;
+  --tk-line-strong: 209 213 219;
+  --tk-ink: 17 24 39;
+  --tk-ink-2: 55 65 81;
+  --tk-ink-3: 107 114 128;
+  --tk-brand: 37 99 235;
+  --tk-brand-ink: 29 78 216;
+  --tk-brand-wash: 219 234 254;
+  --tk-s-assigned: 37 99 235;
+  --tk-s-progress: 8 145 178;
+  --tk-s-completed: 100 116 139;
+  --tk-s-tendered: 147 51 234;
+  --tk-s-open: 217 119 6;
+  --tk-haz: 234 88 12;
+  --tk-conflict: 220 38 38;
+  /* Spot search reads as *text* on surface-3 and on its own /20 wash, so the
+     light palette uses yellow-800: 6.23:1 on #f3f4f6 and 4.63:1 on the wash,
+     where the dark palette's #facc15 measured 1.74:1. */
+  --tk-spot: 133 77 14;
+  color-scheme: light;
+}
+.dark {
+  --tk-bg: 4 7 17;          /* #040711 */
+  --tk-surface: 6 10 20;    /* #060a14 */
+  --tk-surface-2: 8 12 24;  /* #080c18 */
+  --tk-surface-3: 2 4 9;    /* #020409 */
+  --tk-line: 30 41 59;      /* slate-800 */
+  --tk-line-strong: 51 65 85;
+  --tk-ink: 241 245 249;
+  --tk-ink-2: 148 163 184;
+  --tk-ink-3: 100 116 139;
+  --tk-brand: 59 130 246;
+  --tk-brand-ink: 147 197 253;
+  --tk-brand-wash: 30 58 138;
+  --tk-s-assigned: 59 130 246;
+  --tk-s-progress: 34 211 238;
+  --tk-s-completed: 100 116 139;
+  --tk-s-tendered: 168 85 247;
+  --tk-s-open: 245 158 11;
+  --tk-haz: 249 115 22;
+  --tk-conflict: 239 68 68;
+  --tk-spot: 250 204 21; /* 13.4:1 on the dark surface-3, 9.1:1 on its wash */
+  color-scheme: dark;
+}
+
 html,
 body,
 #app {
@@ -10,4 +65,16 @@ body,
 
 body {
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  background: rgb(var(--tk-bg));
+  color: rgb(var(--tk-ink));
 }
+
+/* ---- cockpit board (components/cockpit/*) ---- */
+.ck-board { --row-h: 132px; --brick-h: 100px; --brick-top: 16px; }
+.ck-brick { position: absolute; top: var(--brick-top); height: var(--brick-h); z-index: 5; }
+.ck-brick:hover { z-index: 9; }
+.ck-laser { box-shadow: 0 0 12px rgb(var(--tk-conflict) / .9), 0 0 24px rgb(var(--tk-conflict) / .4); }
+.ck-spot { box-shadow: 0 0 16px rgb(var(--tk-spot) / .9), inset 0 0 10px rgb(var(--tk-spot) / .4); border-color: rgb(var(--tk-spot)) !important; }
+.ck-hatch { background-image: repeating-linear-gradient(135deg, rgb(var(--tk-ink-3) / .35) 0 4px, transparent 4px 9px); }
+.ck-hatch-haz { background-image: repeating-linear-gradient(135deg, rgb(var(--tk-haz) / .18) 0 6px, transparent 6px 14px) !important; }
+.ck-dh { background: repeating-linear-gradient(90deg, rgb(var(--tk-ink-3)) 0 4px, transparent 4px 8px); }

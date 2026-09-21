@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__LOAD__</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; font: 17px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; background: #0f1422; color: #eef1f7; }
+  main { max-width: 480px; margin: 0 auto; padding: 20px 16px 40px; display: grid; gap: 16px; }
+  h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  .muted { color: #9aa4bd; font-size: 14px; }
+  button { font: inherit; border: 0; border-radius: 12px; padding: 16px; background: #3b82f6; color: #fff; font-weight: 600; width: 100%; }
+  button:disabled { opacity: .5; }
+  #status { font-size: 14px; color: #9aa4bd; }
+  #status.on { color: #58c08a; }
+  #chat { display: grid; gap: 8px; }
+  .msg { padding: 10px 14px; border-radius: 14px; max-width: 85%; }
+  .msg.agent { background: #1e2c4a; border-bottom-left-radius: 4px; justify-self: start; }
+  .msg.me { background: #2a3450; border-bottom-right-radius: 4px; justify-self: end; }
+  form { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+  input { font: inherit; padding: 12px; border-radius: 10px; border: 1px solid #2a3450; background: #141b2e; color: inherit; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>__LOAD__</h1>
+  <div class="muted">Hi __NAME__. Tap Accept to share your location for this run. It stops when the run ends.</div>
+  <button id="accept">Accept</button>
+  <div id="status"></div>
+  <div id="chat" hidden></div>
+  <form id="form" hidden><input id="text" placeholder="Reply to dispatch…" autocomplete="off"><button type="submit" style="width:auto">Send</button></form>
+</main>
+<script>
+(function () {
+  var token = "__TOKEN__", base = "/d/" + token;
+  var $ = function (id) { return document.getElementById(id); };
+  var lastSent = null, lastSentAt = 0, lastId = 0, timer = null;
+  var lastPos = null;
+  function post(path, body) { return fetch(base + path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body || {}) }); }
+  function fmt(ms) { var d = new Date(ms); return ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2); }
+  function meters(a, b) { var R = 6371000, dLat = (b.lat - a.lat) * Math.PI / 180, dLng = (b.lng - a.lng) * Math.PI / 180, s = Math.sin(dLat / 2), t = Math.sin(dLng / 2); var h = s * s + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * t * t; return 2 * R * Math.asin(Math.sqrt(h)); }
+  function sendPing(pos) {
+    lastPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    var p = lastPos, now = Date.now();
+    if (lastSent && meters(lastSent, p) < 50 && now - lastSentAt < 60000) return;
+    lastSent = p; lastSentAt = now;
+    post("/ping", p).then(function (r) { $("status").textContent = r.ok ? "Sharing location · last sent " + fmt(now) : "Couldn't send location — will try again shortly"; $("status").className = r.ok ? "on" : ""; }).catch(function () { $("status").textContent = "Couldn't send location — will try again shortly"; $("status").className = ""; });
+  }
+  function poll() {
+    fetch(base + "/messages?after=" + lastId).then(function (r) { return r.json(); }).then(function (j) {
+      (j.messages || []).forEach(function (m) { lastId = m.id; add("agent", m.text); });
+    }).catch(function () {});
+  }
+  function add(who, text) { var d = document.createElement("div"); d.className = "msg " + who; d.textContent = text; $("chat").appendChild(d); d.scrollIntoView({ block: "end" }); }
+  function startTracking() {
+    $("accept").hidden = true; $("chat").hidden = false; $("form").hidden = false;
+    $("status").textContent = "Getting your location…";
+    if (!navigator.geolocation) { $("status").textContent = "This phone cannot share location."; return; }
+    navigator.geolocation.watchPosition(sendPing, function (e) { $("status").textContent = "Location off — " + e.message; $("status").className = ""; }, { enableHighAccuracy: true, maximumAge: 15000, timeout: 30000 });
+    if (navigator.wakeLock && navigator.wakeLock.request) { navigator.wakeLock.request("screen").catch(function () {}); }
+    timer = setInterval(poll, 5000); poll();
+    // A phone that is not moving gets no GPS callbacks; the 60-second rule needs its own clock.
+    setInterval(function () { if (lastPos && Date.now() - lastSentAt >= 60000) { sendPing({ coords: { latitude: lastPos.lat, longitude: lastPos.lng } }); } }, 10000);
+  }
+  $("accept").onclick = function () {
+    $("accept").disabled = true;
+    post("/accept").then(function (r) {
+      if (!r.ok) { $("status").textContent = "Couldn't accept — check your signal and tap Accept again."; $("accept").disabled = false; return; }
+      try { localStorage.setItem("ns:" + token, "1"); } catch (e) {}
+      startTracking();
+    }).catch(function () {
+      $("status").textContent = "Couldn't accept — check your signal and tap Accept again.";
+      $("accept").disabled = false;
+    });
+  };
+  $("form").onsubmit = function (ev) {
+    ev.preventDefault(); var t = $("text").value.trim(); if (!t) return;
+    add("me", t); $("text").value = "";
+    post("/reply", { text: t }).catch(function () { add("agent", "Could not send — please try again."); });
+  };
+  try { if (localStorage.getItem("ns:" + token)) startTracking(); } catch (e) {}
+})();
+</script>
+</body>
+</html>

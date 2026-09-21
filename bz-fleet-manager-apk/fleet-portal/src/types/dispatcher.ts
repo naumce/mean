@@ -3,6 +3,14 @@ export interface Dispatcher {
   email: string
   name: string
   createdAt: string
+  // Set for accounts created through signup; legacy/dev dispatchers may be null.
+  orgId?: string | null
+}
+
+export interface Org {
+  id: string
+  name: string
+  timezone: string
 }
 
 // GET /dispatcher/overview returns a map of trip status -> count, e.g.

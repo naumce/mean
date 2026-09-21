@@ -4,6 +4,7 @@ import { prisma } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
 import { upload } from "../lib/upload.js";
+import { asyncRoute } from "../lib/asyncRoute.js";
 
 // Mounted at "/api" in app.ts — the client's two paths don't share a common
 // prefix (`/mobile/trips/:id/...` vs `/signs-proof/:stopId/...`), so both
@@ -11,8 +12,8 @@ import { upload } from "../lib/upload.js";
 export const signsProofRouter = Router();
 signsProofRouter.use(requireAuth);
 
-signsProofRouter.get("/mobile/trips/:id/signs-proof-requirements", async (req, res) => {
-  const trip = await prisma.trip.findFirst({ where: { id: req.params.id, driverId: req.auth!.driverId } });
+signsProofRouter.get("/mobile/trips/:id/signs-proof-requirements", asyncRoute(async (req, res) => {
+  const trip = await prisma.trip.findFirst({ where: { id: req.params.id as string, driverId: req.auth!.driverId } });
   if (!trip) return res.status(404).json({ error: "Trip not found" });
   const stopId = typeof req.query.stopId === "string" ? req.query.stopId : undefined;
   if (!stopId) return res.status(400).json({ error: "stopId is required" });
@@ -20,7 +21,7 @@ signsProofRouter.get("/mobile/trips/:id/signs-proof-requirements", async (req, r
   if (!stop) return res.status(404).json({ error: "Stop not found" });
   const requirements = await prisma.signsProofRequirement.findMany({ where: { stopId: stop.id } });
   res.json(requirements);
-});
+}));
 
 const signsProofUploadSchema = z.object({
   requirementId: z.string().optional(),
@@ -37,7 +38,7 @@ signsProofRouter.post(
   "/signs-proof/:stopId/upload",
   upload.single("file"),
   validateBody(signsProofUploadSchema),
-  async (req, res) => {
+  asyncRoute(async (req, res) => {
     const stopId = req.params.stopId as string;
     // ownership by construction via the relation: the stop must belong to a
     // trip owned by the calling driver.
@@ -50,5 +51,5 @@ signsProofRouter.post(
       data: { stopId: stop.id, requirementId: requirementId ?? null, proofType, fileUrl, hasLocation },
     });
     res.json(created);
-  },
+  }),
 );

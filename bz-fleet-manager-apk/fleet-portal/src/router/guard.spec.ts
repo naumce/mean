@@ -28,14 +28,15 @@ describe('router auth guard', () => {
     expect(router.currentRoute.value.name).toBe('login')
   })
 
-  it('redirects an authenticated dispatcher away from /login to /', async () => {
+  it('redirects an authenticated dispatcher away from /login to the board', async () => {
     const auth = useAuthStore()
     auth.token = 'a-valid-token'
     const router = createTestRouter()
 
     await router.push('/login')
 
-    expect(router.currentRoute.value.name).toBe('dashboard')
+    // '/' now redirects to the Control Tower — the product's landing screen.
+    expect(router.currentRoute.value.name).toBe('cockpit')
   })
 
   it('lets an authenticated dispatcher reach a protected route', async () => {
@@ -45,6 +46,27 @@ describe('router auth guard', () => {
 
     await router.push('/')
 
+    expect(router.currentRoute.value.name).toBe('cockpit')
+  })
+
+  it('keeps the legacy dashboard reachable at /overview', async () => {
+    const auth = useAuthStore()
+    auth.token = 'a-valid-token'
+    const router = createTestRouter()
+
+    await router.push('/overview')
+
     expect(router.currentRoute.value.name).toBe('dashboard')
+  })
+
+  it('sends a sheet-tier dispatcher to the broker board instead of the cockpit', async () => {
+    const auth = useAuthStore()
+    auth.token = 'a-valid-token'
+    auth.plan = { tier: 'sheet' }
+    const router = createTestRouter()
+
+    await router.push('/')
+
+    expect(router.currentRoute.value.name).toBe('broker-board')
   })
 })

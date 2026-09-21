@@ -1,0 +1,1147 @@
+<title>Dispatch Board</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    --bg:#eef1f6; --surface:#fff; --surface-2:#f6f8fb; --surface-3:#eaeef4;
+    --border:#d8dee8; --border-strong:#c3ccda; --ink:#182230; --ink-2:#4a5666; --ink-3:#7b8798;
+    --brand:#2563eb; --brand-ink:#1d4ed8; --brand-wash:#e7edfd;
+    --grid:#e8ebf1; --grid-strong:#d4dbe6; --day-sep:#b9c3d2;
+    --now:#e0245e; --occupied:rgba(120,132,150,.14); --occupied-stripe:rgba(120,132,150,.26);
+    --s-assigned:#2563eb; --s-assigned-wash:#e7edfd; --s-progress:#0d9488; --s-progress-wash:#d5f2ee;
+    --s-completed:#64748b; --s-completed-wash:#e8ecf2; --s-pending:#b45309; --s-pending-wash:#fbecd6;
+    --hazard:#ea580c; --hazard-ink:#c2410c; --conflict:#dc2626; --conflict-wash:#fde4e4;
+    --shadow:0 1px 2px rgba(20,30,45,.06),0 6px 20px rgba(20,30,45,.08); --shadow-pop:0 12px 40px rgba(20,30,45,.22);
+    --radius:10px; --lane-w:224px; --row-h:64px; --brick-h:50px;
+    --mono:ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
+    --sans:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+    --bg:#0b1018; --surface:#141b26; --surface-2:#101823; --surface-3:#1b2534;
+    --border:#24303f; --border-strong:#33404f; --ink:#e8edf4; --ink-2:#a6b2c2; --ink-3:#6f7d90;
+    --brand:#5b8cff; --brand-ink:#7ba3ff; --brand-wash:#17233c;
+    --grid:#182230; --grid-strong:#26313f; --day-sep:#38465a;
+    --now:#ff4d79; --occupied:rgba(140,155,178,.09); --occupied-stripe:rgba(140,155,178,.18);
+    --s-assigned:#5b8cff; --s-assigned-wash:#17233c; --s-progress:#2dd4bf; --s-progress-wash:#10302c;
+    --s-completed:#7d8ca0; --s-completed-wash:#1c2532; --s-pending:#f59e0b; --s-pending-wash:#33280f;
+    --hazard:#fb923c; --hazard-ink:#fdba74; --conflict:#f87171; --conflict-wash:#3a1a1a;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 26px rgba(0,0,0,.5); --shadow-pop:0 16px 50px rgba(0,0,0,.6);
+  }}
+  :root[data-theme="dark"]{
+    --bg:#0b1018; --surface:#141b26; --surface-2:#101823; --surface-3:#1b2534;
+    --border:#24303f; --border-strong:#33404f; --ink:#e8edf4; --ink-2:#a6b2c2; --ink-3:#6f7d90;
+    --brand:#5b8cff; --brand-ink:#7ba3ff; --brand-wash:#17233c;
+    --grid:#182230; --grid-strong:#26313f; --day-sep:#38465a;
+    --now:#ff4d79; --occupied:rgba(140,155,178,.09); --occupied-stripe:rgba(140,155,178,.18);
+    --s-assigned:#5b8cff; --s-assigned-wash:#17233c; --s-progress:#2dd4bf; --s-progress-wash:#10302c;
+    --s-completed:#7d8ca0; --s-completed-wash:#1c2532; --s-pending:#f59e0b; --s-pending-wash:#33280f;
+    --hazard:#fb923c; --hazard-ink:#fdba74; --conflict:#f87171; --conflict-wash:#3a1a1a;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 26px rgba(0,0,0,.5); --shadow-pop:0 16px 50px rgba(0,0,0,.6);
+  }
+  [data-density="compact"]{ --row-h:44px; --brick-h:34px; }
+  *{box-sizing:border-box;} html,body{margin:0;}
+  body{font-family:var(--sans);background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;font-size:14px;overflow-x:hidden;}
+  .app{max-width:1720px;margin:0 auto;padding:16px 18px 44px;}
+  button{font:inherit;}
+  .seg button:focus-visible,.ctl:focus-visible,.chip-f:focus-visible,.sg-btn:focus-visible,.lane-msg:focus-visible,.search input:focus-visible,.msg-compose input:focus-visible,.msg-quick button:focus-visible{outline:2px solid var(--brand);outline-offset:1px;}
+
+  .topbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);}
+  .brand-mark{display:flex;align-items:center;gap:10px;}
+  .brand-dot{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:linear-gradient(135deg,var(--brand),color-mix(in srgb,var(--brand) 55%,#7c3aed));color:#fff;font-size:18px;box-shadow:0 3px 10px color-mix(in srgb,var(--brand) 40%,transparent);}
+  .brand-name{font-size:15px;font-weight:700;letter-spacing:-.01em;line-height:1.1;}
+  .brand-sub{font-size:10.5px;color:var(--ink-3);letter-spacing:.04em;text-transform:uppercase;}
+  .spacer{flex:1;}
+  .seg{display:inline-flex;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+  .seg button{padding:6px 10px;font-size:12px;font-weight:600;color:var(--ink-2);background:transparent;border:none;cursor:pointer;border-right:1px solid var(--border);white-space:nowrap;}
+  .seg button:last-child{border-right:none;}
+  .seg button.on{background:var(--brand-wash);color:var(--brand-ink);}
+  .ctl{font-size:12px;font-weight:600;color:var(--ink-2);background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;}
+  .ctl:hover{border-color:var(--border-strong);color:var(--ink);}
+  .ctl.on{background:var(--brand-wash);border-color:color-mix(in srgb,var(--brand) 40%,var(--border));color:var(--brand-ink);}
+  select.ctl{appearance:none;}
+  .search{display:flex;align-items:center;gap:6px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:5px 9px;}
+  .search input{border:none;background:transparent;color:var(--ink);font:inherit;font-size:12.5px;width:140px;outline:none;}
+  .clock{font-family:var(--mono);font-size:12.5px;color:var(--ink-2);font-variant-numeric:tabular-nums;}
+  .live-dot{width:8px;height:8px;border-radius:50%;background:var(--s-progress);animation:pulse 2s infinite;display:inline-block;}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--s-progress) 60%,transparent);}70%{box-shadow:0 0 0 7px transparent;}100%{box-shadow:0 0 0 0 transparent;}}
+  .bell{position:relative;}
+  .badge{position:absolute;top:-6px;right:-6px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--now);color:#fff;font-size:10px;font-weight:800;display:grid;place-items:center;}
+
+  .kpis{display:grid;grid-template-columns:repeat(8,1fr);gap:9px;margin:12px 0;}
+  .kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;box-shadow:var(--shadow);position:relative;overflow:hidden;}
+  .kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent,var(--brand));}
+  .kpi .n{font-size:21px;font-weight:720;letter-spacing:-.02em;font-variant-numeric:tabular-nums;}
+  .kpi .l{font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em;margin-top:1px;}
+
+  .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
+  .zoom{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--ink-3);}
+  .zoom input{accent-color:var(--brand);}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;}
+  .chip-f{font-size:11.5px;font-weight:600;color:var(--ink-2);background:var(--surface-2);border:1px solid var(--border);border-radius:20px;padding:4px 11px;cursor:pointer;}
+  .chip-f.on{background:var(--brand);border-color:var(--brand);color:#fff;}
+  .chip-f.haz.on{background:var(--hazard);border-color:var(--hazard);}
+  .chip-f.conf.on{background:var(--conflict);border-color:var(--conflict);}
+
+  .board-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;}
+  .board-scroll{overflow-x:auto;overflow-y:hidden;}
+  .board-inner{min-width:max-content;position:relative;}
+  .ruler{display:flex;position:sticky;top:0;z-index:6;background:var(--surface-2);border-bottom:1px solid var(--border-strong);}
+  .ruler .corner{width:var(--lane-w);flex:0 0 var(--lane-w);border-right:1px solid var(--border-strong);display:flex;align-items:flex-end;padding:0 14px 6px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);position:sticky;left:0;z-index:7;background:var(--surface-2);}
+  .ruler .track{position:relative;}
+  .dayband{position:absolute;top:0;height:17px;border-left:1px solid var(--day-sep);font-size:10.5px;font-weight:700;color:var(--ink-2);padding:2px 0 0 7px;overflow:hidden;white-space:nowrap;}
+  .tick{position:absolute;bottom:0;top:17px;border-left:1px solid var(--grid-strong);}
+  .tick.sep{border-left:1px solid var(--day-sep);}
+  .tick .t{position:absolute;bottom:5px;left:4px;font-family:var(--mono);font-size:9.5px;color:var(--ink-3);font-variant-numeric:tabular-nums;}
+
+  .lane{display:flex;border-bottom:1px solid var(--border);position:relative;}
+  .lane:last-child{border-bottom:none;}
+  .lane.idle .lane-label{opacity:.72;}
+  .lane.dropzone .track{background:var(--brand-wash);}
+  .lane.dropzone-eq .track{background:var(--s-progress-wash);}
+  .lane-label{width:var(--lane-w);flex:0 0 var(--lane-w);border-right:1px solid var(--border-strong);padding:7px 12px;display:flex;align-items:center;gap:9px;position:sticky;left:0;z-index:4;background:var(--surface);}
+  .lane:hover .lane-label{background:var(--surface-3);}
+  .avatar{width:28px;height:28px;border-radius:8px;flex:none;display:grid;place-items:center;font-size:11px;font-weight:700;color:#fff;}
+  .lane-meta{min-width:0;flex:1;}
+  .lane-name{font-weight:640;font-size:12.5px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .lane-veh{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);display:flex;align-items:center;gap:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .sdot{width:7px;height:7px;border-radius:50%;flex:none;}
+  .sdot.active{background:var(--s-progress);}.sdot.break{background:var(--s-pending);}.sdot.offline{background:var(--ink-3);}.sdot.idle{background:var(--ink-3);}.sdot.shop{background:var(--hazard);}
+  .subcon-tag{font-size:9px;font-weight:700;color:var(--hazard-ink);border:1px solid color-mix(in srgb,var(--hazard) 40%,var(--border));border-radius:4px;padding:0 3px;}
+  .idle-tag{font-size:9px;font-weight:700;color:var(--ink-3);border:1px dashed var(--border-strong);border-radius:4px;padding:0 4px;}
+  .util{margin-top:3px;height:3px;border-radius:2px;background:var(--surface-3);overflow:hidden;}
+  .util span{display:block;height:100%;background:var(--brand);opacity:.7;}
+  [data-density="compact"] .util{display:none;}
+
+  .track{position:relative;flex:1;height:var(--row-h);}
+  .track .hgrid{position:absolute;top:0;bottom:0;border-left:1px solid var(--grid);}
+  .track .sep{border-left:1px solid var(--day-sep);}
+  .occ{position:absolute;top:0;bottom:0;background:var(--occupied);background-image:repeating-linear-gradient(45deg,transparent,transparent 5px,var(--occupied-stripe) 5px,var(--occupied-stripe) 6px);z-index:1;}
+  .occ .occ-l{position:absolute;top:3px;left:7px;font-size:9.5px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em;}
+
+  .brick{position:absolute;top:calc((var(--row-h) - var(--brick-h))/2);height:var(--brick-h);border-radius:7px;padding:4px 8px;z-index:2;border:1px solid var(--bc);background:var(--bw);cursor:grab;overflow:hidden;box-shadow:0 1px 2px rgba(20,30,45,.10);transition:box-shadow .12s,filter .12s;touch-action:none;}
+  .brick::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--bc);}
+  .brick:hover{box-shadow:var(--shadow-pop);z-index:5;filter:brightness(1.02);}
+  .brick.dragging{opacity:.35;}
+  .brick.spot{outline:2px solid var(--brand);outline-offset:1px;}
+  .brick.dim{opacity:.2;}
+  .brick.conflict{border-color:var(--conflict);background:var(--conflict-wash);}
+  .brick.conflict::before{background:var(--conflict);}
+  .brick.needsEq{border-style:dashed;}
+  .brick.mismatch{border-color:var(--hazard);border-style:dashed;}
+  .brick.mismatch::before{background:var(--hazard);}
+  .mm-tag{font-size:8px;font-weight:800;color:#fff;background:var(--hazard);border-radius:3px;padding:1px 3px;white-space:nowrap;}
+  .dh{position:absolute;height:2px;top:calc(50% - 1px);background:repeating-linear-gradient(90deg,var(--ink-3),var(--ink-3) 4px,transparent 4px,transparent 8px);z-index:1;}
+  .dh .dh-l{position:absolute;top:-9px;left:50%;transform:translateX(-50%);font-size:8px;color:var(--ink-3);white-space:nowrap;font-family:var(--mono);}
+  .hos{display:flex;align-items:center;gap:4px;margin-top:3px;font-size:9px;font-family:var(--mono);color:var(--ink-3);}
+  .hos-bar{width:46px;height:4px;border-radius:2px;background:var(--surface-3);overflow:hidden;}
+  .hos-bar span{display:block;height:100%;background:var(--s-progress);}
+  .hos.bad{color:var(--conflict);} .hos.bad .hos-bar span{background:var(--conflict);}
+  [data-density="compact"] .hos{display:none;}
+  .rate-tag{font-size:9px;font-weight:700;color:var(--ink-2);font-family:var(--mono);}
+  .mode-tag{font-size:8px;font-weight:700;color:var(--ink-3);border:1px solid var(--border);border-radius:3px;padding:0 3px;}
+  .mode-tag.dnh{color:var(--s-progress);border-color:color-mix(in srgb,var(--s-progress) 45%,var(--border));}
+  [data-margin="on"] .brick.m-good{background:color-mix(in srgb,#16a34a 15%,var(--surface));border-color:#16a34a;}
+  [data-margin="on"] .brick.m-good::before{background:#16a34a;}
+  [data-margin="on"] .brick.m-ok{background:color-mix(in srgb,#ca8a04 15%,var(--surface));border-color:#ca8a04;}
+  [data-margin="on"] .brick.m-ok::before{background:#ca8a04;}
+  [data-margin="on"] .brick.m-bad{background:color-mix(in srgb,#dc2626 15%,var(--surface));border-color:#dc2626;}
+  [data-margin="on"] .brick.m-bad::before{background:#dc2626;}
+  .brick .stopdots{position:absolute;left:7px;right:7px;bottom:7px;height:0;}
+  .brick .sd{position:absolute;width:5px;height:5px;border-radius:50%;background:var(--bc);top:-2px;transform:translateX(-50%);opacity:.65;box-shadow:0 0 0 1.5px var(--bw);}
+  .mark{font-size:8px;font-weight:800;border-radius:3px;padding:1px 3px;color:#fff;}
+  .mark.late{background:#dc2626;} .mark.det{background:#16a34a;}
+  .lane-money{font-size:9.5px;font-family:var(--mono);color:var(--ink-2);margin-top:2px;}
+  .lane-money b{color:#16a34a;}
+  .lane-call{font-size:9px;color:var(--ink-3);margin-top:2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  .lane-call .due{color:var(--conflict);font-weight:700;}
+  [data-density="compact"] .lane-money,[data-density="compact"] .lane-call{display:none;}
+  .sg-btn{font-size:10px;font-weight:700;color:var(--brand-ink);background:var(--brand-wash);border:1px solid color-mix(in srgb,var(--brand) 35%,var(--border));border-radius:6px;padding:2px 7px;cursor:pointer;margin-left:auto;}
+  #suggest{position:fixed;inset:0;background:rgba(10,15,25,.5);z-index:55;display:none;align-items:center;justify-content:center;}
+  #suggest.show{display:flex;}
+  .sg-card{background:var(--surface);border:1px solid var(--border-strong);border-radius:14px;box-shadow:var(--shadow-pop);width:410px;max-width:92vw;overflow:hidden;}
+  .sg-head{padding:14px 18px;border-bottom:1px solid var(--border);}
+  .sg-head b{font-size:15px;} .sg-head .s{font-size:12px;color:var(--ink-3);margin-top:2px;}
+  .sg-body{padding:16px 18px;}
+  .sg-cand{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);}
+  .sg-av{width:34px;height:34px;border-radius:8px;display:grid;place-items:center;color:#fff;font-weight:700;font-size:13px;flex:none;}
+  .sg-fit{margin-left:auto;text-align:right;} .sg-fit .p{font-size:22px;font-weight:750;color:#16a34a;line-height:1;} .sg-fit .l{font-size:9px;color:var(--ink-3);text-transform:uppercase;}
+  .sg-row{display:grid;grid-template-columns:92px 1fr;gap:5px 10px;font-size:12.5px;margin-top:14px;}
+  .sg-row .k{color:var(--ink-3);} .sg-none{font-size:13px;color:var(--conflict);padding:8px 0;}
+  .sg-actions{display:flex;gap:8px;justify-content:flex-end;padding:14px 18px;border-top:1px solid var(--border);}
+  .sg-actions button{padding:8px 15px;border-radius:8px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface-2);color:var(--ink-2);}
+  .sg-actions .primary{background:var(--brand);border-color:var(--brand);color:#fff;}
+  .sg-actions .tender{background:#f3e8ff;border-color:#a855f7;color:#7e22ce;}
+  .brick.tendered{border-style:dashed;}
+  .view-page{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;}
+  #marketView,#moneyView,#fuelView{display:none;}
+  .view-page h2{margin:0 0 4px;font-size:16px;} .view-page .sub{font-size:12px;color:var(--ink-3);margin-bottom:14px;}
+  .mtable{width:100%;border-collapse:collapse;font-size:12.5px;}
+  .mtable th{text-align:left;color:var(--ink-3);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;padding:8px 10px;border-bottom:1px solid var(--border);}
+  .mtable td{padding:8px 10px;border-bottom:1px solid var(--border);}
+  .mtable tr:hover td{background:var(--surface-2);}
+  .mtable .num{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums;}
+  .temp{font-size:11px;font-weight:700;padding:1px 8px;border-radius:20px;}
+  .temp.hot{color:#c2410c;background:color-mix(in srgb,#ea580c 15%,var(--surface));}
+  .temp.warm{color:#b45309;background:var(--s-pending-wash);}
+  .temp.cold{color:#0369a1;background:color-mix(in srgb,#0369a1 13%,var(--surface));}
+  .pnl{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px;}
+  .pnl .card{border:1px solid var(--border);border-radius:10px;padding:12px 14px;background:var(--surface-2);position:relative;overflow:hidden;}
+  .pnl .card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent,var(--brand));}
+  .pnl .n{font-size:20px;font-weight:750;font-variant-numeric:tabular-nums;} .pnl .l{font-size:10.5px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em;}
+  .mbar{height:6px;border-radius:3px;background:var(--surface-3);overflow:hidden;} .mbar span{display:block;height:100%;background:var(--brand);}
+  .cols2{display:grid;grid-template-columns:1fr 1fr;gap:22px;} @media(max-width:1000px){.cols2{grid-template-columns:1fr;} .pnl{grid-template-columns:repeat(2,1fr);}}
+  #msg{position:fixed;top:0;right:0;bottom:0;width:360px;max-width:92vw;background:var(--surface);border-left:1px solid var(--border-strong);box-shadow:var(--shadow-pop);z-index:47;transform:translateX(100%);transition:transform .22s ease;display:flex;flex-direction:column;}
+  #msg.show{transform:none;}
+  .msg-head{padding:13px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;}
+  .msg-x{margin-left:auto;cursor:pointer;color:var(--ink-3);font-size:18px;background:none;border:none;}
+  .msg-thread{flex:1;overflow:auto;padding:14px 16px;display:flex;flex-direction:column;gap:8px;}
+  .bub{max-width:80%;padding:8px 11px;border-radius:12px;font-size:12.5px;line-height:1.35;}
+  .bub.disp{align-self:flex-end;background:var(--brand);color:#fff;border-bottom-right-radius:3px;}
+  .bub.driver{align-self:flex-start;background:var(--surface-3);color:var(--ink);border-bottom-left-radius:3px;}
+  .bub .tm{font-size:9px;opacity:.7;margin-top:2px;}
+  .msg-quick{display:flex;gap:6px;flex-wrap:wrap;padding:8px 16px 0;}
+  .msg-quick button{font-size:11px;border:1px solid var(--border);background:var(--surface-2);border-radius:14px;padding:3px 9px;cursor:pointer;color:var(--ink-2);}
+  .msg-compose{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--border);}
+  .msg-compose input{flex:1;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font:inherit;font-size:12.5px;background:var(--surface-2);color:var(--ink);outline:none;}
+  .msg-compose button{background:var(--brand);color:#fff;border:none;border-radius:8px;padding:0 14px;font-weight:600;cursor:pointer;}
+  .msg-inbox-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;}
+  .msg-inbox-item:hover{background:var(--surface-2);}
+  .lane-msg{border:none;background:none;cursor:pointer;font-size:12px;color:var(--ink-3);position:relative;padding:0 2px;}
+  .lane-msg .u{position:absolute;top:-4px;right:-4px;background:var(--now);color:#fff;font-size:8px;font-weight:800;border-radius:8px;min-width:13px;height:13px;display:grid;place-items:center;}
+  .brick.updated{animation:glow 1.8s ease-out;}
+  @keyframes glow{0%{box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 65%,transparent);}100%{box-shadow:0 1px 2px rgba(20,30,45,.10);}}
+  .b-top{display:flex;align-items:center;gap:5px;}
+  .b-id{font-family:var(--mono);font-size:10.5px;font-weight:700;color:var(--bc);}
+  .b-route{font-size:11px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;}
+  [data-density="compact"] .b-route{display:none;}
+  .b-foot{display:flex;align-items:center;gap:5px;margin-top:1px;}
+  [data-density="compact"] .b-foot{display:none;}
+  .b-time{font-family:var(--mono);font-size:9.5px;color:var(--ink-3);}
+  .eqtag{font-size:8.5px;font-weight:700;color:#fff;border-radius:3px;padding:1px 4px;display:inline-flex;align-items:center;gap:3px;white-space:nowrap;}
+  .stops-chip{font-size:9px;font-weight:700;color:var(--ink-2);background:color-mix(in srgb,var(--ink-3) 18%,transparent);border-radius:4px;padding:0 3px;}
+  .haz{font-size:8.5px;font-weight:800;color:#fff;background:var(--hazard);border-radius:3px;padding:1px 4px;display:inline-flex;align-items:center;gap:2px;}
+  [data-haz="loud"] .brick.hazmat{border-color:var(--hazard);}
+  [data-haz="loud"] .brick.hazmat::before{background:repeating-linear-gradient(45deg,var(--hazard),var(--hazard) 3px,#1a1a1a 3px,#1a1a1a 6px);width:5px;}
+  [data-haz="loud"] .brick.hazmat{background:color-mix(in srgb,var(--hazard) 12%,var(--bw));}
+  .prog{position:absolute;left:0;bottom:0;height:3px;background:var(--bc);border-bottom-left-radius:7px;}
+  .handle{position:absolute;top:0;bottom:0;width:7px;cursor:ew-resize;z-index:3;}
+  .handle.l{left:0;}.handle.r{right:0;}
+  .handle::after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:2px;height:40%;border-radius:2px;background:var(--bc);opacity:0;}
+  .brick:hover .handle::after{opacity:.55;}
+
+  .now-line{position:absolute;top:0;bottom:0;width:2px;background:var(--now);z-index:5;pointer-events:none;}
+  .now-line::before{content:"";position:absolute;top:0;left:-4px;width:10px;height:10px;border-radius:50%;background:var(--now);animation:pnow 2.2s infinite;}
+  @keyframes pnow{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--now) 55%,transparent);}70%{box-shadow:0 0 0 8px transparent;}100%{box-shadow:0 0 0 0 transparent;}}
+  .now-flag{position:absolute;transform:translateX(-50%);font-family:var(--mono);font-size:9.5px;font-weight:700;color:#fff;background:var(--now);padding:1px 5px;border-radius:4px;z-index:7;top:1px;}
+
+  /* yard + backlog panels */
+  .panels{display:grid;grid-template-columns:1.15fr 1fr;gap:12px;margin-top:12px;}
+  @media(max-width:1100px){.panels{grid-template-columns:1fr;}}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:11px 14px;box-shadow:var(--shadow);}
+  .panel.dash{border-style:dashed;border-color:var(--border-strong);}
+  .panel h3{margin:0 0 2px;font-size:13px;display:flex;align-items:center;gap:7px;}
+  .panel .hint{font-size:11px;color:var(--ink-3);margin-bottom:9px;}
+  .cnt{font-size:10.5px;font-weight:700;color:var(--ink-3);background:var(--surface-3);border-radius:10px;padding:1px 7px;}
+  .backlog-row{display:flex;gap:9px;flex-wrap:wrap;min-height:20px;}
+  .bl-card{border:1px solid var(--border);border-left:3px solid var(--s-pending);background:var(--surface-2);border-radius:8px;padding:7px 10px;min-width:172px;cursor:grab;touch-action:none;transition:box-shadow .12s;}
+  .bl-card:hover{box-shadow:var(--shadow-pop);}
+  .bl-card.dragging{opacity:.35;}
+  .bl-card .b-id{font-family:var(--mono);font-size:10.5px;font-weight:700;color:var(--s-pending);}
+  .bl-card .b-route{font-size:11.5px;margin-top:2px;color:var(--ink);}
+  .bl-card .b-foot{display:flex;align-items:center;gap:5px;margin-top:5px;}
+  .yard-group{margin-bottom:9px;}
+  .yard-group:last-child{margin-bottom:0;}
+  .yard-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3);margin-bottom:5px;display:flex;align-items:center;gap:6px;}
+  .res-row{display:flex;gap:7px;flex-wrap:wrap;}
+  .res{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);background:var(--surface-2);border-radius:7px;padding:5px 9px;font-size:11.5px;cursor:grab;touch-action:none;transition:box-shadow .12s;}
+  .res:hover{box-shadow:var(--shadow-pop);}
+  .res.dragging{opacity:.35;}
+  .res .rdot{width:20px;height:20px;border-radius:5px;display:grid;place-items:center;font-size:11px;color:#fff;flex:none;}
+  .res .runit{font-family:var(--mono);font-weight:700;}
+  .res .rsub{color:var(--ink-3);font-size:10.5px;}
+  .empty-note{font-size:11.5px;color:var(--ink-3);}
+
+  #mapView{display:none;}
+  .map-wrap{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;position:relative;}
+  .map-note{position:absolute;top:10px;left:12px;font-size:10.5px;color:var(--ink-3);background:color-mix(in srgb,var(--surface) 80%,transparent);padding:3px 8px;border-radius:6px;z-index:3;}
+  .map-legend{position:absolute;bottom:10px;left:12px;display:flex;gap:12px;font-size:11px;color:var(--ink-2);background:color-mix(in srgb,var(--surface) 80%,transparent);padding:5px 10px;border-radius:8px;z-index:3;}
+  .city{fill:var(--ink-3);} .city-lbl{fill:var(--ink-3);font-size:11px;font-family:var(--sans);}
+  .route{fill:none;stroke-width:2.4;opacity:.85;stroke-linecap:round;}
+  .veh-pin{cursor:pointer;}
+
+  .legend{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:12px 2px 0;font-size:11px;color:var(--ink-2);}
+  .legend .item{display:inline-flex;align-items:center;gap:5px;}
+  .legend .sw{width:14px;height:10px;border-radius:3px;border:1px solid var(--bc);background:var(--bw);}
+  .legend .edot{width:9px;height:9px;border-radius:3px;}
+
+  #pop{position:fixed;z-index:40;width:270px;background:var(--surface);border:1px solid var(--border-strong);border-radius:10px;box-shadow:var(--shadow-pop);opacity:0;transform:translateY(4px);pointer-events:none;transition:opacity .12s,transform .12s;overflow:hidden;}
+  #pop.show{opacity:1;transform:translateY(0);}
+  #pop .p-head{padding:9px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+  #pop .p-id{font-family:var(--mono);font-weight:700;}
+  #pop .p-body{padding:9px 12px;display:grid;grid-template-columns:76px 1fr;gap:3px 10px;font-size:12px;}
+  #pop .p-k{color:var(--ink-3);} #pop .p-v{color:var(--ink);font-weight:550;} .mono{font-family:var(--mono);}
+  .chip{font-size:9px;font-weight:750;letter-spacing:.03em;text-transform:uppercase;padding:1px 6px;border-radius:20px;}
+
+  #drawer{position:fixed;top:0;right:0;bottom:0;width:372px;max-width:92vw;background:var(--surface);border-left:1px solid var(--border-strong);box-shadow:var(--shadow-pop);z-index:45;transform:translateX(100%);transition:transform .22s ease;display:flex;flex-direction:column;}
+  #drawer.show{transform:none;}
+  .dw-head{padding:16px 18px;border-bottom:1px solid var(--border);}
+  .dw-body{padding:16px 18px;overflow:auto;}
+  .dw-x{float:right;cursor:pointer;color:var(--ink-3);font-size:18px;background:none;border:none;}
+  .dw-row{display:grid;grid-template-columns:96px 1fr;gap:6px 12px;font-size:13px;margin-bottom:14px;}
+  .dw-k{color:var(--ink-3);} .dw-v{font-weight:550;}
+  .stop{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);}
+  .stop .seq{width:22px;height:22px;border-radius:50%;background:var(--brand-wash);color:var(--brand-ink);font-size:11px;font-weight:700;display:grid;place-items:center;flex:none;}
+  #drawer.wide{width:428px;}
+  .ed-sec{margin-bottom:16px;}
+  .ed-sec h4{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3);}
+  .ed-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .ed-field{display:flex;flex-direction:column;gap:3px;} .ed-field.ed-full{grid-column:1/-1;}
+  .ed-field label{font-size:11px;color:var(--ink-3);}
+  .ed-field input,.ed-field select{border:1px solid var(--border);background:var(--surface-2);border-radius:8px;padding:7px 9px;font:inherit;font-size:12.5px;color:var(--ink);outline:none;}
+  .ed-field input:focus,.ed-field select:focus{border-color:var(--brand);}
+  .ed-field input:disabled{color:var(--ink-3);}
+  .ed-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;}
+  .ed-qbtn{font-size:12px;font-weight:600;border:1px solid var(--border);background:var(--surface-2);border-radius:8px;padding:6px 11px;cursor:pointer;color:var(--ink-2);}
+  .ed-qbtn:hover{border-color:var(--border-strong);color:var(--ink);} .ed-qbtn.danger{color:var(--conflict);}
+  .ed-econ{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:12px;}
+  .ed-econ .e{display:flex;flex-direction:column;} .ed-econ .ev{font-size:15px;font-weight:700;font-family:var(--mono);} .ed-econ .el{font-size:9.5px;color:var(--ink-3);text-transform:uppercase;margin-top:1px;}
+  .ed-econ .delta{font-weight:700;}
+  .legchain .lg{display:flex;gap:10px;align-items:flex-start;position:relative;padding-bottom:12px;}
+  .legchain .lg:not(:last-child)::before{content:"";position:absolute;left:11px;top:22px;bottom:-2px;width:2px;background:var(--border);}
+  .legchain .lg .dot{width:22px;height:22px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:11px;color:#fff;z-index:1;}
+  .legchain .lg.done .dot{background:var(--s-completed);} .legchain .lg.current .dot{background:var(--brand);} .legchain .lg.pending .dot{background:var(--ink-3);opacity:.55;}
+  .legchain .lgtype{font-weight:650;font-size:12.5px;} .legchain .lgroute{color:var(--ink-3);font-size:11px;}
+  .legchain .lg.current .lgtype{color:var(--brand-ink);}
+  .stepper{display:flex;overflow-x:auto;padding-bottom:4px;}
+  .stepper .st{flex:1;min-width:50px;text-align:center;position:relative;}
+  .stepper .st::before{content:"";position:absolute;top:8px;left:-50%;width:100%;height:2px;background:var(--border);} .stepper .st:first-child::before{display:none;}
+  .stepper .st.done::before,.stepper .st.current::before{background:var(--s-progress);}
+  .stepper .sc{width:16px;height:16px;border-radius:50%;background:var(--surface-3);border:2px solid var(--border);margin:0 auto;position:relative;z-index:1;}
+  .stepper .st.done .sc{background:var(--s-progress);border-color:var(--s-progress);} .stepper .st.current .sc{background:var(--brand);border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-wash);}
+  .stepper .sl{font-size:8px;color:var(--ink-3);margin-top:4px;white-space:nowrap;} .stepper .st.current .sl{color:var(--brand-ink);font-weight:700;}
+  .ed-stop{display:flex;gap:6px;align-items:center;margin-bottom:6px;}
+  .ed-stop .seq{width:20px;height:20px;border-radius:50%;background:var(--brand-wash);color:var(--brand-ink);font-size:10px;font-weight:700;display:grid;place-items:center;flex:none;}
+  .ed-stop input{flex:1;border:1px solid var(--border);background:var(--surface-2);border-radius:8px;padding:6px 9px;font:inherit;font-size:12.5px;color:var(--ink);outline:none;}
+  .ed-stop input:focus{border-color:var(--brand);} .ed-stop .rm{cursor:pointer;color:var(--conflict);border:none;background:none;font-size:13px;}
+  .ed-savebar{position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--border);padding:12px 18px;display:flex;gap:8px;justify-content:flex-end;margin:0 -18px -16px;}
+  .ed-savebar button{padding:8px 16px;border-radius:8px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface-2);color:var(--ink-2);}
+  .ed-savebar .save{background:var(--brand);border-color:var(--brand);color:#fff;} .ed-savebar .save:disabled{opacity:.4;cursor:not-allowed;}
+
+  #notif{position:fixed;top:64px;right:18px;width:344px;max-height:70vh;background:var(--surface);border:1px solid var(--border-strong);border-radius:12px;box-shadow:var(--shadow-pop);z-index:46;display:none;flex-direction:column;overflow:hidden;}
+  #notif.show{display:flex;}
+  .nt-head{padding:11px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+  .nt-head b{font-size:13px;} .nt-clear{font-size:11px;color:var(--brand-ink);cursor:pointer;background:none;border:none;}
+  .nt-list{overflow:auto;}
+  .nt-item{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;gap:10px;cursor:pointer;position:relative;}
+  .nt-item:hover{background:var(--surface-2);}
+  .nt-item.unread{background:color-mix(in srgb,var(--brand) 6%,var(--surface));}
+  .nt-item.unread::before{content:"";position:absolute;left:5px;top:14px;width:6px;height:6px;border-radius:50%;background:var(--brand);}
+  .nt-ic{width:26px;height:26px;border-radius:7px;flex:none;display:grid;place-items:center;font-size:13px;}
+  .nt-tt{font-size:12.5px;font-weight:600;} .nt-ts{font-size:11px;color:var(--ink-3);margin-top:1px;}
+  .nt-empty{padding:26px 14px;text-align:center;color:var(--ink-3);font-size:12px;}
+
+  #toasts{position:fixed;right:18px;bottom:18px;z-index:50;display:flex;flex-direction:column;gap:8px;align-items:flex-end;}
+  .toast{background:var(--surface);border:1px solid var(--border-strong);border-left:3px solid var(--brand);border-radius:8px;box-shadow:var(--shadow-pop);padding:8px 12px;font-size:12.5px;max-width:320px;cursor:pointer;animation:slidein .25s ease;}
+  .toast.conflict{border-left-color:var(--conflict);}
+  .toast .tt{font-weight:650;} .toast .ts{color:var(--ink-3);font-size:11px;margin-top:1px;}
+  @keyframes slidein{from{opacity:0;transform:translateX(20px);}to{opacity:1;transform:none;}}
+
+  #ghost{position:fixed;z-index:60;pointer-events:none;opacity:.92;box-shadow:var(--shadow-pop);border-radius:7px;display:none;}
+  .drag-time{position:fixed;z-index:61;pointer-events:none;font-family:var(--mono);font-size:11px;font-weight:700;color:#fff;background:var(--brand);padding:2px 7px;border-radius:5px;display:none;}
+
+  .note{margin:16px 2px 0;font-size:11px;color:var(--ink-3);line-height:1.5;}
+  .note b{color:var(--ink-2);}
+  @media(max-width:1000px){.kpis{grid-template-columns:repeat(4,1fr);}}
+</style>
+
+<div class="app">
+  <div class="topbar">
+    <div class="brand-mark"><div class="brand-dot">🛰️</div>
+      <div><div class="brand-name">Dispatch Board</div><div class="brand-sub" id="brandSub">US fleet control room · mockup</div></div>
+    </div>
+    <div class="spacer"></div>
+    <div class="seg" id="regionSeg"><button data-region="US" class="on">🇺🇸 US</button><button data-region="EU">🇪🇺 EU</button></div>
+    <div class="seg" id="viewSeg"><button data-view="board" class="on">▦ Board</button><button data-view="map">🗺 Map</button><button data-view="market">📈 Market</button><button data-view="money">💵 Money</button><button data-view="fuel">⛽ Fuel</button></div>
+    <div class="seg" id="groupSeg"></div>
+    <div class="seg" id="daySeg"><button data-days="1" class="on">1d</button><button data-days="3">3d</button><button data-days="5">Week</button></div>
+    <div class="search">🔎<input id="search" placeholder="Search load / lane / unit" /></div>
+    <button class="ctl bell" id="msgBtn">💬<span class="badge" id="msgBadge">0</span></button>
+    <button class="ctl bell" id="bellBtn">🔔<span class="badge" id="bellBadge">0</span></button>
+    <span class="live-dot"></span><span class="clock" id="clock">08:20:00</span><span class="clock" id="diesel">⛽</span>
+    <button class="ctl" id="themeBtn">◐</button>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="toolbar">
+    <button class="ctl" id="prevDay">‹</button>
+    <b id="rangeLabel" style="font-size:13px;min-width:150px;text-align:center;">—</b>
+    <button class="ctl" id="nextDay">›</button>
+    <div class="zoom">Zoom <input type="range" id="zoom" min="34" max="120" value="72" /></div>
+    <div class="seg" id="densSeg"><button data-den="comfortable" class="on">Comfortable</button><button data-den="compact">Compact</button></div>
+    <select class="ctl" id="equipSel"></select>
+    <button class="ctl" id="hazBtn">☣ Placards: subtle</button>
+    <button class="ctl" id="marginBtn">💲 Margin view</button>
+    <div class="spacer"></div>
+    <div class="chips" id="chips">
+      <button class="chip-f on" data-filter="all">All</button>
+      <button class="chip-f" data-filter="in_progress">Rolling</button>
+      <button class="chip-f haz" data-filter="haz">Hazmat</button>
+      <button class="chip-f conf" data-filter="conflict">Conflicts</button>
+    </div>
+  </div>
+
+  <div id="boardView" class="board-wrap">
+    <div class="board-scroll" id="boardScroll">
+      <div class="board-inner" id="boardInner">
+        <div class="ruler"><div class="corner" id="corner">Fleet</div><div class="track" id="ruler"></div></div>
+        <div id="lanes"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="mapView"><div class="map-wrap" id="mapWrap"></div></div>
+  <div id="marketView"><div class="view-page" id="marketWrap"></div></div>
+  <div id="moneyView"><div class="view-page" id="moneyWrap"></div></div>
+  <div id="fuelView"><div class="view-page" id="fuelWrap"></div></div>
+
+  <div class="legend" id="legend"></div>
+
+  <div class="panels">
+    <div class="panel dash">
+      <h3>🗂 Load board <span class="cnt" id="blCount">0</span></h3>
+      <div class="hint" id="blHint">Drag a load onto a lane to dispatch it — snaps to a 15-min grid and lands on that resource.</div>
+      <div class="backlog-row" id="backlog"></div>
+    </div>
+    <div class="panel">
+      <h3>🏗 Yard — available now</h3>
+      <div class="hint">Bobtail tractors, dropped trailers, and open drivers. Drag one onto a lane to hook/assign it.</div>
+      <div id="yard"></div>
+    </div>
+  </div>
+
+  <div class="note"><b>Front-end mockup — fabricated data.</b> US-first (EU toggle) dispatch board: separate tractor / trailer / driver pools combined into loads, with trailer types driving equipment. Group by driver, tractor, or trailer — idle equipment shows as empty lanes. Drag-to-dispatch, move/reassign, resize; conflict, equipment-match & hazmat-endorsement checks; HOS clocks + deadhead legs; per-load rate / RPM / margin economics (from real city distances) with a margin heatmap; drop-and-hook vs live; multi-stop routing with per-stop ETAs; broker/customer + appointment windows + detention; driver check-calls & ELD break clocks; ⚡ one-click auto-dispatch suggestions; tender → accept/reject flow with live inbound spot tenders; market-rate benchmarking (your rate vs spot); driver messaging threads; a market-intelligence view (hot/cold lanes + reposition advice) and a settlements & invoicing P&L view; a Fuel & IFTA view (per-state fuel-tax apportionment) with fuel surcharge on every rate and a live diesel price; driver CSA safety scores + medical-card compliance; persistent notification centre; schematic network map. Same time→pixel core the production board will use.</div>
+</div>
+
+<div id="pop"></div>
+<div id="drawer"></div>
+<div id="msg"></div>
+<div id="notif"><div class="nt-head"><b>Activity</b><button class="nt-clear" id="ntClear">Mark all read</button></div><div class="nt-list" id="ntList"></div></div>
+<div id="toasts"></div>
+<div id="suggest"></div>
+<div id="ghost"></div>
+<div class="drag-time" id="dragTime"></div>
+
+<script>
+(function(){
+  "use strict";
+  const $=s=>document.querySelector(s), ce=document.createElement.bind(document);
+  const MS_DAY=86400000, DAY_START=6, DAY_END=20, HPD=DAY_END-DAY_START;
+  const BASE=new Date(2026,7,17); // Mon 17 Aug 2026
+
+  const mk=(off,t)=>{const[h,m]=t.split(':').map(Number);return new Date(BASE.getTime()+off*MS_DAY+((h*60+m)*60000));};
+
+  // ---------- equipment palettes ----------
+  const EQ_COLORS={ 'Dry Van':'#64748b','Reefer':'#0891b2','Flatbed':'#b45309','Step Deck':'#7c3aed','Tanker':'#ca8a04','Intermodal':'#0d9488',
+    'Tautliner':'#64748b','Tank':'#ca8a04','Box':'#0891b2','Chassis':'#0d9488' };
+  const EQ_ICON={ 'Dry Van':'📦','Reefer':'❄','Flatbed':'▤','Step Deck':'⬍','Tanker':'⬤','Intermodal':'▭','Tautliner':'📦','Tank':'⬤','Box':'📦','Chassis':'▭' };
+
+  // ---------- load economics (rate / RPM / margin from real city distances) ----------
+  const ECON={ US:{cpm:1.85,unit:'mi',k:0.621371,rpm:{'Dry Van':2.05,'Reefer':2.55,'Flatbed':2.65,'Step Deck':2.75,'Tanker':3.05,'Intermodal':1.90}},
+               EU:{cpm:1.55,unit:'km',k:1,rpm:{'Tautliner':2.0,'Tank':2.9,'Box':2.1,'Reefer':2.5,'Chassis':1.9}} };
+  function haversineKm(a,b){const R=6371,dLat=(b[1]-a[1])*Math.PI/180,dLon=(b[0]-a[0])*Math.PI/180,la1=a[1]*Math.PI/180,la2=b[1]*Math.PI/180;const x=Math.sin(dLat/2)**2+Math.cos(la1)*Math.cos(la2)*Math.sin(dLon/2)**2;return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));}
+  const MKT={US:{'Dry Van':1.95,'Reefer':2.45,'Flatbed':2.55,'Step Deck':2.65,'Tanker':2.90,'Intermodal':1.95},EU:{'Tautliner':1.95,'Tank':2.75,'Box':2.05,'Reefer':2.45,'Chassis':1.95}};
+  const DIESEL={US:3.98,EU:1.85},MPG=6.5;
+  const STATE_TAX={IL:.454,IN:.57,OH:.47,TX:.20,GA:.326,TN:.27,MO:.22,MI:.286,KY:.246,NC:.405,WI:.329,OK:.20,NE:.297,AR:.285,PA:.741,KS:.26};
+  function econOf(from,to,type,haz){const e=ECON[state.region],cf=e.rpm[type]||2.0,a=D.cities[from],b=D.cities[to];let dist=a&&b?haversineKm(a,b)*e.k:250;dist=Math.max(30,Math.round(dist));const rpm=cf+(haz?0.3:0),rate=Math.round(dist*rpm),cost=Math.round(dist*e.cpm),margin=rate-cost,pct=rate?margin/rate:0;const mkt=(MKT[state.region][type]||rpm),vsMkt=mkt?(rpm-mkt)/mkt:0;const fscRate=state.region==='US'?0.28:0.20,fsc=Math.round(dist*fscRate),linehaul=rate-fsc;return{dist,rpm,rate,cost,margin,pct,marketRpm:mkt,vsMkt,fsc,linehaul,mClass:pct>=.22?'m-good':pct>=.12?'m-ok':'m-bad'};}
+  function computeEconomics(){D.loads.forEach((l,i)=>{Object.assign(l,econOf(l.from,l.to,l.trailerType,l.haz));l.mode=l.mode||(i%3===0?'dnh':'live');});D.backlog.forEach(b=>Object.assign(b,econOf(b.from,b.to,b.type,b.haz)));}
+
+  // ---------- customer / broker / appointment / ELD enrichment ----------
+  const BROKERS=['TQL','Coyote','Echo','C.H. Robinson','Landstar','Direct'];
+  function hsh(s){let x=0;for(let i=0;i<s.length;i++)x=(x*31+s.charCodeAt(i))>>>0;return x;}
+  function enrich(){
+    D.loads.forEach(l=>{const k=hsh(l.id);
+      l.shipper=l.from.split(',')[0]+' '+['DC','Foods','Mfg','Distribution','Terminal'][k%5];
+      l.consignee=l.to.split(',')[0]+' '+['Whse','Retail DC','Plant','Cross-dock','Yard'][(k>>3)%5];
+      l.broker=l.mode==='dnh'?'Direct':BROKERS[k%BROKERS.length];
+      l.pro='PRO'+(100000+k%899999);
+      if(!l.apptManual){l.apptEnd=new Date(l.end.getTime()+[-20,10,25,40][k%4]*60000);l.apptStart=new Date(l.apptEnd.getTime()-60*60000);}
+      l.lateRisk=l.apptEnd?l.end>l.apptEnd:false;
+      l.detention=(k%7===0);
+      if(l.detention){l.rate+=150;l.margin+=150;l.pct=l.rate?l.margin/l.rate:l.pct;}
+      l.orderRef=l.orderRef||('ORD-'+(1000+k%9000));
+    });
+    D.drivers.forEach((dr,i)=>{const cur=D.loads.filter(l=>l.driverId===dr.id&&l.status==='in_progress')[0]||D.loads.filter(l=>l.driverId===dr.id)[0];
+      dr.lastCall=cur?{loc:cur.from.split(',')[0],mins:20+i*13}:null;
+      dr.callDue=cur?(20+i*13)>90:false;
+      dr.eldToBreak=dr.status==='offline'?0:Math.max(0.2,(dr.hos||0)-(1+i*0.55));
+      dr.csa=Math.min(97,62+(i*7+hsh(dr.id)%22));dr.medicalDueDays=[45,12,-2,90,28,6][i%6];dr.overdue=dr.medicalDueDays<14;});
+  }
+
+  // ---------- auto-dispatch scoring ----------
+  function suggestFor(b){
+    const need=b.type,hrs=b.dur/60;
+    const cands=D.drivers.filter(d=>d.status==='active').map(d=>{
+      if(b.haz&&!d.hazmat)return null;
+      const dayLoads=D.loads.filter(l=>l.driverId===d.id&&Math.round((midnight(l.start)-midnight(BASE))/MS_DAY)===state.dayOffset);
+      const planned=dayLoads.reduce((a,l)=>a+(l.end-l.start),0)/3600000,room=(d.hos||0)-planned;
+      if(room<hrs)return null;
+      const tr=D.trailers.find(t=>t.type===need&&t.status==='idle')||D.trailers.find(t=>t.type===need);
+      const eqScore=tr?42:14,hosScore=Math.min(24,room/(d.hos||1)*24),capScore=Math.max(0,18-dayLoads.length*5),hazBonus=(d.hazmat&&b.haz?6:0);
+      return {d,tr,room,fit:Math.min(99,Math.round(eqScore+hosScore+capScore+hazBonus)),lastEnd:dayLoads.length?dayLoads.sort((a,c)=>a.end-c.end)[dayLoads.length-1].end:null};
+    }).filter(Boolean).sort((a,c)=>c.fit-a.fit);
+    return cands[0]||null;
+  }
+  // A dispatched load must carry a full crew (tractor + trailer + driver) or it
+  // disappears from whichever grouping keys on the missing id. Fill any gap with
+  // the best available resource so the load is visible in every grouping.
+  function ensureCrew(l){
+    if(!l.tractorId){const t=D.tractors.find(x=>x.status!=='shop'&&!D.loads.some(o=>o.tractorId===x.id))||D.tractors.find(x=>x.status!=='shop')||D.tractors[0];if(t)l.tractorId=t.id;}
+    if(!l.trailerId){const r=D.trailers.find(x=>x.type===l.reqEquip&&x.status==='idle')||D.trailers.find(x=>x.type===l.reqEquip)||D.trailers.find(x=>x.status==='idle')||D.trailers[0];if(r){l.trailerId=r.id;l.trailerType=r.type;}}
+    if(!l.driverId){const d=D.drivers.find(x=>x.status==='active'&&!D.loads.some(o=>o.driverId===x.id))||D.drivers.find(x=>x.status==='active')||D.drivers[0];if(d)l.driverId=d.id;}
+  }
+  function dispatchLoad(b,driverId,trailerId,start){const nt={id:b.id,driverId,tractorId:null,trailerId:trailerId||null,trailerType:b.type,reqEquip:b.type,from:b.from,to:b.to,start,end:new Date(start.getTime()+b.dur*60000),stops:b.stops,status:'assigned',haz:b.haz,un:b.un,commodity:b.commodity,mode:'live'};Object.assign(nt,econOf(nt.from,nt.to,nt.trailerType,nt.haz));ensureCrew(nt);D.loads.push(nt);const bi=D.backlog.indexOf(b);if(bi>=0)D.backlog.splice(bi,1);computeEconomics();enrich();return nt;}
+
+  // ---------- load tender lifecycle ----------
+  function acceptTender(id){const t=D.loads.find(x=>x.id===id);if(!t||t.status!=='tendered')return;t.status='assigned';if(editState&&editState.id===id){drawer.classList.remove('show');editState=null;}render();refreshView();notify('plan',`${t.id} accepted`,`${driverById[t.driverId]?.name||'Carrier'} accepted the tender · ${fmt(t.start)}–${fmt(t.end)}`,t.id);}
+  function rejectTender(id,reason){const i=D.loads.findIndex(x=>x.id===id);if(i<0)return;const t=D.loads[i];D.loads.splice(i,1);D.backlog.push({id:t.id,from:t.from,to:t.to,stops:t.stops,dur:Math.round((t.end-t.start)/60000),type:t.trailerType,haz:t.haz,un:t.un,commodity:t.commodity});computeEconomics();enrich();if(editState&&editState.id===id){drawer.classList.remove('show');editState=null;}render();refreshView();notify('conflict',`${t.id} declined`,`${driverById[t.driverId]?.name||'Carrier'} declined${reason?' — '+reason:''} · back on the board`,null);}
+  function scheduleTenderResponse(id){const rg=state.region,delay=4000+(hsh(id)%5)*1500;setTimeout(()=>{if(state.region!==rg)return;const t=D.loads.find(x=>x.id===id);if(!t||t.status!=='tendered')return;if((hsh(id)%10)<7)acceptTender(id);else rejectTender(id,['out of hours','equipment conflict','rate too low'][hsh(id)%3]);},delay);}
+  function addInboundTender(){const cities=Object.keys(D.cities);if(cities.length<2||D.backlog.length>6)return;const a=cities[Math.floor(Math.random()*cities.length)];let b=cities[Math.floor(Math.random()*cities.length)];if(b===a)b=cities[(cities.indexOf(a)+1)%cities.length];const type=D.equip[Math.floor(Math.random()*D.equip.length)],brk=BROKERS[Math.floor(Math.random()*BROKERS.length)];const nb={id:'L-'+(uL++),from:a,to:b,stops:1+Math.floor(Math.random()*3),dur:120+Math.floor(Math.random()*180),type,commodity:'Spot freight',isNew:true};Object.assign(nb,econOf(nb.from,nb.to,nb.type,nb.haz));D.backlog.push(nb);renderBacklog();notify('feed',`New tender · ${nb.id}`,`${a.split(',')[0]} → ${b.split(',')[0]} · ${type} · ${brk}`,null);}
+
+  // ---------- datasets ----------
+  let uT=1200, uL=51200; // unit / load id counters
+  function T(off,d,tr,tl,type,from,to,s,e,stops,status,extra){ return Object.assign({id:'L-'+(uL++),driverId:d,tractorId:tr,trailerId:tl,trailerType:type,reqEquip:type,from,to,start:mk(off,s),end:mk(off,e),stops,status},extra||{}); }
+
+  const DATA={
+    US:{
+      term:{region:'US fleet control room',load:'Load',loadPl:'Loads',tractor:'Tractor',trailer:'Trailer',driver:'Driver',hazPrefix:'HZ',placard:'Placards',rolling:'Rolling',search:'load / lane / unit'},
+      equip:['Dry Van','Reefer','Flatbed','Step Deck','Tanker','Intermodal'],
+      drivers:[
+        {id:'d1',name:'Jake Morrow',sub:'CDL-A · Company',status:'active',hazmat:false,hos:11},
+        {id:'d2',name:'Maria Delgado',sub:'CDL-A · Hazmat',status:'active',hazmat:true,hos:11},
+        {id:'d3',name:'Tyrone Willis',sub:'CDL-A · Company',status:'active',hazmat:false,hos:9.5},
+        {id:'d4',name:'Dale Krueger',sub:'CDL-A · 34hr reset',status:'break',hazmat:false,hos:5},
+        {id:'d5',name:'Priya Nair',sub:'CDL-A · Owner-op',status:'active',subcon:'Nair Trucking',hazmat:true,hos:11},
+        {id:'d6',name:'Sam Whitfield',sub:'CDL-A · Company',status:'active',hazmat:false,hos:8},
+        {id:'d7',name:'Chuck Baker',sub:'CDL-A · Off-duty',status:'offline',hazmat:false,hos:0},
+      ],
+      tractors:[
+        {id:'t1',unit:'1207',make:'Freightliner Cascadia',cab:'Sleeper',status:'active'},
+        {id:'t2',unit:'1184',make:'Peterbilt 579',cab:'Sleeper',status:'active'},
+        {id:'t3',unit:'1220',make:'Kenworth T680',cab:'Day Cab',status:'active'},
+        {id:'t4',unit:'1155',make:'Volvo VNL 860',cab:'Sleeper',status:'active'},
+        {id:'t5',unit:'1301',make:'International LT',cab:'Sleeper',status:'active'},
+        {id:'t6',unit:'1176',make:'Mack Anthem',cab:'Day Cab',status:'active'},
+        {id:'t7',unit:'1240',make:'Freightliner Cascadia',cab:'Day Cab',status:'shop'},
+      ],
+      trailers:[
+        {id:'r1',unit:'DV-4432',type:'Dry Van',len:"53'",status:'active'},
+        {id:'r2',unit:'RF-2201',type:'Reefer',len:"53'",status:'active',feat:'setpoint -10°F'},
+        {id:'r3',unit:'FB-3310',type:'Flatbed',len:"48'",status:'active'},
+        {id:'r4',unit:'TK-5090',type:'Tanker',len:'',status:'active',feat:'chemical'},
+        {id:'r5',unit:'SD-2277',type:'Step Deck',len:"48'",status:'active'},
+        {id:'r6',unit:'IM-8804',type:'Intermodal',len:"40'",status:'active'},
+        {id:'r7',unit:'DV-4419',type:'Dry Van',len:"53'",status:'active'},
+        {id:'r8',unit:'RF-2208',type:'Reefer',len:"53'",status:'idle'},
+        {id:'r9',unit:'DV-4450',type:'Dry Van',len:"53'",status:'idle'},
+        {id:'r10',unit:'FB-3325',type:'Flatbed',len:"48'",status:'idle'},
+      ],
+      loads:[
+        T(0,'d1','t1','r1','Dry Van','Chicago, IL','Indianapolis, IN','07:00','10:00',2,'completed',{commodity:'Retail freight',wt:'42,000 lb'}),
+        T(0,'d1','t1','r1','Dry Van','Indianapolis, IN','Columbus, OH','10:45','13:30',1,'in_progress',{pct:.4,commodity:'Auto parts',wt:'38,500 lb'}),
+        T(0,'d1','t1','r1','Dry Van','Columbus, OH','Cincinnati, OH','14:30','16:30',2,'assigned',{commodity:'Retail freight'}),
+        T(0,'d2','t2','r4','Tanker','Houston, TX','Dallas, TX','06:30','10:30',1,'in_progress',{pct:.55,haz:'8',un:'UN 1830',commodity:'Sulfuric acid',wt:'44,000 lb'}),
+        T(0,'d2','t2','r4','Tanker','Dallas, TX','Oklahoma City, OK','12:00','16:00',1,'assigned',{haz:'3',un:'UN 1203',commodity:'Gasoline'}),
+        T(0,'d3','t3','r2','Reefer','Atlanta, GA','Nashville, TN','08:00','12:30',2,'assigned',{commodity:'Frozen foods',wt:'40,000 lb'}),
+        T(0,'d3','t3','r2','Reefer','Nashville, TN','Memphis, TN','13:30','17:00',1,'assigned',{commodity:'Produce'}),
+        T(0,'d4','t4','r5','Step Deck','St. Louis, MO','Kansas City, MO','07:30','10:30',1,'completed',{commodity:'Machinery'}),
+        T(0,'d5','t5','r3','Flatbed','Charlotte, NC','Atlanta, GA','09:00','13:00',2,'in_progress',{pct:.35,commodity:'Steel coils',wt:'47,000 lb'}),
+        T(0,'d6','t6','r6','Intermodal','Detroit, MI','Chicago, IL','08:30','12:00',1,'assigned',{commodity:'Container · 40 HC'}),
+        T(0,'d6','t6','r7','Dry Van','Chicago, IL','Milwaukee, WI','13:00','15:00',2,'assigned',{commodity:'Beverages'}),
+        T(0,'d3','t3','r2','Reefer','Louisville, KY','Cincinnati, OH','06:00','07:30',1,'completed',{commodity:'Dairy'}),
+        // later days
+        T(1,'d1','t1','r1','Dry Van','Chicago, IL','St. Louis, MO','08:00','12:00',2,'assigned',{commodity:'Retail freight'}),
+        T(1,'d2','t2','r4','Tanker','Houston, TX','San Antonio, TX','09:00','12:00',1,'assigned',{haz:'3',un:'UN 1202',commodity:'Diesel'}),
+        T(1,'d5','t5','r3','Flatbed','Atlanta, GA','Charlotte, NC','07:30','11:00',1,'assigned',{commodity:'Lumber'}),
+        T(2,'d1','t1','r1','Dry Van','St. Louis, MO','Memphis, TN','09:00','13:00',2,'assigned',{commodity:'Paper goods'}),
+        T(2,'d3','t3','r2','Reefer','Memphis, TN','Dallas, TX','10:00','15:30',2,'assigned',{commodity:'Frozen foods'}),
+      ],
+      backlog:[
+        {id:'L-'+(uL++),from:'Kansas City, MO',to:'Omaha, NE',stops:2,dur:180,type:'Dry Van',commodity:'Retail freight'},
+        {id:'L-'+(uL++),from:'Memphis, TN',to:'Little Rock, AR',stops:1,dur:150,type:'Reefer',commodity:'Frozen foods'},
+        {id:'L-'+(uL++),from:'Dallas, TX',to:'Houston, TX',stops:1,dur:210,type:'Tanker',haz:'8',un:'UN 1824',commodity:'Caustic soda'},
+        {id:'L-'+(uL++),from:'Columbus, OH',to:'Pittsburgh, PA',stops:3,dur:200,type:'Flatbed',commodity:'Steel'},
+      ],
+      occupancy:[{d:'d4',off:0,s:'10:30','e':'12:00',label:'34-hr reset'},{d:'d7',off:0,s:'06:00',e:'20:00',label:'Off-duty'},{tr:'t7',off:0,s:'06:00',e:'14:00',label:'PM service'}],
+      cities:{'Chicago, IL':[-87.63,41.88],'Indianapolis, IN':[-86.15,39.77],'Columbus, OH':[-82.99,39.96],'Cincinnati, OH':[-84.51,39.10],'Atlanta, GA':[-84.39,33.75],'Nashville, TN':[-86.78,36.16],'Memphis, TN':[-90.05,35.15],'Dallas, TX':[-96.80,32.78],'Houston, TX':[-95.37,29.76],'Oklahoma City, OK':[-97.52,35.47],'Kansas City, MO':[-94.58,39.10],'St. Louis, MO':[-90.20,38.63],'Detroit, MI':[-83.05,42.33],'Louisville, KY':[-85.76,38.25],'Charlotte, NC':[-80.84,35.23],'Milwaukee, WI':[-87.91,43.04],'San Antonio, TX':[-98.49,29.42],'Omaha, NE':[-95.94,41.26],'Little Rock, AR':[-92.29,34.75],'Pittsburgh, PA':[-79.99,40.44]},
+      box:[-99,-79,28.5,43.6]
+    },
+    EU:{
+      term:{region:'EU fleet control room',load:'Trip',loadPl:'Trips',tractor:'Truck',trailer:'Trailer',driver:'Driver',hazPrefix:'ADR',placard:'ADR',rolling:'En route',search:'trip / lane / plate'},
+      equip:['Tautliner','Tank','Box','Reefer','Chassis'],
+      drivers:[
+        {id:'d1',name:'Marco Bianchi',sub:'CE · Company',status:'active',hazmat:false,hos:9},
+        {id:'d2',name:'Lena Hoffmann',sub:'CE · ADR',status:'active',hazmat:true,hos:9},
+        {id:'d3',name:'Pavel Novák',sub:'CE · Company',status:'active',hazmat:false,hos:9},
+        {id:'d4',name:'Sofia Ferrari',sub:'CE · Rest',status:'break',hazmat:false,hos:4.5},
+        {id:'d5',name:'Driss El Amrani',sub:'CE · Subco',status:'active',subcon:'Alpine Log.',hazmat:false,hos:9},
+        {id:'d6',name:'Anna Kowalski',sub:'CE · Company',status:'active',hazmat:false,hos:9},
+      ],
+      tractors:[
+        {id:'t1',unit:'ZH 4729',make:'Scania R500',cab:'Sleeper',status:'active'},
+        {id:'t2',unit:'GE 1182',make:'Volvo FH16',cab:'Sleeper',status:'active'},
+        {id:'t3',unit:'SG 5562',make:'MAN TGX',cab:'Day Cab',status:'active'},
+        {id:'t4',unit:'TI 3300',make:'Mercedes Actros',cab:'Sleeper',status:'active'},
+        {id:'t5',unit:'BS 9017',make:'DAF XG+',cab:'Sleeper',status:'active'},
+        {id:'t6',unit:'BE 2245',make:'Iveco S-Way',cab:'Day Cab',status:'active'},
+      ],
+      trailers:[
+        {id:'r1',unit:'TL-401',type:'Tautliner',len:'13.6m',status:'active'},
+        {id:'r2',unit:'TK-118',type:'Tank',len:'',status:'active',feat:'chemical'},
+        {id:'r3',unit:'BX-556',type:'Box',len:'13.6m',status:'active'},
+        {id:'r4',unit:'RF-330',type:'Reefer',len:'13.6m',status:'active',feat:'-18°C'},
+        {id:'r5',unit:'CH-901',type:'Chassis',len:"45'",status:'active'},
+        {id:'r6',unit:'TL-402',type:'Tautliner',len:'13.6m',status:'idle'},
+        {id:'r7',unit:'TK-119',type:'Tank',len:'',status:'idle',feat:'food'},
+      ],
+      loads:[
+        T(0,'d1','t1','r1','Tautliner','Basel','Zürich','07:00','09:30',2,'completed',{commodity:'Palletised goods'}),
+        T(0,'d1','t1','r1','Tautliner','Zürich','Bern','10:15','13:00',3,'in_progress',{pct:.38,commodity:'Retail'}),
+        T(0,'d2','t2','r2','Tank','Lausanne','Fribourg','09:00','12:30',2,'in_progress',{pct:.55,haz:'3',un:'UN 1203',commodity:'Gasoline'}),
+        T(0,'d3','t3','r3','Box','Zürich','St. Gallen','08:00','11:00',2,'assigned',{commodity:'Electronics'}),
+        T(0,'d4','t4','r4','Reefer','Lugano','Bellinzona','07:30','10:00',1,'completed',{commodity:'Fresh produce'}),
+        T(0,'d5','t5','r5','Chassis','Basel','Mulhouse','09:30','13:00',2,'in_progress',{pct:.42,commodity:'Container 40HC'}),
+        T(0,'d6','t6','r1','Tautliner','Bern','Thun','08:30','12:00',3,'assigned',{commodity:'Building materials'}),
+        T(1,'d2','t2','r2','Tank','Lausanne','Sion','09:00','12:00',2,'assigned',{haz:'8',un:'UN 1830',commodity:'Sulfuric acid'}),
+      ],
+      backlog:[
+        {id:'L-'+(uL++),from:'Winterthur',to:'Zürich',stops:1,dur:90,type:'Tank',haz:'2',un:'UN 1978',commodity:'Propane'},
+        {id:'L-'+(uL++),from:'Aarau',to:'Olten',stops:3,dur:120,type:'Box',commodity:'Retail'},
+        {id:'L-'+(uL++),from:'Sion',to:'Martigny',stops:2,dur:105,type:'Reefer',commodity:'Produce'},
+      ],
+      occupancy:[{d:'d4',off:0,s:'10:00',e:'11:30',label:'Rest'},{tr:'t6',off:0,s:'12:00',e:'20:00',label:'Service'}],
+      cities:{'Basel':[7.59,47.56],'Zürich':[8.54,47.37],'Bern':[7.44,46.95],'Lausanne':[6.63,46.52],'Fribourg':[7.16,46.80],'St. Gallen':[9.38,47.42],'Lugano':[8.95,46.00],'Bellinzona':[9.02,46.19],'Mulhouse':[7.34,47.75],'Thun':[7.63,46.76],'Sion':[7.36,46.23],'Winterthur':[8.72,47.50],'Aarau':[8.04,47.39],'Olten':[7.90,47.35],'Martigny':[7.07,46.10]},
+      box:[5.9,9.8,45.85,47.85]
+    }
+  };
+
+  // ---------- state ----------
+  const state={region:'US',view:'board',groupBy:'driver',days:1,dayOffset:0,pxPerHour:72,density:'comfortable',hazLoud:false,marginView:false,filter:'all',equip:'all',search:'',notifs:[],nextNotifId:1};
+
+  // active-dataset accessors + id maps
+  let D,TERM,driverById,tractorById,trailerById;
+  function bind(){
+    D=DATA[state.region];TERM=D.term;
+    driverById=Object.fromEntries(D.drivers.map(x=>[x.id,x]));
+    tractorById=Object.fromEntries(D.tractors.map(x=>[x.id,x]));
+    trailerById=Object.fromEntries(D.trailers.map(x=>[x.id,x]));
+    D.occupancy.forEach(o=>{o.start=mk(o.off,o.s);o.end=mk(o.off,o.e);});
+    computeEconomics();enrich();seedMessages();
+  }
+  const AV=['#2563eb','#0d9488','#7c3aed','#b45309','#0369a1','#be123c','#4d7c0f'];
+  const initials=n=>n.split(/[ ,]/).filter(Boolean).map(w=>w[0]).join('').slice(0,2).toUpperCase();
+
+  // ---------- geometry ----------
+  const winStart=()=>new Date(BASE.getTime()+state.dayOffset*MS_DAY);
+  const dayWidth=()=>HPD*state.pxPerHour;
+  const totalW=()=>dayWidth()*state.days;
+  const midnight=d=>new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime();
+  function dateToX(dt){const di=Math.round((midnight(dt)-midnight(winStart()))/MS_DAY);if(di<0||di>=state.days)return null;const hod=dt.getHours()+dt.getMinutes()/60;const cl=Math.max(0,Math.min(HPD,hod-DAY_START));return di*dayWidth()+cl*state.pxPerHour;}
+  function xToDate(x){const di=Math.max(0,Math.min(state.days-1,Math.floor(x/dayWidth())));let within=Math.max(0,Math.min(dayWidth(),x-di*dayWidth()));let mins=Math.round((DAY_START*60+within/state.pxPerHour*60)/15)*15;return new Date(midnight(winStart())+di*MS_DAY+mins*60000);}
+  const fmt=d=>String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  const fmtDay=d=>d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+
+  const STATUS={assigned:{c:'var(--s-assigned)',w:'var(--s-assigned-wash)',label:'Assigned'},in_progress:{c:'var(--s-progress)',w:'var(--s-progress-wash)',label:'Rolling'},completed:{c:'var(--s-completed)',w:'var(--s-completed-wash)',label:'Delivered'},tendered:{c:'#a855f7',w:'color-mix(in srgb,#a855f7 16%,var(--surface))',label:'Tendered'},pending:{c:'var(--s-pending)',w:'var(--s-pending-wash)',label:'Open'}};
+
+  const laneKey=()=>state.groupBy==='driver'?'driverId':state.groupBy==='tractor'?'tractorId':'trailerId';
+  function laneList(){
+    if(state.groupBy==='driver')return D.drivers.map((d,i)=>({id:d.id,name:d.name,sub:d.sub,status:d.status,color:AV[i%7],init:initials(d.name),subcon:d.subcon}));
+    if(state.groupBy==='tractor')return D.tractors.map((t,i)=>({id:t.id,name:'#'+t.unit,sub:t.make+' · '+t.cab,status:t.status==='shop'?'shop':'active',color:AV[i%7],init:'🚛'}));
+    return D.trailers.map((t,i)=>({id:t.id,name:'#'+t.unit,sub:t.type+(t.len?' · '+t.len:'')+(t.feat?' · '+t.feat:''),status:t.status==='idle'?'idle':'active',color:EQ_COLORS[t.type]||AV[i%7],init:EQ_ICON[t.type]||'▭',eqtype:t.type}));
+  }
+
+  function matchesFilter(t){if(state.equip!=='all'&&t.trailerType!==state.equip)return false;if(state.filter==='in_progress')return t.status==='in_progress';if(state.filter==='haz')return !!t.haz;if(state.filter==='conflict')return !!t.conflict;return true;}
+  function matchesSearch(t){if(!state.search)return true;const q=state.search.toLowerCase();const dr=driverById[t.driverId],tr=tractorById[t.tractorId],rl=trailerById[t.trailerId];return (t.id+t.from+t.to+(dr?dr.name:'')+(tr?tr.unit:'')+(rl?rl.unit:'')+t.trailerType).toLowerCase().includes(q);}
+
+  function recomputeConflicts(){
+    D.loads.forEach(t=>t.conflict=false);
+    const key=laneKey(),byLane={};
+    D.loads.forEach(t=>{if(!t[key])return;(byLane[t[key]]=byLane[t[key]]||[]).push(t);});
+    Object.values(byLane).forEach(arr=>{arr.sort((a,b)=>a.start-b.start);for(let i=0;i<arr.length;i++)for(let j=i+1;j<arr.length;j++)if(arr[i].end>arr[j].start&&arr[i].start<arr[j].end){arr[i].conflict=arr[j].conflict=true;}});
+    D.occupancy.forEach(o=>{const okey=o.d?'driverId':o.tr?'tractorId':'trailerId',oid=o.d||o.tr||o.rl;if(okey!==key)return;D.loads.forEach(t=>{if(t[key]===oid&&t.end>o.start&&t.start<o.end)t.conflict=true;});});
+    // equipment & hazmat-endorsement checks
+    D.loads.forEach(t=>{
+      const rl=t.trailerId?trailerById[t.trailerId]:null;
+      t.mismatch=!!(rl&&t.reqEquip&&rl.type!==t.reqEquip);
+      const dr=t.driverId?driverById[t.driverId]:null;
+      t.hazIssue=!!(t.haz&&dr&&!dr.hazmat);
+    });
+  }
+
+  // ---------- render ----------
+  const boardInner=$('#boardInner'),lanesEl=$('#lanes'),rulerEl=$('#ruler');
+  function render(){
+    document.documentElement.setAttribute('data-density',state.density);
+    document.documentElement.setAttribute('data-haz',state.hazLoud?'loud':'subtle');
+    document.documentElement.setAttribute('data-margin',state.marginView?'on':'off');
+    recomputeConflicts();
+    const w=totalW(),key=laneKey();
+    $('#corner').textContent=(state.groupBy==='driver'?TERM.driver:state.groupBy==='tractor'?TERM.tractor:TERM.trailer)+'s · '+laneList().length;
+    const s=winStart(),e=new Date(s.getTime()+(state.days-1)*MS_DAY);
+    $('#rangeLabel').textContent=state.days===1?fmtDay(s):fmtDay(s)+' – '+fmtDay(e);
+
+    rulerEl.style.width=w+'px';let r='';
+    for(let d=0;d<state.days;d++){const dd=new Date(s.getTime()+d*MS_DAY);r+=`<div class="dayband" style="left:${d*dayWidth()}px;width:${dayWidth()}px">${fmtDay(dd)}</div>`;
+      for(let h=DAY_START;h<=DAY_END;h++){const x=d*dayWidth()+(h-DAY_START)*state.pxPerHour;const sep=h===DAY_START&&d>0;r+=`<div class="tick ${sep?'sep':''}" style="left:${x}px">${h<DAY_END?`<span class="t">${String(h).padStart(2,'0')}</span>`:''}</div>`;}}
+    rulerEl.innerHTML=r;
+
+    let html='';
+    laneList().forEach(ln=>{
+      const lt=D.loads.filter(t=>t[key]===ln.id);
+      let planned=0;lt.forEach(t=>{const a=dateToX(t.start),b=dateToX(t.end);if(a!==null&&b!==null)planned+=(b-a);});
+      const util=Math.min(100,Math.round(planned/w*100));
+      let grid='';for(let d=0;d<state.days;d++)for(let h=DAY_START;h<=DAY_END;h++){const x=d*dayWidth()+(h-DAY_START)*state.pxPerHour;const sep=h===DAY_START&&d>0;if(h%3===0||sep)grid+=`<div class="hgrid ${sep?'sep':''}" style="left:${x}px"></div>`;}
+      let occ='';D.occupancy.forEach(o=>{const okey=o.d?'driverId':o.tr?'tractorId':'trailerId',oid=o.d||o.tr||o.rl;if(okey!==key||oid!==ln.id)return;const a=dateToX(o.start);let b=dateToX(o.end);if(a===null&&b===null)return;const L=a??0,R=b??w;occ+=`<div class="occ" style="left:${L}px;width:${R-L}px"><span class="occ-l">${o.label}</span></div>`;});
+      let bricks='';lt.forEach(t=>{const a=dateToX(t.start),b=dateToX(t.end);if(a===null&&b===null)return;const L=a??0,R=b??w,W=Math.max(state.pxPerHour/4,R-L);const st=STATUS[t.status];
+        const cls=['brick'];if(t.haz)cls.push('hazmat');if(t.conflict)cls.push('conflict');if(t.mismatch||t.hazIssue)cls.push('mismatch');if(!t.trailerId)cls.push('needsEq');if(state.marginView&&t.mClass)cls.push(t.mClass);if(t.status==='tendered')cls.push('tendered');
+        if(state.search)cls.push(matchesSearch(t)?'spot':'dim');if(!matchesFilter(t))cls.push('dim');
+        const ec=EQ_COLORS[t.trailerType]||'var(--ink-3)';
+        const eqtag=state.groupBy!=='trailer'?`<span class="eqtag" style="background:${ec}">${EQ_ICON[t.trailerType]||''} ${t.trailerType}</span>`:'';
+        const haz=t.haz?`<span class="haz">⬧ ${TERM.hazPrefix} ${t.haz}</span>`:'';
+        const prog=(t.status==='in_progress'&&t.pct)?`<div class="prog" style="width:${Math.round(W*t.pct)}px"></div>`:'';
+        bricks+=`<div class="${cls.join(' ')}" data-id="${t.id}" style="left:${L}px;width:${W}px;--bc:${st.c};--bw:${st.w}"><div class="handle l" data-h="l"></div><div class="handle r" data-h="r"></div>
+          <div class="b-top"><span class="b-id">${t.id}</span>${eqtag}${haz}${t.conflict?'<span class="haz" style="background:var(--conflict)">!</span>':''}${t.mismatch?`<span class="mm-tag">≠ ${t.reqEquip}</span>`:''}${t.hazIssue?'<span class="mm-tag">no HZ endt</span>':''}${t.detention?'<span class="mark det">+DET</span>':''}${t.lateRisk?'<span class="mark late">⏰ late</span>':''}${t.status==='tendered'?'<span class="mark" style="background:#a855f7">⏳ tendered</span>':''}</div>
+          <div class="b-route">${t.from} → ${t.to}</div>
+          <div class="b-foot"><span class="b-time">${fmt(t.start)}–${fmt(t.end)}</span><span class="stops-chip">${t.stops}</span><span class="rate-tag">$${(t.rate||0).toLocaleString()}</span>${t.mode?`<span class="mode-tag ${t.mode}">${t.mode==='dnh'?'D&H':'live'}</span>`:''}</div>${prog}${t.stops>1&&W>64?`<div class="stopdots">${Array.from({length:t.stops}).map((_,si)=>`<span class="sd" style="left:${si/(t.stops-1)*100}%"></span>`).join('')}</div>`:''}</div>`;});
+      // deadhead connectors: empty repositioning between consecutive loads whose cities don't chain
+      let dh='';
+      if(state.groupBy!=='trailer'){const U=ECON[state.region].unit,CPM=ECON[state.region].cpm;const sorted=lt.slice().sort((a,b)=>a.start-b.start);for(let i=1;i<sorted.length;i++){const p=sorted[i-1],c=sorted[i];if(p.to!==c.from){const x1=dateToX(p.end),x2=dateToX(c.start);if(x1!==null&&x2!==null&&x2>x1+2){const dm=Math.round((c.start-p.end)/3600000*52);dh+=`<div class="dh" style="left:${x1}px;width:${x2-x1}px"><span class="dh-l">DH ~${dm}${U} · -$${Math.round(dm*CPM)}</span></div>`;}}}}
+      // HOS clock (driver grouping only): planned drive hours vs available hours of service
+      let hosHtml='';
+      if(state.groupBy==='driver'){const dr=driverById[ln.id];if(dr&&dr.hos!=null){const drive=lt.reduce((a,t)=>a+(t.end-t.start),0)/3600000;const bad=drive>dr.hos;hosHtml=`<div class="hos ${bad?'bad':''}" title="Planned drive time vs available hours of service">HOS <div class="hos-bar"><span style="width:${Math.min(100,dr.hos?drive/dr.hos*100:100)}%"></span></div>${drive.toFixed(1)}/${dr.hos}h${bad?' ⚠':''}</div>`;}}
+      const laneRev=lt.reduce((a,t)=>a+(t.rate||0),0),laneMar=lt.reduce((a,t)=>a+(t.margin||0),0);
+      const money=laneRev?`<div class="lane-money">$${(laneRev/1000).toFixed(1)}k · <b>${Math.round(laneMar/laneRev*100)}% mgn</b></div>`:'';
+      let call='';
+      if(state.groupBy==='driver'){const dr=driverById[ln.id];if(dr&&dr.lastCall)call=`<div class="lane-call"><span class="${dr.callDue?'due':''}">📞 ${dr.lastCall.mins}m · ${dr.lastCall.loc}${dr.callDue?' · due':''}</span><span>⏱ ${dr.eldToBreak.toFixed(1)}h to break</span>${dr.overdue?'<span class="due">⚠ med</span>':''}</div>`;}
+      const msgBtn=(state.groupBy==='driver'&&driverById[ln.id])?`<button class="lane-msg" data-msg="${ln.id}">💬${driverById[ln.id].unread?`<span class="u">${driverById[ln.id].unread}</span>`:''}</button>`:'';
+      const idle=lt.length===0;
+      html+=`<div class="lane ${idle?'idle':''}" data-lane="${ln.id}">
+        <div class="lane-label"><div class="avatar" style="background:${ln.color}">${ln.init}</div>
+          <div class="lane-meta"><div class="lane-name" style="display:flex;align-items:center;gap:6px"><span style="overflow:hidden;text-overflow:ellipsis">${ln.name}</span>${msgBtn}</div>
+            <div class="lane-veh"><span class="sdot ${ln.status}"></span>${ln.sub}${ln.subcon?` <span class="subcon-tag">${ln.subcon}</span>`:''}${idle?' <span class="idle-tag">idle</span>':''}</div>
+            <div class="util"><span style="width:${util}%"></span></div>${hosHtml}${money}${call}</div></div>
+        <div class="track" data-track="${ln.id}" style="width:${w}px">${grid}${occ}${dh}${bricks}</div></div>`;
+    });
+    lanesEl.innerHTML=html;
+
+    const now=mk(0,'11:20'),nx=dateToX(now);
+    if(nx!==null){const nl=ce('div');nl.className='now-line';nl.style.left=`calc(var(--lane-w) + ${nx}px)`;const nf=ce('div');nf.className='now-flag';nf.textContent='11:20';nf.style.left=`calc(var(--lane-w) + ${nx}px)`;lanesEl.style.position='relative';lanesEl.appendChild(nl);boardInner.querySelectorAll('.now-flag').forEach(e=>e.remove());boardInner.querySelector('.ruler').appendChild(nf);}
+    renderKpis();renderBacklog();renderYard();renderLegend();updateMsgBadge();
+    const dz=$('#diesel');if(dz)dz.textContent='⛽ $'+DIESEL[state.region].toFixed(2)+(state.region==='US'?'/gal':'/L');
+  }
+
+  function renderKpis(){
+    const idleTr=D.trailers.filter(t=>t.status==='idle').length;
+    const dayL=D.loads.filter(t=>{const o=Math.round((midnight(t.start)-midnight(BASE))/MS_DAY);return o>=state.dayOffset&&o<state.dayOffset+state.days;});
+    const rev=dayL.reduce((a,t)=>a+(t.rate||0),0),miles=dayL.reduce((a,t)=>a+(t.dist||0),0),rpm=miles?rev/miles:0,mar=dayL.reduce((a,t)=>a+(t.margin||0),0);
+    const k=[
+      {n:D.drivers.filter(d=>d.status==='active').length,l:TERM.driver+'s on',a:'var(--s-progress)'},
+      {n:D.loads.length,l:TERM.loadPl,a:'var(--brand)'},
+      {n:D.loads.filter(t=>t.status==='in_progress').length,l:TERM.rolling,a:'var(--s-progress)'},
+      {n:D.backlog.length,l:'Unassigned',a:'var(--s-pending)'},
+      {n:idleTr,l:'Idle '+TERM.trailer.toLowerCase()+'s',a:'var(--ink-3)'},
+      {n:'$'+(rev>=1000?(rev/1000).toFixed(1)+'k':rev),l:'Rev · '+Math.round(rev?mar/rev*100:0)+'% mgn',a:'#16a34a'},
+      {n:'$'+rpm.toFixed(2),l:'Avg / '+ECON[state.region].unit,a:'var(--brand)'},
+      {n:D.loads.filter(t=>t.conflict||t.mismatch||t.hazIssue).length,l:'Alerts',a:'var(--conflict)'}];
+    $('#kpis').innerHTML=k.map(x=>`<div class="kpi" style="--accent:${x.a}"><div class="n">${x.n}</div><div class="l">${x.l}</div></div>`).join('');
+  }
+  function renderBacklog(){
+    $('#blCount').textContent=D.backlog.length;
+    $('#blHint').textContent=`Drag a ${TERM.load.toLowerCase()} onto a lane to dispatch it — snaps to a 15-min grid and lands on that resource.`;
+    $('#backlog').innerHTML=D.backlog.length?D.backlog.map(t=>{const ec=EQ_COLORS[t.type]||'var(--ink-3)';const haz=t.haz?`<span class="haz">⬧ ${TERM.hazPrefix} ${t.haz}</span>`:'';return `<div class="bl-card" data-bid="${t.id}"><div class="b-id">${t.id}${t.isNew?' <span class="mark" style="background:var(--brand)">NEW</span>':''}</div><div class="b-route">${t.from} → ${t.to}</div><div class="b-foot"><span class="eqtag" style="background:${ec}">${EQ_ICON[t.type]||''} ${t.type}</span><span class="stops-chip">${t.stops} stops</span>${haz}</div><div class="b-foot" style="margin-top:3px"><span class="rate-tag">$${(t.rate||0).toLocaleString()}</span><span class="rsub" style="color:var(--ink-3);font-size:10px">$${(t.rpm||0).toFixed(2)}/${ECON[state.region].unit} · ${t.dist||0}${ECON[state.region].unit}${t.vsMkt!=null?` · <span style="color:${t.vsMkt>=0?'#16a34a':'#dc2626'}">${t.vsMkt>=0?'+':''}${Math.round(t.vsMkt*100)}% mkt</span>`:''}</span><button class="sg-btn" data-suggest="${t.id}">⚡ Suggest</button></div></div>`;}).join(''):'<span class="empty-note">Board is clean — every load dispatched. 🎉</span>';
+  }
+  function renderYard(){
+    const inUse=new Set(D.loads.filter(l=>Math.round((midnight(l.start)-midnight(BASE))/MS_DAY)===state.dayOffset).flatMap(l=>[l.tractorId,l.trailerId,l.driverId]));
+    const freeTr=D.tractors.filter(t=>t.status!=='shop'&&!inUse.has(t.id));
+    const freeRl=D.trailers.filter(t=>!inUse.has(t.id));
+    const freeDr=D.drivers.filter(d=>d.status==='active'&&!inUse.has(d.id));
+    const chip=(rtype,id,dot,unit,sub,color)=>`<div class="res" data-res="${rtype}" data-rid="${id}"><span class="rdot" style="background:${color}">${dot}</span><span><span class="runit">${unit}</span> <span class="rsub">${sub}</span></span></div>`;
+    $('#yard').innerHTML=`
+      <div class="yard-group"><div class="yard-lbl">🚛 Bobtail ${TERM.tractor.toLowerCase()}s <span class="cnt">${freeTr.length}</span></div><div class="res-row">${freeTr.map(t=>chip('tractor',t.id,'🚛','#'+t.unit,t.make,'var(--ink-2)')).join('')||'<span class="empty-note">none</span>'}</div></div>
+      <div class="yard-group"><div class="yard-lbl">🔗 Dropped ${TERM.trailer.toLowerCase()}s <span class="cnt">${freeRl.length}</span></div><div class="res-row">${freeRl.map(t=>chip('trailer',t.id,EQ_ICON[t.type]||'▭','#'+t.unit,t.type+(t.len?' '+t.len:''),EQ_COLORS[t.type]||'var(--ink-2)')).join('')||'<span class="empty-note">none</span>'}</div></div>
+      <div class="yard-group"><div class="yard-lbl">🧑‍✈️ Open ${TERM.driver.toLowerCase()}s <span class="cnt">${freeDr.length}</span></div><div class="res-row">${freeDr.map(d=>chip('driver',d.id,initials(d.name),d.name,d.sub,'var(--brand)')).join('')||'<span class="empty-note">none</span>'}</div></div>`;
+  }
+  function renderLegend(){
+    const eq=D.equip.map(t=>`<span class="item"><span class="edot" style="background:${EQ_COLORS[t]}"></span>${t}</span>`).join('');
+    $('#legend').innerHTML=Object.values(STATUS).map(s=>`<span class="item"><span class="sw" style="--bc:${s.c};--bw:${s.w}"></span>${s.label}</span>`).join('')
+      +`<span class="item"><span class="haz">⬧ ${TERM.hazPrefix}</span> Hazmat</span>`+`<span class="item"><span class="sw" style="--bc:var(--conflict);--bw:var(--conflict-wash)"></span>Conflict</span>`
+      +`<span class="item"><span class="sw" style="--bc:#a855f7;--bw:color-mix(in srgb,#a855f7 16%,var(--surface))"></span>Tendered</span>`
+      +`<span class="item"><span class="sw" style="--bc:var(--hazard);--bw:transparent;border-style:dashed"></span>Equip / hazmat flag</span>`
+      +`<span class="item"><span style="display:inline-block;width:16px;height:2px;background:repeating-linear-gradient(90deg,var(--ink-3),var(--ink-3) 3px,transparent 3px,transparent 6px)"></span>Deadhead</span>`
+      +(state.marginView?`<span class="item"><span class="edot" style="background:#16a34a"></span>≥22%<span class="edot" style="background:#ca8a04;margin-left:4px"></span>12–22%<span class="edot" style="background:#dc2626;margin-left:4px"></span>&lt;12% margin</span>`:'')
+      +`<span style="width:1px;height:12px;background:var(--border-strong)"></span>`+eq;
+  }
+
+  // ---------- popover ----------
+  const pop=$('#pop');
+  const loadObj=id=>D.loads.find(t=>t.id===id)||D.backlog.find(b=>b.id===id);
+  function chipEl(status){const s=STATUS[status]||STATUS.pending;return `<span class="chip" style="color:${s.c};background:${s.w}">${s.label}</span>`;}
+  function showPop(el){const t=loadObj(el.dataset.id||el.dataset.bid);if(!t)return;const back=!!el.dataset.bid,dr=t.driverId?driverById[t.driverId]:null,tr=t.tractorId?tractorById[t.tractorId]:null,rl=t.trailerId?trailerById[t.trailerId]:null;
+    pop.innerHTML=`<div class="p-head"><span class="p-id">${t.id}</span>${chipEl(back?'pending':t.status)}</div><div class="p-body">
+      <span class="p-k">Route</span><span class="p-v">${t.from} → ${t.to}</span>
+      <span class="p-k">Window</span><span class="p-v mono">${back?'Unassigned':fmt(t.start)+'–'+fmt(t.end)}</span>
+      <span class="p-k">Equipment</span><span class="p-v">${(back?t.type:t.trailerType)}${rl?' · #'+rl.unit:''}</span>
+      <span class="p-k">${TERM.driver}</span><span class="p-v">${dr?dr.name:'— open —'}</span>
+      ${tr?`<span class="p-k">${TERM.tractor}</span><span class="p-v mono">#${tr.unit} · ${tr.make}</span>`:''}
+      <span class="p-k">Commodity</span><span class="p-v">${t.commodity||'—'}</span>
+      ${t.haz?`<span class="p-k">Hazmat</span><span class="p-v"><span class="haz">⬧ ${TERM.hazPrefix} ${t.haz}</span> ${t.un||''}</span>`:''}
+      <span class="p-k">Stops</span><span class="p-v">${t.stops}${t.mode?' · '+(t.mode==='dnh'?'drop &amp; hook':'live'):''}</span>
+      <span class="p-k">Rate</span><span class="p-v mono">$${(t.rate||0).toLocaleString()} · $${(t.rpm||0).toFixed(2)}/${ECON[state.region].unit} · ${t.dist||0}${ECON[state.region].unit}${t.vsMkt!=null?` · <span style="color:${t.vsMkt>=0?'#16a34a':'#dc2626'}">${t.vsMkt>=0?'+':''}${Math.round(t.vsMkt*100)}% vs mkt</span>`:''}</span>
+      ${t.fsc?`<span class="p-k">Rate split</span><span class="p-v mono">linehaul $${(t.linehaul||0).toLocaleString()} + FSC $${(t.fsc||0).toLocaleString()}</span>`:''}
+      <span class="p-k">Margin</span><span class="p-v mono" style="color:${t.pct>=.22?'#16a34a':t.pct>=.12?'#ca8a04':'#dc2626'}">$${(t.margin||0).toLocaleString()} · ${Math.round((t.pct||0)*100)}%</span>
+      ${t.broker?`<span class="p-k">Broker</span><span class="p-v">${t.broker}</span>`:''}
+      ${t.consignee?`<span class="p-k">Consignee</span><span class="p-v">${t.consignee}</span>`:''}
+      ${t.apptEnd?`<span class="p-k">Appt</span><span class="p-v mono" style="${t.lateRisk?'color:#dc2626':''}">by ${fmt(t.apptEnd)}${t.lateRisk?' · LATE RISK':''}</span>`:''}
+      ${t.pro?`<span class="p-k">Ref</span><span class="p-v mono">${t.pro}</span>`:''}
+      ${t.detention?`<span class="p-k">Accessorial</span><span class="p-v" style="color:#16a34a">+$150 detention</span>`:''}
+      ${t.conflict?`<span class="p-k">Alert</span><span class="p-v" style="color:var(--conflict)">⚠ Scheduling conflict</span>`:''}
+      ${t.mismatch?`<span class="p-k">Alert</span><span class="p-v" style="color:var(--hazard-ink)">≠ needs ${t.reqEquip}, hooked ${trailerById[t.trailerId].type}</span>`:''}
+      ${t.hazIssue?`<span class="p-k">Alert</span><span class="p-v" style="color:var(--hazard-ink)">⚠ ${TERM.driver} has no hazmat endorsement</span>`:''}
+      ${!t.trailerId&&!back?`<span class="p-k">Alert</span><span class="p-v" style="color:var(--hazard-ink)">No ${TERM.trailer.toLowerCase()} hooked</span>`:''}</div>`;
+    const r=el.getBoundingClientRect();let left=r.left,top=r.bottom+8;if(left+270>innerWidth-12)left=innerWidth-282;if(top+220>innerHeight)top=r.top-220;pop.style.left=left+'px';pop.style.top=top+'px';pop.classList.add('show');}
+  const hidePop=()=>pop.classList.remove('show');
+  document.addEventListener('mouseover',e=>{const el=e.target.closest('.brick,.bl-card,.veh-pin');if(el&&!drag)showPop(el);});
+  document.addEventListener('mouseout',e=>{const el=e.target.closest('.brick,.bl-card,.veh-pin');if(el&&!el.contains(e.relatedTarget))hidePop();});
+
+  // ---------- drawer ----------
+  const drawer=$('#drawer');
+  function openDrawer(id){const t=D.loads.find(x=>x.id===id);if(!t)return;const dr=driverById[t.driverId],tr=tractorById[t.tractorId],rl=trailerById[t.trailerId],st=STATUS[t.status];
+    const span=t.end-t.start;const stops=Array.from({length:t.stops}).map((_,i)=>{const eta=new Date(t.start.getTime()+span*(t.stops>1?i/(t.stops-1):0));return `<div class="stop"><div class="seq">${i+1}</div><div style="flex:1"><div style="font-weight:550;font-size:12.5px">${i===0?t.from:(i===t.stops-1?t.to:'Intermediate · stop '+(i+1))}</div><div style="font-size:11px;color:var(--ink-3)">${i===0?'Pickup / live load':(i===t.stops-1?'Delivery / live unload':'Drop-and-hook')}</div></div><div class="mono" style="font-size:11px;color:var(--ink-3)">${fmt(eta)}</div></div>`;}).join('');
+    drawer.innerHTML=`<div class="dw-head"><button class="dw-x" id="dwX">✕</button>
+      <div style="font-family:var(--mono);font-weight:700;font-size:15px;color:${st.c}">${t.id}</div>
+      <div style="font-size:16px;font-weight:650;margin-top:2px">${t.from} → ${t.to}</div>
+      <div style="margin-top:6px">${chipEl(t.status)} <span class="eqtag" style="background:${EQ_COLORS[t.trailerType]}">${EQ_ICON[t.trailerType]||''} ${t.trailerType}</span>${t.haz?` <span class="haz">⬧ ${TERM.hazPrefix} ${t.haz}</span>`:''}${t.conflict?` <span class="haz" style="background:var(--conflict)">⚠</span>`:''}</div>${t.status==='tendered'?'<div style="margin-top:10px;display:flex;gap:8px"><button class="sg-btn" id="dwAccept" style="margin:0">✓ Accept tender</button><button class="sg-btn" id="dwReject" style="margin:0;color:var(--conflict);background:var(--conflict-wash);border-color:color-mix(in srgb,var(--conflict) 40%,var(--border))">✕ Reject</button></div>':''}</div>
+      <div class="dw-body"><div class="dw-row">
+        <span class="dw-k">Window</span><span class="dw-v mono">${fmtDay(t.start)} · ${fmt(t.start)}–${fmt(t.end)}</span>
+        <span class="dw-k">${TERM.driver}</span><span class="dw-v">${dr?dr.name+' · '+dr.sub:'— open —'}</span>
+        <span class="dw-k">${TERM.tractor}</span><span class="dw-v mono">${tr?'#'+tr.unit+' · '+tr.make:'— bobtail —'}</span>
+        <span class="dw-k">${TERM.trailer}</span><span class="dw-v mono">${rl?'#'+rl.unit+' · '+rl.type+(rl.len?' '+rl.len:'')+(rl.feat?' · '+rl.feat:''):'⚠ none hooked'}</span>
+        <span class="dw-k">Commodity</span><span class="dw-v">${t.commodity||'—'}${t.wt?' · '+t.wt:''}</span>
+        <span class="dw-k">Distance</span><span class="dw-v mono">${t.dist||0} ${ECON[state.region].unit}${t.mode?' · '+(t.mode==='dnh'?'Drop &amp; hook':'Live load'):''}</span>
+        <span class="dw-k">Rate</span><span class="dw-v mono">$${(t.rate||0).toLocaleString()} · $${(t.rpm||0).toFixed(2)}/${ECON[state.region].unit}</span>
+        ${t.fsc?`<span class="dw-k">Rate split</span><span class="dw-v mono">linehaul $${(t.linehaul||0).toLocaleString()} + FSC $${(t.fsc||0).toLocaleString()}</span>`:''}
+        ${t.vsMkt!=null?`<span class="dw-k">Market</span><span class="dw-v mono">$${(t.marketRpm||0).toFixed(2)}/${ECON[state.region].unit} spot · <span style="color:${t.vsMkt>=0?'#16a34a':'#dc2626'}">${t.vsMkt>=0?'+':''}${Math.round(t.vsMkt*100)}%</span></span>`:''}
+        <span class="dw-k">Est. cost</span><span class="dw-v mono">$${(t.cost||0).toLocaleString()}</span>
+        <span class="dw-k">Margin</span><span class="dw-v mono" style="color:${t.pct>=.22?'#16a34a':t.pct>=.12?'#ca8a04':'#dc2626'}">$${(t.margin||0).toLocaleString()} · ${Math.round((t.pct||0)*100)}%</span>
+        ${t.broker?`<span class="dw-k">Broker</span><span class="dw-v">${t.broker}</span>`:''}
+        ${t.shipper?`<span class="dw-k">Shipper</span><span class="dw-v">${t.shipper}</span>`:''}
+        ${t.consignee?`<span class="dw-k">Consignee</span><span class="dw-v">${t.consignee}</span>`:''}
+        ${t.apptEnd?`<span class="dw-k">Appointment</span><span class="dw-v mono" style="${t.lateRisk?'color:#dc2626':''}">${fmt(t.apptStart)}–${fmt(t.apptEnd)}${t.lateRisk?' · ⏰ LATE RISK':''}</span>`:''}
+        ${t.pro?`<span class="dw-k">Reference</span><span class="dw-v mono">${t.pro}</span>`:''}
+        ${t.detention?`<span class="dw-k">Accessorial</span><span class="dw-v" style="color:#16a34a">+$150 detention</span>`:''}
+        ${t.un?`<span class="dw-k">Hazmat</span><span class="dw-v">${TERM.hazPrefix} ${t.haz} · ${t.un}</span>`:''}
+      </div><div style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3);margin-bottom:4px">Stops (${t.stops})</div>${stops}</div>`;
+    drawer.classList.add('show');$('#dwX').onclick=()=>drawer.classList.remove('show');
+    const ac=$('#dwAccept'),rj=$('#dwReject');if(ac)ac.onclick=()=>acceptTender(t.id);if(rj)rj.onclick=()=>rejectTender(t.id,'declined by carrier');}
+
+  // ---------- editable load / leg panel ----------
+  let editState=null;
+  const hhmm=d=>String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  function parseTime(str,ref){const[h,m]=str.split(':').map(Number);return new Date(ref.getFullYear(),ref.getMonth(),ref.getDate(),h||0,m||0);}
+  function buildStopList(t){if(Array.isArray(t.stopList)&&t.stopList.length>=2)return t.stopList.slice();const n=Math.max(2,t.stops||2),a=[];for(let i=0;i<n;i++)a.push(i===0?t.from:i===n-1?t.to:'Intermediate stop '+(i+1));return a;}
+  const snapOf=d=>JSON.stringify([d.stopList,+d.start,+d.end,d.driverId||'',d.tractorId||'',d.trailerId||'',d.trailerType,d.reqEquip,d.commodity||'',d.wt||'',d.haz||'',d.apptEnd?+d.apptEnd:0]);
+  const isDirty=()=>snapOf(editState.draft)!==editState.snap;
+
+  function edStepperHtml(t){const S=['Booked','Dispatched','At pickup','Loaded','Rolling','At delivery','Delivered','POD'];
+    const idx=t.status==='completed'?7:t.status==='in_progress'?Math.min(6,2+Math.round((t.pct||0)*4)):t.status==='assigned'?1:0;
+    return S.map((s,i)=>`<div class="st ${i<idx?'done':i===idx?'current':''}"><div class="sc"></div><div class="sl">${s}</div></div>`).join('');}
+  function edLegsHtml(d){const t=editState.orig,from=d.stopList[0],to=d.stopList[d.stopList.length-1];
+    const legs=[{ty:'Collection · first mile',rt:(t.shipper||from)+' → '+from,cls:'done',ic:'✓'},{ty:'Line-haul · this leg',rt:from+' → '+to,cls:'current',ic:'🚚'},{ty:'Delivery · last mile',rt:to+' → '+(t.consignee||to),cls:'pending',ic:'⌛'}];
+    return legs.map(l=>`<div class="lg ${l.cls}"><div class="dot">${l.ic}</div><div><div class="lgtype">${l.ty}</div><div class="lgroute">${l.rt}</div></div></div>`).join('');}
+  function edEconHtml(d){const e=econOf(d.stopList[0],d.stopList[d.stopList.length-1],d.trailerType,d.haz),b=editState.base;
+    const dl=(v,p)=>v?` <span class="delta" style="color:${v>0?'#16a34a':'#dc2626'}">${v>0?'▲+':'▼'}${p}${Math.abs(v).toLocaleString()}</span>`:'';
+    const mc=e.pct>=.22?'#16a34a':e.pct>=.12?'#ca8a04':'#dc2626',U=ECON[state.region].unit;
+    return `<div class="e"><span class="ev">$${e.rate.toLocaleString()}</span><span class="el">Rate${dl(e.rate-b.rate,'$')}</span></div>
+      <div class="e"><span class="ev">$${e.rpm.toFixed(2)}</span><span class="el">per ${U}</span></div>
+      <div class="e"><span class="ev" style="color:${mc}">${Math.round(e.pct*100)}%</span><span class="el">Margin $${e.margin.toLocaleString()}${dl(e.margin-b.margin,'$')}</span></div>
+      <div class="e"><span class="ev">${e.dist}</span><span class="el">${U}</span></div>
+      <div class="e"><span class="ev" style="color:${e.vsMkt>=0?'#16a34a':'#dc2626'}">${e.vsMkt>=0?'+':''}${Math.round(e.vsMkt*100)}%</span><span class="el">vs market</span></div>
+      <div class="e"><span class="ev">$${e.fsc.toLocaleString()}</span><span class="el">Fuel surch.</span></div>`;}
+
+  function openEditPanel(id){const t=D.loads.find(x=>x.id===id);if(!t)return;
+    const draft={stopList:buildStopList(t),start:new Date(t.start),end:new Date(t.end),driverId:t.driverId||'',tractorId:t.tractorId||'',trailerId:t.trailerId||'',trailerType:t.trailerType,reqEquip:t.reqEquip||t.trailerType,commodity:t.commodity||'',wt:t.wt||'',haz:t.haz||'',apptEnd:t.apptEnd?new Date(t.apptEnd):null};
+    const be=econOf(t.from,t.to,t.trailerType,t.haz);editState={id,orig:t,draft,base:{rate:be.rate,margin:be.margin},snap:''};editState.snap=snapOf(draft);renderPanel();}
+
+  function renderPanel(){const t=editState.orig,d=editState.draft,st=STATUS[t.status];
+    const drOpts=`<option value="">— open —</option>`+D.drivers.map(x=>`<option value="${x.id}" ${x.id===d.driverId?'selected':''}>${x.name}</option>`).join('');
+    const trOpts=`<option value="">— bobtail —</option>`+D.tractors.map(x=>`<option value="${x.id}" ${x.id===d.tractorId?'selected':''}>#${x.unit} · ${x.make}</option>`).join('');
+    const rlOpts=`<option value="">— none —</option>`+D.trailers.map(x=>`<option value="${x.id}" ${x.id===d.trailerId?'selected':''}>#${x.unit} · ${x.type}</option>`).join('');
+    const eqOpts=D.equip.map(x=>`<option value="${x}" ${x===d.trailerType?'selected':''}>${x}</option>`).join('');
+    const hzOpts=`<option value="">none</option>`+['1','2','3','4','5','6','7','8','9'].map(x=>`<option value="${x}" ${x===d.haz?'selected':''}>${TERM.hazPrefix} ${x}</option>`).join('');
+    const stopsHtml=d.stopList.map((a,i)=>`<div class="ed-stop"><span class="seq">${i+1}</span><input data-stop="${i}" value="${(a||'').replace(/"/g,'&quot;')}"/>${d.stopList.length>2?`<button class="rm" data-rmstop="${i}">✕</button>`:''}</div>`).join('');
+    drawer.className='show wide';
+    drawer.innerHTML=`<div class="dw-head"><button class="dw-x" id="dwX">✕</button>
+      <div style="font-family:var(--mono);font-weight:700;font-size:15px;color:${st.c}">${t.id} <span style="color:var(--ink-3);font-weight:400">· ${t.orderRef||'ORD'}</span></div>
+      <div id="edRoute" style="font-size:16px;font-weight:650;margin-top:2px">${d.stopList[0]} → ${d.stopList[d.stopList.length-1]}</div>
+      <div style="margin-top:6px">${chipEl(t.status)} <span class="eqtag" style="background:${EQ_COLORS[d.trailerType]}">${EQ_ICON[d.trailerType]||''} ${d.trailerType}</span></div></div>
+      <div class="dw-body">
+        <div class="ed-actions"><button class="ed-qbtn" id="edMsg">💬 Message driver</button><button class="ed-qbtn" id="edAdvance">▶ Advance status</button><button class="ed-qbtn danger" id="edDelete">🗑 Delete</button></div>
+        <div class="ed-sec"><h4>Lifecycle</h4><div class="stepper">${edStepperHtml(t)}</div></div>
+        <div class="ed-sec"><h4>Order legs — ${t.orderRef||'ORD'}</h4><div class="legchain" id="edLegs">${edLegsHtml(d)}</div></div>
+        <div class="ed-sec"><h4>Stops (drives the route)</h4><div id="edStops">${stopsHtml}</div><button class="ed-qbtn" id="edAddStop" style="margin-top:4px">+ Add stop</button></div>
+        <div class="ed-sec"><h4>Schedule</h4><div class="ed-grid">
+          <div class="ed-field"><label>Start</label><input type="time" id="edStart" value="${hhmm(d.start)}"/></div>
+          <div class="ed-field"><label>End</label><input type="time" id="edEnd" value="${hhmm(d.end)}"/></div>
+          <div class="ed-field ed-full"><label>Day</label><input value="${fmtDay(d.start)}" disabled/></div></div></div>
+        <div class="ed-sec"><h4>Assignment</h4><div class="ed-grid">
+          <div class="ed-field ed-full"><label>${TERM.driver}</label><select id="edDriver">${drOpts}</select></div>
+          <div class="ed-field"><label>${TERM.tractor}</label><select id="edTractor">${trOpts}</select></div>
+          <div class="ed-field"><label>${TERM.trailer}</label><select id="edTrailer">${rlOpts}</select></div></div></div>
+        <div class="ed-sec"><h4>Freight</h4><div class="ed-grid">
+          <div class="ed-field"><label>Equipment</label><select id="edEquip">${eqOpts}</select></div>
+          <div class="ed-field"><label>Hazmat</label><select id="edHaz">${hzOpts}</select></div>
+          <div class="ed-field ed-full"><label>Commodity</label><input id="edComm" value="${(d.commodity||'').replace(/"/g,'&quot;')}"/></div>
+          <div class="ed-field"><label>Weight</label><input id="edWt" value="${(d.wt||'').replace(/"/g,'&quot;')}" placeholder="42,000 lb"/></div>
+          <div class="ed-field"><label>Appt by</label><input type="time" id="edAppt" value="${d.apptEnd?hhmm(d.apptEnd):''}"/></div></div></div>
+        <div class="ed-sec"><h4>Economics — live</h4><div class="ed-econ" id="edEcon">${edEconHtml(d)}</div></div>
+      </div>
+      <div class="ed-savebar"><button id="edCancel">Cancel</button><button class="save" id="edSave" disabled>Save changes</button></div>`;
+    drawer.classList.add('show');wirePanel();}
+
+  function updateLive(){const d=editState.draft;const ec=$('#edEcon');if(ec)ec.innerHTML=edEconHtml(d);const lg=$('#edLegs');if(lg)lg.innerHTML=edLegsHtml(d);const r=$('#edRoute');if(r)r.textContent=d.stopList[0]+' → '+d.stopList[d.stopList.length-1];const s=$('#edSave');if(s)s.disabled=!isDirty();}
+  function wirePanel(){const d=editState.draft;
+    $('#dwX').onclick=$('#edCancel').onclick=()=>drawer.classList.remove('show');
+    $('#edMsg').onclick=()=>{if(d.driverId)openMsg(d.driverId);};
+    $('#edAdvance').onclick=()=>advanceStatus(editState.id);
+    $('#edDelete').onclick=()=>deleteLoad(editState.id);
+    $('#edSave').onclick=saveEdit;
+    $('#edAddStop').onclick=()=>{d.stopList.splice(d.stopList.length-1,0,'New stop');renderPanel();$('#edSave').disabled=!isDirty();};
+    const stops=$('#edStops');
+    stops.addEventListener('input',e=>{const i=e.target.dataset.stop;if(i!=null){d.stopList[+i]=e.target.value;updateLive();}});
+    stops.addEventListener('click',e=>{const b=e.target.closest('[data-rmstop]');if(b&&d.stopList.length>2){d.stopList.splice(+b.dataset.rmstop,1);renderPanel();$('#edSave').disabled=!isDirty();}});
+    $('#edStart').onchange=e=>{if(!e.target.value)return;d.start=parseTime(e.target.value,d.start);updateLive();};
+    $('#edEnd').onchange=e=>{if(!e.target.value)return;const ne=parseTime(e.target.value,d.end);if(ne>d.start)d.end=ne;updateLive();};
+    $('#edDriver').onchange=e=>{d.driverId=e.target.value;updateLive();};
+    $('#edTractor').onchange=e=>{d.tractorId=e.target.value;updateLive();};
+    $('#edTrailer').onchange=e=>{d.trailerId=e.target.value;const rl=trailerById[e.target.value];if(rl){d.trailerType=rl.type;const eq=$('#edEquip');if(eq)eq.value=rl.type;}updateLive();};
+    $('#edEquip').onchange=e=>{d.trailerType=e.target.value;d.reqEquip=e.target.value;updateLive();};
+    $('#edHaz').onchange=e=>{d.haz=e.target.value;updateLive();};
+    $('#edComm').oninput=e=>{d.commodity=e.target.value;updateLive();};
+    $('#edWt').oninput=e=>{d.wt=e.target.value;updateLive();};
+    $('#edAppt').onchange=e=>{d.apptEnd=e.target.value?parseTime(e.target.value,d.end):null;updateLive();};
+    updateLive();}
+
+  function saveEdit(){const d=editState.draft,t=D.loads.find(x=>x.id===editState.id);if(!t){drawer.classList.remove('show');editState=null;return;}
+    t.stopList=d.stopList.slice();t.from=d.stopList[0];t.to=d.stopList[d.stopList.length-1];t.stops=d.stopList.length;t.start=d.start;t.end=d.end;
+    t.driverId=d.driverId||null;t.tractorId=d.tractorId||null;t.trailerId=d.trailerId||null;t.trailerType=d.trailerType;t.reqEquip=d.reqEquip;t.commodity=d.commodity;t.wt=d.wt;t.haz=d.haz||undefined;
+    if(d.apptEnd){t.apptEnd=d.apptEnd;t.apptStart=new Date(d.apptEnd.getTime()-3600000);t.apptManual=true;}else{t.apptEnd=undefined;t.apptStart=undefined;t.apptManual=false;}
+    ensureCrew(t);computeEconomics();enrich();render();refreshView();drawer.classList.remove('show');editState=null;
+    notify('move',`${t.id} updated`,`${t.from} → ${t.to} · ${fmt(t.start)}–${fmt(t.end)} · you`,t.id);checkConflict(t);}
+  function deleteLoad(id){const i=D.loads.findIndex(x=>x.id===id);if(i<0)return;D.loads.splice(i,1);render();refreshView();drawer.classList.remove('show');notify('conflict',`${id} removed`,'load deleted from the board · you',null);}
+  function advanceStatus(id){const t=D.loads.find(x=>x.id===id);if(!t)return;
+    if(t.status==='tendered'||t.status==='pending')t.status='assigned';
+    else if(t.status==='assigned'){t.status='in_progress';t.pct=.1;}
+    else if(t.status==='in_progress'){if((t.pct||0)<.85)t.pct=Math.min(.95,(t.pct||.1)+.3);else t.status='completed';}
+    render();refreshView();if(editState&&editState.id===id)renderPanel();
+    notify('feed',`${t.id} → ${STATUS[t.status].label}`,`status advanced · you`,t.id);}
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'){['#drawer','#notif','#msg','#suggest','#pop'].forEach(s=>{const el=document.querySelector(s);if(el)el.classList.remove('show');});}});
+  lanesEl.addEventListener('click',e=>{const m=e.target.closest('.lane-msg');if(m){e.stopPropagation();openMsg(m.dataset.msg);return;}const b=e.target.closest('.brick');if(b&&!drag)openEditPanel(b.dataset.id);});
+  $('#msgBtn').onclick=openInbox;
+
+  // ---------- notifications ----------
+  const notifEl=$('#notif'),ntList=$('#ntList');
+  const NIC={move:{i:'🔀',c:'var(--brand-wash)'},plan:{i:'📌',c:'var(--s-assigned-wash)'},resize:{i:'↔',c:'var(--s-progress-wash)'},conflict:{i:'⚠',c:'var(--conflict-wash)'},hook:{i:'🔗',c:'var(--s-progress-wash)'},feed:{i:'📡',c:'var(--s-progress-wash)'}};
+  function notify(kind,title,sub,tripId){state.notifs.unshift({id:state.nextNotifId++,kind,title,sub,tripId,read:false,time:Date.now()});if(state.notifs.length>40)state.notifs.pop();renderNotifs();toast(kind,title,sub,tripId);}
+  function renderNotifs(){const unread=state.notifs.filter(n=>!n.read).length;$('#bellBadge').textContent=unread;$('#bellBadge').style.display=unread?'grid':'none';
+    ntList.innerHTML=state.notifs.length?state.notifs.map(n=>{const ic=NIC[n.kind]||NIC.feed;return `<div class="nt-item ${n.read?'':'unread'}" data-nid="${n.id}" data-trip="${n.tripId||''}"><div class="nt-ic" style="background:${ic.c}">${ic.i}</div><div><div class="nt-tt">${n.title}</div><div class="nt-ts">${n.sub} · ${ago(n.time)}</div></div></div>`;}).join(''):'<div class="nt-empty">No activity yet.</div>';}
+  const ago=t=>{const s=Math.floor((Date.now()-t)/1000);return s<60?'just now':s<3600?Math.floor(s/60)+'m ago':Math.floor(s/3600)+'h ago';};
+  ntList.addEventListener('click',e=>{const it=e.target.closest('.nt-item');if(!it)return;const n=state.notifs.find(x=>x.id==it.dataset.nid);if(n)n.read=true;renderNotifs();if(it.dataset.trip)jumpToTrip(it.dataset.trip);notifEl.classList.remove('show');});
+  $('#ntClear').onclick=()=>{state.notifs.forEach(n=>n.read=true);renderNotifs();};
+  $('#bellBtn').onclick=()=>notifEl.classList.toggle('show');
+  function jumpToTrip(id){if(state.view!=='board')setView('board');const t=D.loads.find(x=>x.id===id);if(!t)return;const off=Math.round((midnight(t.start)-midnight(BASE))/MS_DAY);if(off<state.dayOffset||off>=state.dayOffset+state.days){state.dayOffset=off;render();}setTimeout(()=>{const el=$(`.brick[data-id="${id}"]`);if(el){el.scrollIntoView({behavior:'smooth',inline:'center',block:'nearest'});el.classList.remove('updated');void el.offsetWidth;el.classList.add('updated');}},60);}
+  const toasts=$('#toasts');
+  function toast(kind,title,sub,tripId){const el=ce('div');el.className='toast'+(kind==='conflict'?' conflict':'');el.innerHTML=`<div class="tt">${title}</div><div class="ts">${sub} · click to view</div>`;el.onclick=()=>{if(tripId)jumpToTrip(tripId);el.remove();};toasts.appendChild(el);setTimeout(()=>{el.style.transition='opacity .4s';el.style.opacity='0';setTimeout(()=>el.remove(),400);},4500);while(toasts.children.length>3)toasts.firstChild.remove();}
+
+  // ---------- drag & resize ----------
+  const ghost=$('#ghost'),dragTimeEl=$('#dragTime');let drag=null;
+  document.addEventListener('pointerdown',e=>{if(e.target.closest('.sg-btn'))return;const handle=e.target.closest('.handle'),brick=e.target.closest('.brick'),card=e.target.closest('.bl-card'),res=e.target.closest('.res');
+    if(handle&&brick){startResize(e,brick,handle.dataset.h);return;}if(brick){startMove(e,brick);return;}if(card){startBacklog(e,card);return;}if(res){startRes(e,res);return;}});
+  const trackAt=(x,y)=>{const el=document.elementFromPoint(x,y);return el?el.closest('.track[data-track]'):null;};
+  const timeFromTrack=(track,cx)=>{const r=track.getBoundingClientRect();return xToDate(cx-r.left);};
+  const laneName=id=>{const l=laneList().find(x=>x.id===id);return l?l.name:id;};
+
+  function startMove(e,brick){const t=D.loads.find(x=>x.id===brick.dataset.id);if(!t)return;hidePop();drag={type:'move',t,dur:t.end-t.start,brick,moved:false};brick.classList.add('dragging');const r=brick.getBoundingClientRect();ghost.style.cssText=`display:block;left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;background:${getComputedStyle(brick).getPropertyValue('--bw')};border:1px solid ${getComputedStyle(brick).getPropertyValue('--bc')};`;drag.offX=e.clientX-r.left;drag.offY=e.clientY-r.top;window.addEventListener('pointermove',onMove);window.addEventListener('pointerup',endMove);}
+  function onMove(e){ghost.style.left=(e.clientX-drag.offX)+'px';ghost.style.top=(e.clientY-drag.offY)+'px';drag.moved=true;document.querySelectorAll('.lane.dropzone').forEach(l=>l.classList.remove('dropzone'));const track=trackAt(e.clientX,e.clientY);if(track){track.closest('.lane').classList.add('dropzone');const nt=timeFromTrack(track,e.clientX-drag.offX+2);dragTimeEl.style.display='block';dragTimeEl.textContent=fmt(nt)+' · '+laneName(track.dataset.track);dragTimeEl.style.left=(e.clientX+12)+'px';dragTimeEl.style.top=(e.clientY-10)+'px';}else dragTimeEl.style.display='none';}
+  function endMove(e){window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',endMove);ghost.style.display='none';dragTimeEl.style.display='none';document.querySelectorAll('.lane.dropzone').forEach(l=>l.classList.remove('dropzone'));const t=drag.t;if(!drag.moved){drag=null;openEditPanel(t.id);return;}const track=trackAt(e.clientX,e.clientY);if(track){const laneId=track.dataset.track;const ns=clampStart(timeFromTrack(track,e.clientX-drag.offX+2),drag.dur);const moved=Math.abs(ns-t.start)>60000,reassigned=laneId!==t[laneKey()];t.start=ns;t.end=new Date(ns.getTime()+drag.dur);setLane(t,laneId);render();if(moved||reassigned){notify('move',`${t.id} ${reassigned?'reassigned':'rescheduled'}`,`${reassigned?'→ '+laneName(laneId)+' · ':''}${fmt(t.start)}–${fmt(t.end)} · you`,t.id);checkConflict(t);}}else render();drag=null;}
+
+  function startResize(e,brick,side){const t=D.loads.find(x=>x.id===brick.dataset.id);if(!t)return;hidePop();drag={type:'resize',t,side};window.addEventListener('pointermove',onResize);window.addEventListener('pointerup',endResize);e.preventDefault();e.stopPropagation();}
+  function onResize(e){const t=drag.t,track=$(`.track[data-track="${t[laneKey()]}"]`);if(!track)return;const nd=timeFromTrack(track,e.clientX);if(drag.side==='l'){if(nd<t.end-900000)t.start=nd;}else{if(nd>t.start+900000)t.end=nd;}render();}
+  function endResize(){window.removeEventListener('pointermove',onResize);window.removeEventListener('pointerup',endResize);const t=drag.t;notify('resize',`${t.id} window changed`,`${fmt(t.start)}–${fmt(t.end)} · you`,t.id);checkConflict(t);drag=null;}
+
+  function startBacklog(e,card){const b=D.backlog.find(x=>x.id===card.dataset.bid);if(!b)return;hidePop();drag={type:'backlog',b,card,moved:false};card.classList.add('dragging');const r=card.getBoundingClientRect();ghost.style.cssText=`display:block;left:${r.left}px;top:${r.top}px;width:200px;height:var(--brick-h);background:var(--s-pending-wash);border:1px solid var(--s-pending);padding:4px 8px;font-size:11px;`;ghost.innerHTML=`<div style="font-family:var(--mono);font-weight:700;color:var(--s-pending)">${b.id} · ${b.type}</div><div>${b.from} → ${b.to}</div>`;drag.offX=e.clientX-r.left;drag.offY=e.clientY-r.top;window.addEventListener('pointermove',onBacklog);window.addEventListener('pointerup',endBacklog);}
+  function onBacklog(e){ghost.style.left=(e.clientX-drag.offX)+'px';ghost.style.top=(e.clientY-drag.offY)+'px';drag.moved=true;document.querySelectorAll('.lane.dropzone').forEach(l=>l.classList.remove('dropzone'));const track=trackAt(e.clientX,e.clientY);if(track){track.closest('.lane').classList.add('dropzone');const nt=timeFromTrack(track,e.clientX-drag.offX+2);dragTimeEl.style.display='block';dragTimeEl.textContent=fmt(nt)+' · '+laneName(track.dataset.track);dragTimeEl.style.left=(e.clientX+12)+'px';dragTimeEl.style.top=(e.clientY-10)+'px';}else dragTimeEl.style.display='none';}
+  function endBacklog(e){window.removeEventListener('pointermove',onBacklog);window.removeEventListener('pointerup',endBacklog);ghost.style.display='none';ghost.innerHTML='';dragTimeEl.style.display='none';document.querySelectorAll('.lane.dropzone').forEach(l=>l.classList.remove('dropzone'));const track=trackAt(e.clientX,e.clientY);if(track&&drag.moved){const b=drag.b,laneId=track.dataset.track;const start=clampStart(timeFromTrack(track,e.clientX-drag.offX+2),b.dur*60000);const nt={id:b.id,driverId:null,tractorId:null,trailerId:null,trailerType:b.type,from:b.from,to:b.to,start,end:new Date(start.getTime()+b.dur*60000),stops:b.stops,status:'assigned',haz:b.haz,un:b.un,commodity:b.commodity,mode:'live'};setLane(nt,laneId);ensureCrew(nt);D.loads.push(nt);D.backlog.splice(D.backlog.indexOf(b),1);computeEconomics();enrich();render();notify('plan',`${nt.id} dispatched`,`${laneName(laneId)} · ${fmt(nt.start)}–${fmt(nt.end)} · you`,nt.id);checkConflict(nt);}else render();drag=null;}
+
+  function startRes(e,resEl){const rtype=resEl.dataset.res,rid=resEl.dataset.rid;hidePop();drag={type:'res',rtype,rid,el:resEl,moved:false};resEl.classList.add('dragging');const r=resEl.getBoundingClientRect();ghost.style.cssText=`display:block;left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;background:var(--surface);border:1px solid var(--border-strong);`;ghost.innerHTML=resEl.innerHTML;ghost.style.padding='5px 9px';drag.offX=e.clientX-r.left;drag.offY=e.clientY-r.top;window.addEventListener('pointermove',onRes);window.addEventListener('pointerup',endRes);}
+  function onRes(e){ghost.style.left=(e.clientX-drag.offX)+'px';ghost.style.top=(e.clientY-drag.offY)+'px';drag.moved=true;document.querySelectorAll('.lane.dropzone-eq').forEach(l=>l.classList.remove('dropzone-eq'));const track=trackAt(e.clientX,e.clientY);if(track)track.closest('.lane').classList.add('dropzone-eq');}
+  function endRes(e){window.removeEventListener('pointermove',onRes);window.removeEventListener('pointerup',endRes);ghost.style.display='none';ghost.innerHTML='';drag.el.classList.remove('dragging');document.querySelectorAll('.lane.dropzone-eq').forEach(l=>l.classList.remove('dropzone-eq'));const track=trackAt(e.clientX,e.clientY);if(track&&drag.moved){const laneId=track.dataset.track;hookResource(drag.rtype,drag.rid,laneId);}drag=null;}
+
+  function hookResource(rtype,rid,laneId){
+    // find loads on that lane (today) to attach equipment/driver to
+    const targets=D.loads.filter(l=>l[laneKey()]===laneId&&Math.round((midnight(l.start)-midnight(BASE))/MS_DAY)===state.dayOffset);
+    let label='';
+    if(rtype==='tractor'){const tr=tractorById[rid];label='#'+tr.unit;targets.forEach(l=>l.tractorId=rid);}
+    if(rtype==='trailer'){const rl=trailerById[rid];label='#'+rl.unit+' ('+rl.type+')';targets.forEach(l=>{l.trailerId=rid;l.trailerType=rl.type;});}
+    if(rtype==='driver'){const dr=driverById[rid];label=dr.name;targets.forEach(l=>l.driverId=rid);}
+    render();
+    targets.forEach(l=>{if(l.mismatch)notify('conflict',`⚠ ${l.id} wrong equipment`,`needs ${l.reqEquip}, hooked ${trailerById[l.trailerId].type}`,l.id);if(l.hazIssue)notify('conflict',`⚠ ${l.id} hazmat endorsement`,`${driverById[l.driverId].name} has no hazmat endorsement`,l.id);});
+    notify('hook',`${label} hooked`,`→ ${laneName(laneId)}${targets.length?' · '+targets.length+' '+TERM.load.toLowerCase()+(targets.length>1?'s':''):' (no loads yet)'} · you`, targets[0]?targets[0].id:null);
+  }
+
+  const clampStart=(d,dur)=>{const day=midnight(d),min=day+DAY_START*3600000,max=day+DAY_END*3600000-dur;return new Date(Math.max(min,Math.min(max,d.getTime())));};
+  function setLane(t,laneId){if(state.groupBy==='driver'){t.driverId=laneId;}else if(state.groupBy==='tractor'){t.tractorId=laneId;}else{t.trailerId=laneId;const rl=trailerById[laneId];if(rl)t.trailerType=rl.type;}}
+  function checkConflict(t){recomputeConflicts();if(t.conflict)notify('conflict',`⚠ ${t.id} conflict`,`overlaps another ${TERM.load.toLowerCase()} on ${laneName(t[laneKey()])}`,t.id);if(t.mismatch)notify('conflict',`⚠ ${t.id} wrong equipment`,`needs ${t.reqEquip}, hooked ${trailerById[t.trailerId].type} (#${trailerById[t.trailerId].unit})`,t.id);if(t.hazIssue)notify('conflict',`⚠ ${t.id} hazmat endorsement`,`${TERM.driver} ${driverById[t.driverId].name} has no hazmat endorsement`,t.id);}
+
+  // ---------- map ----------
+  const MW=1000,MH=520;
+  function renderMap(){const box=D.box,[LON0,LON1,LAT0,LAT1]=box;const px=lo=>(lo-LON0)/(LON1-LON0)*MW,py=la=>(LAT1-la)/(LAT1-LAT0)*MH;const CITY=D.cities;
+    const dayLoads=D.loads.filter(t=>{const o=Math.round((midnight(t.start)-midnight(BASE))/MS_DAY);return o>=state.dayOffset&&o<state.dayOffset+state.days;});
+    let routes='',pins='',cities='';const used=new Set();dayLoads.forEach(t=>{used.add(t.from);used.add(t.to);});
+    used.forEach(name=>{const c=CITY[name];if(!c)return;cities+=`<circle class="city" cx="${px(c[0])}" cy="${py(c[1])}" r="3"/><text class="city-lbl" x="${px(c[0])+6}" y="${py(c[1])+3}">${name.split(',')[0]}</text>`;});
+    dayLoads.forEach(t=>{const a=CITY[t.from],b=CITY[t.to];if(!a||!b)return;const x1=px(a[0]),y1=py(a[1]),x2=px(b[0]),y2=py(b[1]),mx=(x1+x2)/2+(y2-y1)*0.12,my=(y1+y2)/2-(x2-x1)*0.12,col=STATUS[t.status].c;routes+=`<path class="route" d="M${x1},${y1} Q${mx},${my} ${x2},${y2}" style="stroke:${col}"/>`;if(t.status==='in_progress'&&t.pct){const tt=t.pct,qx=(1-tt)*(1-tt)*x1+2*(1-tt)*tt*mx+tt*tt*x2,qy=(1-tt)*(1-tt)*y1+2*(1-tt)*tt*my+tt*tt*y2;pins+=`<g class="veh-pin" data-id="${t.id}"><circle cx="${qx}" cy="${qy}" r="8" fill="${col}" stroke="#fff" stroke-width="2"/><text x="${qx}" y="${qy+3}" text-anchor="middle" font-size="9" fill="#fff">🚚</text></g>`;}pins+=`<circle class="veh-pin" data-id="${t.id}" cx="${x2}" cy="${y2}" r="4.5" fill="${col}" stroke="#fff" stroke-width="1.5"/>`;});
+    $('#mapWrap').innerHTML=`<div class="map-note">Schematic ${state.region} network · ${dayLoads.length} loads · real build → Mapbox / Leaflet + OSM tiles</div><svg viewBox="0 0 ${MW} ${MH}" width="100%" style="display:block;background:var(--surface-2)"><defs><pattern id="g" width="60" height="60" patternUnits="userSpaceOnUse"><path d="M60 0H0V60" fill="none" stroke="var(--grid)" stroke-width="1"/></pattern></defs><rect width="${MW}" height="${MH}" fill="url(#g)"/>${routes}${cities}${pins}</svg><div class="map-legend">${Object.values(STATUS).map(s=>`<span class="item"><span style="display:inline-block;width:14px;height:3px;background:${s.c};border-radius:2px"></span> ${s.label}</span>`).join('')}</div>`;
+    $('#mapWrap').querySelectorAll('.veh-pin').forEach(p=>p.addEventListener('click',()=>openEditPanel(p.dataset.id)));}
+
+  // ---------- market intelligence ----------
+  function renderMarket(){
+    const byO={};D.loads.forEach(l=>{const c=l.from;(byO[c]=byO[c]||{loads:0,rev:0,dist:0});byO[c].loads++;byO[c].rev+=l.rate||0;byO[c].dist+=l.dist||0;});
+    const rows=Object.entries(byO).map(([c,m])=>({c,loads:m.loads,rpm:m.dist?m.rev/m.dist:0,ratio:(m.loads*1.7).toFixed(1)})).sort((a,b)=>b.loads-a.loads);
+    const maxL=Math.max(1,...rows.map(r=>r.loads)),temp=r=>r.loads>=4?'hot':r.loads>=2?'warm':'cold',tl={hot:'🔥 Hot',warm:'Balanced',cold:'❄ Soft'};
+    const idleTr=D.trailers.filter(t=>t.status==='idle').length,idleTk=D.tractors.filter(t=>t.status!=='shop'&&!D.loads.some(l=>l.tractorId===t.id)).length;
+    const hot=rows.filter(r=>temp(r)==='hot').map(r=>r.c.split(',')[0]),U=ECON[state.region].unit;
+    $('#marketWrap').innerHTML=`<h2>Market intelligence</h2><div class="sub">Where the freight is, what it pays, and where to reposition idle capacity.</div>
+    <div class="cols2"><div><table class="mtable"><thead><tr><th>Origin market</th><th class="num">Loads out</th><th>Rate/${U}</th><th class="num">Load:truck</th><th>Market</th></tr></thead><tbody>
+    ${rows.map(r=>`<tr><td>${r.c}</td><td class="num">${r.loads}</td><td><div style="display:flex;align-items:center;gap:8px"><span class="mono">$${r.rpm.toFixed(2)}</span><div class="mbar" style="width:${Math.round(r.loads/maxL*80)+20}px"><span style="width:100%"></span></div></div></td><td class="num">${r.ratio}:1</td><td><span class="temp ${temp(r)}">${tl[temp(r)]}</span></td></tr>`).join('')}
+    </tbody></table></div><div><h2 style="font-size:14px">Reposition idle capacity</h2><div class="sub">${idleTk} bobtail tractor${idleTk!==1?'s':''} · ${idleTr} dropped trailer${idleTr!==1?'s':''} sitting.</div>
+    ${hot.length?`<div style="font-size:13px;line-height:1.75">Hot markets pulling freight: <b>${hot.join(', ')}</b>.<br><br>↳ Deadhead idle equipment toward <b>${hot[0]}</b> — highest load-to-truck ratio, rates at $${rows[0].rpm.toFixed(2)}/${U} vs the $${MKT[state.region][D.equip[0]].toFixed(2)} market floor.</div>`:'<div style="font-size:13px">Balanced network — hold capacity in place.</div>'}</div></div>`;
+  }
+
+  // ---------- settlements & invoicing ----------
+  function renderMoney(){
+    const PAY=ECON[state.region].cpm*0.62,FUEL=ECON[state.region].cpm*0.42,L=D.loads;
+    const rev=L.reduce((a,l)=>a+(l.rate||0),0),pay=L.reduce((a,l)=>a+(l.dist||0)*PAY,0),fuel=L.reduce((a,l)=>a+(l.dist||0)*FUEL,0),net=rev-pay-fuel;
+    const money=n=>'$'+Math.round(n).toLocaleString();
+    const byD={};L.forEach(l=>{if(!l.driverId)return;const d=byD[l.driverId]=byD[l.driverId]||{loads:0,dist:0};d.loads++;d.dist+=l.dist||0;});
+    const byC={};L.forEach(l=>{const c=l.consignee||l.to;const x=byC[c]=byC[c]||{loads:0,amt:0};x.loads++;x.amt+=l.rate||0;});
+    $('#moneyWrap').innerHTML=`<h2>Settlements & invoicing</h2><div class="sub">Revenue in, driver pay + fuel out, net to the carrier. Illustrative rates.</div>
+    <div class="pnl"><div class="card" style="--accent:#16a34a"><div class="n">${money(rev)}</div><div class="l">Revenue</div></div>
+      <div class="card" style="--accent:var(--brand)"><div class="n">${money(pay)}</div><div class="l">Driver pay</div></div>
+      <div class="card" style="--accent:var(--hazard)"><div class="n">${money(fuel)}</div><div class="l">Fuel</div></div>
+      <div class="card" style="--accent:#16a34a"><div class="n">${money(net)}</div><div class="l">Net · ${Math.round(rev?net/rev*100:0)}%</div></div></div>
+    <div class="cols2"><div><h2 style="font-size:14px">Driver settlements</h2><table class="mtable"><thead><tr><th>Driver</th><th class="num">Loads</th><th class="num">${ECON[state.region].unit}</th><th class="num">Pay</th></tr></thead><tbody>
+    ${Object.entries(byD).map(([id,m])=>`<tr><td>${driverById[id]?.name||id}</td><td class="num">${m.loads}</td><td class="num">${Math.round(m.dist).toLocaleString()}</td><td class="num">${money(m.dist*PAY)}</td></tr>`).join('')}
+    </tbody></table></div><div><h2 style="font-size:14px">Customer invoices</h2><table class="mtable"><thead><tr><th>Consignee</th><th class="num">Loads</th><th class="num">Amount</th></tr></thead><tbody>
+    ${Object.entries(byC).sort((a,b)=>b[1].amt-a[1].amt).slice(0,10).map(([c,m])=>`<tr><td>${c}</td><td class="num">${m.loads}</td><td class="num">${money(m.amt)}</td></tr>`).join('')}
+    </tbody></table></div></div>`;
+  }
+
+  // ---------- fuel & IFTA ----------
+  function renderFuel(){
+    const diesel=DIESEL[state.region],L=D.loads,miles=L.reduce((a,l)=>a+(l.dist||0),0),gal=miles/MPG,spend=gal*diesel;
+    let body;
+    if(state.region==='US'){
+      const byState={};L.forEach(l=>{const so=l.from.split(', ')[1]||'?',sd=l.to.split(', ')[1]||'?',half=(l.dist||0)/2;byState[so]=(byState[so]||0)+half;byState[sd]=(byState[sd]||0)+half;});
+      const rows=Object.entries(byState).map(([s,mi])=>{const g=mi/MPG,rate=STATE_TAX[s]||.30;return{s,mi,g,rate,tax:g*rate};}).sort((a,b)=>b.mi-a.mi);
+      const totalTax=rows.reduce((a,r)=>a+r.tax,0);
+      body=`<div class="pnl"><div class="card" style="--accent:var(--hazard)"><div class="n">${Math.round(gal).toLocaleString()}</div><div class="l">Gallons burned</div></div>
+        <div class="card" style="--accent:#16a34a"><div class="n">$${Math.round(spend).toLocaleString()}</div><div class="l">Fuel spend</div></div>
+        <div class="card" style="--accent:var(--brand)"><div class="n">${MPG}</div><div class="l">Fleet MPG</div></div>
+        <div class="card" style="--accent:var(--s-pending)"><div class="n">$${Math.round(totalTax).toLocaleString()}</div><div class="l">IFTA due · qtr</div></div></div>
+        <h2 style="font-size:14px">IFTA — miles & fuel tax by jurisdiction</h2><div class="sub">Miles apportioned per state, taxable gallons at ${MPG} MPG, taxed at each state's diesel rate.</div>
+        <table class="mtable"><thead><tr><th>State</th><th class="num">Miles</th><th class="num">Taxable gal</th><th class="num">$/gal</th><th class="num">Tax owed</th></tr></thead><tbody>
+        ${rows.map(r=>`<tr><td>${r.s}</td><td class="num">${Math.round(r.mi).toLocaleString()}</td><td class="num">${Math.round(r.g).toLocaleString()}</td><td class="num">$${r.rate.toFixed(3)}</td><td class="num">$${Math.round(r.tax).toLocaleString()}</td></tr>`).join('')}
+        </tbody></table>`;
+    } else {
+      const toll=miles*0.25;body=`<div class="pnl"><div class="card" style="--accent:var(--hazard)"><div class="n">${Math.round(gal*3.785).toLocaleString()}L</div><div class="l">Diesel litres</div></div><div class="card" style="--accent:#16a34a"><div class="n">€${Math.round(spend).toLocaleString()}</div><div class="l">Fuel spend</div></div><div class="card" style="--accent:var(--brand)"><div class="n">${MPG}</div><div class="l">Fleet MPG</div></div><div class="card" style="--accent:var(--s-pending)"><div class="n">€${Math.round(toll).toLocaleString()}</div><div class="l">Road tolls / LSVA</div></div></div><div class="sub">EU: fuel + distance tolls (LSVA / vignette). IFTA is a US & Canada fuel-tax agreement — not applicable in the EU.</div>`;
+    }
+    $('#fuelWrap').innerHTML=`<h2>Fuel & IFTA</h2><div class="sub">Diesel $${diesel.toFixed(2)}${state.region==='US'?'/gal':'/L'} · fuel surcharge (FSC) baked into every load rate. Illustrative.</div>${body}`;
+  }
+
+  // ---------- driver messaging ----------
+  const msgEl=$('#msg');
+  function seedMessages(){D.drivers.forEach((dr,i)=>{if(dr.msgs)return;const loc=((D.loads.find(l=>l.driverId===dr.id)||{}).to||'the yard').split(',')[0];dr.msgs=dr.status==='active'?[{from:'driver',text:`Rolling toward ${loc}, on schedule.`,mins:44-i*4},{from:'disp',text:'Copy. Send a POD when you deliver.',mins:40-i*4}]:[];dr.unread=dr.status==='active'&&i%3===0?1:0;});}
+  function updateMsgBadge(){const u=D.drivers.reduce((a,d)=>a+(d.unread||0),0),el=$('#msgBadge');if(el){el.textContent=u;el.style.display=u?'grid':'none';}}
+  function openMsg(driverId){const dr=driverById[driverId];if(!dr)return;dr.unread=0;dr.msgs=dr.msgs||[];
+    const thread=dr.msgs.map(m=>`<div class="bub ${m.from}">${m.text}<div class="tm">${m.from==='disp'?'You':dr.name.split(' ')[0]} · ${m.mins}m</div></div>`).join('')||'<div style="color:var(--ink-3);font-size:12px;text-align:center;margin-top:20px">No messages yet.</div>';
+    msgEl.innerHTML=`<div class="msg-head"><div class="avatar" style="background:${AV[D.drivers.indexOf(dr)%7]}">${initials(dr.name)}</div><div><div style="font-weight:650;font-size:13px">${dr.name}</div><div style="font-size:11px;color:var(--ink-3)">${dr.sub} · CSA ${dr.csa}${dr.overdue?` · <span style="color:var(--conflict)">⚠ medical ${dr.medicalDueDays<0?'expired':'due '+dr.medicalDueDays+'d'}</span>`:''}${dr.lastCall?' · 📞 '+dr.lastCall.mins+'m':''}</div></div><button class="msg-x" id="msgX">✕</button></div>
+      <div class="msg-thread" id="msgThread">${thread}</div>
+      <div class="msg-quick">${['ETA?','Send POD','Call me','Fuel stop OK'].map(q=>`<button data-q="${q}">${q}</button>`).join('')}</div>
+      <div class="msg-compose"><input id="msgInput" placeholder="Message ${dr.name.split(' ')[0]}…"/><button id="msgSend">Send</button></div>`;
+    msgEl.classList.add('show');$('#msgX').onclick=()=>msgEl.classList.remove('show');
+    const send=txt=>{if(!txt||!txt.trim())return;const rg=state.region;dr.msgs.push({from:'disp',text:txt,mins:0});openMsg(driverId);setTimeout(()=>{if(state.region!==rg)return;dr.msgs.push({from:'driver',text:['10-4.','On it.','Copy that.','Will do — thanks.'][hsh(txt+dr.id)%4],mins:0});if(msgEl.classList.contains('show')&&msgEl.querySelector('#msgThread'))openMsg(driverId);else{dr.unread=(dr.unread||0)+1;updateMsgBadge();render();}},1500);};
+    $('#msgSend').onclick=()=>send($('#msgInput').value);
+    $('#msgInput').addEventListener('keydown',e=>{if(e.key==='Enter')send(e.target.value);});
+    msgEl.querySelectorAll('.msg-quick button').forEach(b=>b.onclick=()=>send(b.dataset.q));
+    const th=$('#msgThread');if(th)th.scrollTop=99999;updateMsgBadge();render();
+  }
+  function openInbox(){const items=D.drivers.map(dr=>`<div class="msg-inbox-item" data-inbox="${dr.id}"><div class="avatar" style="background:${AV[D.drivers.indexOf(dr)%7]}">${initials(dr.name)}</div><div style="flex:1;min-width:0"><div style="font-weight:600;font-size:12.5px">${dr.name}</div><div style="font-size:11px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${dr.msgs&&dr.msgs.length?dr.msgs[dr.msgs.length-1].text:'No messages'}</div></div>${dr.unread?`<span class="badge" style="position:static">${dr.unread}</span>`:''}</div>`).join('');
+    msgEl.innerHTML=`<div class="msg-head"><b style="font-size:14px">Messages</b><button class="msg-x" id="msgX">✕</button></div><div style="overflow:auto">${items}</div>`;
+    msgEl.classList.add('show');$('#msgX').onclick=()=>msgEl.classList.remove('show');
+    msgEl.querySelectorAll('[data-inbox]').forEach(it=>it.onclick=()=>openMsg(it.dataset.inbox));
+  }
+
+  // ---------- controls ----------
+  function buildGroupSeg(){$('#groupSeg').innerHTML=`<button data-group="driver" class="${state.groupBy==='driver'?'on':''}">${TERM.driver}</button><button data-group="tractor" class="${state.groupBy==='tractor'?'on':''}">${TERM.tractor}</button><button data-group="trailer" class="${state.groupBy==='trailer'?'on':''}">${TERM.trailer}</button>`;}
+  function buildEquipSel(){$('#equipSel').innerHTML=`<option value="all">All equipment</option>`+D.equip.map(t=>`<option value="${t}">${t}</option>`).join('');$('#equipSel').value=state.equip;}
+  function refreshView(){if(state.view==='map')renderMap();else if(state.view==='market')renderMarket();else if(state.view==='money')renderMoney();else if(state.view==='fuel')renderFuel();}
+  function setView(v){state.view=v;$('#viewSeg').querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.view===v));const board=v==='board';
+    $('#boardView').style.display=board?'block':'none';$('#mapView').style.display=v==='map'?'block':'none';$('#marketView').style.display=v==='market'?'block':'none';$('#moneyView').style.display=v==='money'?'block':'none';$('#fuelView').style.display=v==='fuel'?'block':'none';
+    ['.toolbar','#legend','.panels'].forEach(s=>{const el=document.querySelector(s);if(el)el.style.display=board?'':'none';});
+    refreshView();}
+  function switchRegion(rg){drawer.classList.remove('show');editState=null;msgEl.classList.remove('show');state.region=rg;state.dayOffset=0;state.equip='all';state.filter='all';bind();buildGroupSeg();buildEquipSel();$('#regionSeg').querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.region===rg));$('#chips').querySelectorAll('.chip-f').forEach(c=>c.classList.toggle('on',c.dataset.filter==='all'));$('#chips button[data-filter="in_progress"]').textContent=TERM.rolling;$('#hazBtn').textContent='☣ '+TERM.placard+': '+(state.hazLoud?'loud':'subtle');$('#brandSub').textContent=TERM.region+' · mockup';$('#search').placeholder='Search '+TERM.search;render();refreshView();}
+  $('#regionSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(b)switchRegion(b.dataset.region);});
+  $('#viewSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setView(b.dataset.view);});
+  $('#groupSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;state.groupBy=b.dataset.group;buildGroupSeg();render();});
+  $('#daySeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;state.days=+b.dataset.days;$('#daySeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));if(state.days>1&&state.pxPerHour>60){state.pxPerHour=48;$('#zoom').value=48;}render();if(state.view==='map')renderMap();});
+  $('#densSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;state.density=b.dataset.den;$('#densSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));render();});
+  $('#prevDay').onclick=()=>{state.dayOffset=Math.max(0,state.dayOffset-1);render();if(state.view==='map')renderMap();};
+  $('#nextDay').onclick=()=>{state.dayOffset=Math.min(4,state.dayOffset+1);render();if(state.view==='map')renderMap();};
+  $('#zoom').addEventListener('input',e=>{state.pxPerHour=+e.target.value;render();});
+  $('#equipSel').addEventListener('change',e=>{state.equip=e.target.value;render();});
+  $('#hazBtn').onclick=()=>{state.hazLoud=!state.hazLoud;$('#hazBtn').classList.toggle('on',state.hazLoud);$('#hazBtn').textContent='☣ '+TERM.placard+': '+(state.hazLoud?'loud':'subtle');render();};
+  $('#marginBtn').onclick=()=>{state.marginView=!state.marginView;$('#marginBtn').classList.toggle('on',state.marginView);render();};
+
+  // auto-dispatch suggestion modal
+  const suggestEl=$('#suggest');
+  function openSuggest(bid){const b=D.backlog.find(x=>x.id===bid);if(!b)return;const s=suggestFor(b);
+    const av=s?`<div class="sg-av" style="background:${AV[D.drivers.indexOf(s.d)%7]}">${initials(s.d.name)}</div>`:'';
+    suggestEl.innerHTML=`<div class="sg-card">
+      <div class="sg-head"><b>⚡ Auto-dispatch · ${b.id}</b><div class="s">${b.from} → ${b.to} · ${b.type} · $${(b.rate||0).toLocaleString()} @ $${(b.rpm||0).toFixed(2)}/${ECON[state.region].unit}</div></div>
+      <div class="sg-body">${s?`
+        <div class="sg-cand">${av}<div><div style="font-weight:650">${s.d.name}</div><div style="font-size:11.5px;color:var(--ink-3)">${s.d.sub}</div></div><div class="sg-fit"><div class="p">${s.fit}%</div><div class="l">fit</div></div></div>
+        <div class="sg-row"><span class="k">Equipment</span><span>${s.tr?'✅ '+s.tr.type+' #'+s.tr.unit+(s.tr.status==='idle'?' (idle, ready)':' available'):'⚠ no idle '+b.type}</span>
+          <span class="k">HOS room</span><span>${s.room.toFixed(1)}h available · needs ${(b.dur/60).toFixed(1)}h</span>
+          <span class="k">Hazmat</span><span>${b.haz?(s.d.hazmat?'✅ endorsed':'—'):'n/a'}</span>
+          <span class="k">Margin</span><span style="color:#16a34a;font-weight:600">+$${(b.margin||0).toLocaleString()} · ${Math.round((b.pct||0)*100)}%</span></div>`
+        :`<div class="sg-none">No eligible ${TERM.driver.toLowerCase()} — everyone is out of HOS, wrong equipment, or lacks the hazmat endorsement.</div>`}</div>
+      <div class="sg-actions"><button id="sgCancel">Cancel</button>${s?`<button class="tender" id="sgTender">📤 Tender</button><button class="primary" id="sgAssign">Assign to ${s.d.name.split(' ')[0]}</button>`:''}</div></div>`;
+    suggestEl.classList.add('show');$('#sgCancel').onclick=closeSuggest;
+    if(s)$('#sgAssign').onclick=()=>{const dl=D.loads.filter(l=>l.driverId===s.d.id&&Math.round((midnight(l.start)-midnight(BASE))/MS_DAY)===state.dayOffset).sort((a,c)=>a.end-c.end);let start=dl.length?new Date(dl[dl.length-1].end.getTime()+30*60000):mk(state.dayOffset,'08:00');start=clampStart(start,b.dur*60000);const nt=dispatchLoad(b,s.d.id,s.tr?s.tr.id:null,start);if(s.tr)s.tr.status='active';closeSuggest();if(state.groupBy!=='driver'){state.groupBy='driver';buildGroupSeg();}render();notify('plan',`${nt.id} auto-dispatched`,`→ ${s.d.name} · ${fmt(nt.start)}–${fmt(nt.end)} · ${s.fit}% fit · you`,nt.id);checkConflict(nt);};
+    if(s)$('#sgTender').onclick=()=>{const dl=D.loads.filter(l=>l.driverId===s.d.id&&Math.round((midnight(l.start)-midnight(BASE))/MS_DAY)===state.dayOffset).sort((a,c)=>a.end-c.end);let start=dl.length?new Date(dl[dl.length-1].end.getTime()+30*60000):mk(state.dayOffset,'08:00');start=clampStart(start,b.dur*60000);const nt=dispatchLoad(b,s.d.id,s.tr?s.tr.id:null,start);nt.status='tendered';if(s.tr)s.tr.status='active';closeSuggest();if(state.groupBy!=='driver'){state.groupBy='driver';buildGroupSeg();}render();notify('feed',`${nt.id} tendered`,`→ ${s.d.name} · awaiting response · you`,nt.id);scheduleTenderResponse(nt.id);};
+  }
+  const closeSuggest=()=>suggestEl.classList.remove('show');
+  suggestEl.addEventListener('click',e=>{if(e.target===suggestEl)closeSuggest();});
+  $('#backlog').addEventListener('click',e=>{const b=e.target.closest('.sg-btn');if(b){e.stopPropagation();openSuggest(b.dataset.suggest);}});
+  $('#chips').addEventListener('click',e=>{const b=e.target.closest('.chip-f');if(!b)return;state.filter=b.dataset.filter;$('#chips').querySelectorAll('.chip-f').forEach(x=>x.classList.toggle('on',x===b));render();});
+  $('#search').addEventListener('input',e=>{state.search=e.target.value.trim();render();});
+  $('#themeBtn').onclick=()=>{const cur=document.documentElement.getAttribute('data-theme'),dark=matchMedia('(prefers-color-scheme:dark)').matches;document.documentElement.setAttribute('data-theme',cur?(cur==='dark'?'light':'dark'):(dark?'light':'dark'));if(state.view==='map')renderMap();};
+  setInterval(()=>{$('#clock').textContent=new Date().toTimeString().slice(0,8);},1000);
+
+  // ---------- live feed ----------
+  const disp=['M. Keller','S. Rivera','you','A. Brunner','Dispatch #2'];
+  function feedTick(){const pool=D.loads.filter(t=>dateToX(t.start)!==null&&(t.status==='assigned'||t.status==='in_progress'));if(!pool.length)return;const t=pool[Math.floor(Math.random()*pool.length)],who=disp[Math.floor(Math.random()*disp.length)];const _dr=driverById[t.driverId];if(_dr){_dr.lastCall={loc:(t.to||'').split(',')[0]||'en route',mins:0};_dr.callDue=false;}const opts=[()=>{t.pct=Math.min(.95,(t.pct||.1)+.15);if(t.status==='assigned')t.status='in_progress';return[`${t.id} rolling`,`${t.from} → ${t.to} · ${who}`];},()=>[`${t.id} ETA revised`,`~${fmt(new Date(t.end.getTime()+900000))} · ${who}`],()=>[`${t.id} arrived stop`,`${t.stops} stops · ${who}`],()=>[`${t.id} check call`,`on I-${40+Math.floor(Math.random()*40)} · ${who}`]];const[title,sub]=opts[Math.floor(Math.random()*opts.length)]();notify('feed',title,sub,t.id);if(Math.random()<0.22)addInboundTender();if(state.view==='board')render();else if(state.view==='map')renderMap();else if(state.view==='market')renderMarket();else if(state.view==='money')renderMoney();else if(state.view==='fuel')renderFuel();}
+  setTimeout(()=>{feedTick();setInterval(feedTick,7000);},4000);
+
+  // ---------- go ----------
+  bind();buildGroupSeg();buildEquipSel();render();
+})();
+</script>
