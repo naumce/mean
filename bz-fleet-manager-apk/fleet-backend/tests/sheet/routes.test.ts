@@ -507,3 +507,19 @@ describe("POST /sheet/sync-now", () => {
     expect(load).toBeTruthy();
   });
 });
+
+describe("Google failures reach the dispatcher in Google's words", () => {
+  it("GET /sheet/tabs answers 502 GOOGLE with the API's message when Sheets refuses", async () => {
+    const { org, auth } = await seedOrg();
+    await seedPendingBinding(org.id);
+    const { connectorFor } = await import("../../src/lib/sheet/connectorFor.js");
+    const connector = connectorFor({} as never);
+    const msg = "Google Sheets API has not been used in project 123 before or it is disabled.";
+    const boom = Object.assign(new Error(msg), { code: 403, response: { status: 403, data: { error: { message: msg } } } });
+    const spy = vi.spyOn(connector, "spreadsheetInfo").mockRejectedValueOnce(boom);
+    const r = await request(app).get("/api/dispatcher/sheet/tabs").set("Authorization", auth).query({ spreadsheetId: "s1" });
+    spy.mockRestore();
+    expect(r.status).toBe(502);
+    expect(r.body).toEqual({ error: "GOOGLE", message: "Google said: " + msg });
+  });
+});

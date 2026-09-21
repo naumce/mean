@@ -5,6 +5,7 @@ import { prisma } from "../db.js";
 import { asyncRoute } from "../lib/asyncRoute.js";
 import { seal, open } from "../lib/secretBox.js";
 import { consentUrl, exchangeCode, clientFor } from "../lib/sheet/googleAuth.js";
+import { replyGoogleError } from "../lib/sheet/googleError.js";
 import { connectorFor } from "../lib/sheet/connectorFor.js";
 import { proposeSheetMapping, validateMapping, SHEET_COLUMN_KEYS, type SheetMapping } from "../lib/sheet/mapping.js";
 import { layoutFromMapping } from "../lib/sheet/layoutFromMapping.js";
@@ -162,7 +163,10 @@ dispatcherSheetRouter.get("/sheet/tabs", asyncRoute(async (req, res) => {
   if (!parsedQuery.success) return res.status(400).json({ error: validationMessage(parsedQuery.error) });
   const binding = await activeBindingFor(orgId);
   if (!binding) return res.status(404).json({ error: NOT_CONNECTED });
-  const { title, tabs } = await connectorFor(binding).spreadsheetInfo(parsedQuery.data.spreadsheetId);
+  let info;
+  try { info = await connectorFor(binding).spreadsheetInfo(parsedQuery.data.spreadsheetId); }
+  catch (e) { if (replyGoogleError(res, e)) return; throw e; }
+  const { title, tabs } = info;
   res.json({ title, tabs });
 }));
 
@@ -180,7 +184,9 @@ dispatcherSheetRouter.get("/sheet/header", asyncRoute(async (req, res) => {
   const binding = await activeBindingFor(orgId);
   if (!binding) return res.status(404).json({ error: NOT_CONNECTED });
   const { spreadsheetId, tabId, headerRow } = parsedQuery.data;
-  const header = await connectorFor(binding).readHeader({ spreadsheetId, tabId }, headerRow);
+  let header: string[];
+  try { header = await connectorFor(binding).readHeader({ spreadsheetId, tabId }, headerRow); }
+  catch (e) { if (replyGoogleError(res, e)) return; throw e; }
   const proposal = proposeSheetMapping(header);
   res.json({ header, proposal });
 }));
@@ -215,7 +221,9 @@ dispatcherSheetRouter.post("/sheet/mapping", asyncRoute(async (req, res) => {
   if (!pending) return res.status(404).json({ error: NOT_CONNECTED });
 
   const connector = connectorFor(pending);
-  const header = await connector.readHeader({ spreadsheetId, tabId }, headerRow);
+  let header: string[];
+  try { header = await connector.readHeader({ spreadsheetId, tabId }, headerRow); }
+  catch (e) { if (replyGoogleError(res, e)) return; throw e; }
   const validation = validateMapping(header, mapping);
   if (!validation.ok) return res.status(400).json({ error: validation.errors.join("; ") });
   // The spreadsheet's own title, read here rather than trusted from the
