@@ -53,6 +53,7 @@ import { requireAuth, requireDispatcher } from "./middleware/auth.js";
 import { uploadsDir } from "./lib/upload.js";
 import { rejectNulBytes } from "./middleware/rejectNulBytes.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import { mountHosting } from "./lib/hosting.js";
 import { settleDeadline } from "./middleware/settleDeadline.js";
 
 export function createApp() {
@@ -211,6 +212,9 @@ export function createApp() {
   app.use("/api/driver", safetyRouter);
   app.use("/api", vehicleRouter);
   app.use("/api/navigation", navigationRouter);
+  // Single-container hosting (Render): portal static files + the worker's
+  // public paths. No-op unless PORTAL_DIST / WORKER_URL are set.
+  mountHosting(app);
   // LAST. Express picks error handlers by arity and only reaches the ones
   // mounted below the failing layer, so this must stay at the bottom of
   // createApp(). It replaces Express's built-in handler, which serialises

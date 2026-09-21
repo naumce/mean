@@ -1016,7 +1016,7 @@ function onLoad(): void {
     // several stacked) the one drawn on top is the one you get, which is the
     // one the cursor appears to be over.
     const hits = m.queryRenderedFeatures(e.point, { layers: [ROUTES_HIT_LAYER_ID] })
-    const loadId = hits.length ? (hits[0].properties?.loadId as string | undefined) : undefined
+    const loadId = hits.length ? ((hits[0] as { properties?: Record<string, unknown> | null }).properties?.loadId as string | undefined) : undefined
     if (loadId) {
       closePopup()
       focusRoute(loadId)

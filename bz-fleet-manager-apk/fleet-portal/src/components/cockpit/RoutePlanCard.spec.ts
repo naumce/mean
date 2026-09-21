@@ -128,7 +128,7 @@ describe('RoutePlanCard', () => {
           known: true,
           burn: { deadheadGal: 12, loadedGal: 108, totalGal: 120, mpgUsed: 6.5 },
           advice: { atSequence: 1, atLabel: 'Springfield, MO', state: 'MO', gallons: 120, centsPerGal: 342, vsLabel: 'Omaha, NE', vsCentsPerGal: 373, savingCents: 3_720 },
-          ifta: { byState: [], unattributedGal: 0 },
+          ifta: { byState: [], unattributedGal: 0, complete: true },
         },
       }),
     )
@@ -139,7 +139,7 @@ describe('RoutePlanCard', () => {
   it('reports mpg as unknown rather than as zero when none is on file', () => {
     const w = mountIt(
       card({
-        fuel: { known: false, burn: { deadheadGal: 0, loadedGal: 0, totalGal: 0, mpgUsed: null }, advice: null, ifta: { byState: [], unattributedGal: 0 } },
+        fuel: { known: false, burn: { deadheadGal: 0, loadedGal: 0, totalGal: 0, mpgUsed: null }, advice: null, ifta: { byState: [], unattributedGal: 0, complete: true } },
       }),
     )
     expect(w.find('[data-testid="route-fuel-unknown"]').exists()).toBe(true)
@@ -156,7 +156,7 @@ describe('RoutePlanCard', () => {
           known: false,
           burn: { deadheadGal: 10, loadedGal: 50, totalGal: 60, mpgUsed: 7.1 },
           advice: null,
-          ifta: { byState: [], unattributedGal: 0 },
+          ifta: { byState: [], unattributedGal: 0, complete: true },
         },
       }),
     )
@@ -173,7 +173,7 @@ describe('RoutePlanCard', () => {
     // made no finding, and reporting one would be an invention.
     const w = mountIt(
       card({
-        fuel: { known: false, burn: { deadheadGal: 0, loadedGal: 60, totalGal: 60, mpgUsed: 7.1 }, advice: null, ifta: { byState: [], unattributedGal: 0 } },
+        fuel: { known: false, burn: { deadheadGal: 0, loadedGal: 60, totalGal: 60, mpgUsed: 7.1 }, advice: null, ifta: { byState: [], unattributedGal: 0, complete: true } },
       }),
     )
     expect(w.find('[data-testid="route-fuel-noadvice"]').exists()).toBe(false)
