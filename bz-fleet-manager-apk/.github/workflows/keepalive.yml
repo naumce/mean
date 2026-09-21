@@ -1,0 +1,13 @@
+# Render's free web service sleeps after 15 idle minutes and the night-shift
+# worker lives inside it — a sleeping worker misses its 60 s ticks. This ping
+# keeps it warm. GitHub cron is best-effort (may lag a few minutes).
+name: keepalive
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl -fsS --max-time 60 https://fleet-demo-q20y.onrender.com/health
