@@ -16,7 +16,11 @@ export function isGoogleError(e: unknown): e is GoogleishError {
 }
 
 export function googleMessage(e: GoogleishError): string {
-  return e.response?.data?.error?.message ?? e.message ?? "Google refused the request";
+  const raw = e.response?.data?.error?.message ?? e.message ?? "Google refused the request";
+  // The one every first-time user hits: an .xlsx uploaded to Drive is not a
+  // Google Sheet. Say what to do instead of quoting the API.
+  if (/must not be an Office file/i.test(raw)) return "That file is an Excel upload, not a Google Sheet. In Drive open it, then File → Save as Google Sheets, and paste the link of the new file.";
+  return raw;
 }
 
 /** Answer a Google failure; returns true when it handled the error. */
