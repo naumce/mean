@@ -53,13 +53,13 @@ function primeAuth(): void {
 }
 
 const pendingBinding = {
-  id: 'b1', spreadsheetId: '', spreadsheetTitle: null, tabId: '', tabTitle: '', headerRow: 1, columns: {},
+  id: 'b1', spreadsheetId: '', spreadsheetTitle: null, tabId: '', tabTitle: '', headerRow: 1, rowsPerLoad: 1 as const, columns: {},
   agentSwitchCol: null, agentStatusCol: null, accountEmail: 'me@gmail.com',
   lastSyncAt: null, lastError: null, status: 'paused' as const,
 }
 
 const connectedBinding = {
-  id: 'b2', spreadsheetId: 'sheet-1', spreadsheetTitle: 'Dispatch Sheet', tabId: 'tab-1', tabTitle: 'Loads', headerRow: 1,
+  id: 'b2', spreadsheetId: 'sheet-1', spreadsheetTitle: 'Dispatch Sheet', tabId: 'tab-1', tabTitle: 'Loads', headerRow: 1, rowsPerLoad: 1 as const,
   columns: { loadRef: 'Load #', driverPhone: 'Driver Phone', pickup: 'PU', delivery: 'DEL', deliveryAppt: 'Appt' },
   agentSwitchCol: 'K', agentStatusCol: 'L', accountEmail: 'me@gmail.com',
   lastSyncAt: '2026-09-20T05:00:00.000Z', lastError: null, status: 'connected' as const,
@@ -288,6 +288,81 @@ describe('ConnectSheet', () => {
     await flushPromises()
     expect(w.find('[data-testid="columns-not-installed"]').exists()).toBe(true)
     expect(w.find('[data-testid="install-columns"]').exists()).toBe(true)
+  })
+
+  // Two-rows-per-load sheets.
+  describe('two rows per load', () => {
+    const brokerHeader = ['BOL#', 'CUSTOMER /CARRIER', 'TELEPHONE#', 'CONTACT NAME', 'PICK UP', 'DELIVERY', 'RATE', 'LOAD#', 'APPT SCHEDULE']
+    const brokerProposal = {
+      mapping: { loadRef: 'LOAD#', driverPhone: 'TELEPHONE#', driverName: 'CONTACT NAME', pickup: 'PICK UP', delivery: 'DELIVERY', pickupAppt: 'APPT SCHEDULE', deliveryAppt: 'APPT SCHEDULE', carrierName: 'CUSTOMER /CARRIER', rate: 'RATE' },
+      extras: ['BOL#'],
+      missing: [],
+    }
+
+    async function mountAtStep3(suggestedRowsPerLoad: 1 | 2) {
+      mockedGet.mockResolvedValueOnce({ data: { binding: pendingBinding } })
+      mockPoliciesResponse()
+      primeAuth()
+      const w = mount(ConnectSheet)
+      await flushPromises()
+      mockedGet.mockResolvedValueOnce({ data: { title: 'Board', tabs: [{ id: 't1', title: 'Board' }] } })
+      await w.get('[data-testid="sheet-link"]').setValue('https://docs.google.com/spreadsheets/d/s1/edit')
+      await w.get('[data-testid="open-spreadsheet"]').trigger('click')
+      await flushPromises()
+      mockedGet.mockResolvedValueOnce({ data: { header: brokerHeader, proposal: brokerProposal, suggestedRowsPerLoad } })
+      await w.get('[data-testid="tab-select"]').setValue('t1')
+      await flushPromises()
+      return w
+    }
+
+    it('the checkbox is pre-checked from suggestedRowsPerLoad === 2, with its help line, and rowsPerLoad: 2 is sent', async () => {
+      const w = await mountAtStep3(2)
+      const box = w.get('[data-testid="two-rows"]').element as HTMLInputElement
+      expect(box.checked).toBe(true)
+      expect(w.text()).toContain('Each load takes two rows (customer row + carrier row)')
+      expect(w.text()).toContain("The top row is the load; the carrier row below it supplies the carrier's phone, contact and LOAD#. Night Shift's two cells go on the top row.")
+      // the shared appointment column is accepted by the pickup select and by local validation
+      expect((w.get('[data-testid="map-select-pickupAppt"]').element as HTMLSelectElement).value).toBe('APPT SCHEDULE')
+      expect((w.get('[data-testid="map-select-deliveryAppt"]').element as HTMLSelectElement).value).toBe('APPT SCHEDULE')
+
+      mockedPost.mockResolvedValueOnce({ data: { binding: { ...connectedBinding, rowsPerLoad: 2 } } })
+      await w.get('[data-testid="save-mapping"]').trigger('click')
+      await flushPromises()
+      expect(w.find('[data-testid="mapping-error"]').exists()).toBe(false)
+      expect(mockedPost).toHaveBeenCalledWith('/dispatcher/sheet/mapping', expect.objectContaining({
+        rowsPerLoad: 2,
+        mapping: expect.objectContaining({ pickupAppt: 'APPT SCHEDULE', deliveryAppt: 'APPT SCHEDULE' }),
+      }))
+    })
+
+    it('unchecked when the server suggests 1; ticking it sends 2', async () => {
+      const w = await mountAtStep3(1)
+      const box = w.get('[data-testid="two-rows"]')
+      expect((box.element as HTMLInputElement).checked).toBe(false)
+      await box.setValue(true)
+      mockedPost.mockResolvedValueOnce({ data: { binding: { ...connectedBinding, rowsPerLoad: 2 } } })
+      await w.get('[data-testid="save-mapping"]').trigger('click')
+      await flushPromises()
+      expect(mockedPost).toHaveBeenCalledWith('/dispatcher/sheet/mapping', expect.objectContaining({ rowsPerLoad: 2 }))
+    })
+
+    it('the summary card says "2 rows per load" when the binding has it, and nothing when it is 1', async () => {
+      mockedGet.mockResolvedValueOnce({ data: { binding: { ...connectedBinding, rowsPerLoad: 2 } } })
+      mockPoliciesResponse([standardWithPhone])
+      primeAuth()
+      const w = mount(ConnectSheet)
+      await flushPromises()
+      expect(w.get('[data-testid="sheet-summary"]').text()).toContain('2 rows per load')
+      w.unmount()
+
+      setActivePinia(createPinia())
+      mockedGet.mockResolvedValueOnce({ data: { binding: connectedBinding } })
+      mockPoliciesResponse([standardWithPhone])
+      primeAuth()
+      const w1 = mount(ConnectSheet)
+      await flushPromises()
+      expect(w1.get('[data-testid="sheet-summary"]').text()).not.toContain('rows per load')
+    })
   })
 
   it('?step=2 after the OAuth redirect opens the wizard at step 2', async () => {

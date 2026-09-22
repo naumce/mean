@@ -436,6 +436,10 @@ model SheetBinding {
   /// The spreadsheet's own title (from spreadsheets.get), for the Connect
   /// page's summary card. Null on bindings made before it was recorded.
   spreadsheetTitle String?
+  /// How many sheet rows make one load: 1 (a row is a load) or 2 (the
+  /// broker layout — a customer row with the carrier row under it; see
+  /// lib/sheet/foldPairs.ts).
+  rowsPerLoad    Int       @default(1)
   status         String    @default("connected")  // connected | paused | error
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt

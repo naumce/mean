@@ -85,7 +85,7 @@ describe('the agent pill and switch on the AGENT column', () => {
   it('Task 11: a connected sheet binding disables the switch with the sheet-column title', async () => {
     const sheetStore = useSheetStore()
     sheetStore.binding = {
-      id: 'b1', spreadsheetId: 's1', spreadsheetTitle: 'Dispatch Sheet', tabId: 't1', tabTitle: 'Loads', headerRow: 1, columns: {},
+      id: 'b1', spreadsheetId: 's1', spreadsheetTitle: 'Dispatch Sheet', tabId: 't1', tabTitle: 'Loads', headerRow: 1, rowsPerLoad: 1, columns: {},
       agentSwitchCol: 'K', agentStatusCol: 'L', accountEmail: 'me@gmail.com',
       lastSyncAt: null, lastError: null, status: 'connected',
     }

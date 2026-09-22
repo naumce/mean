@@ -163,6 +163,17 @@ describe("SHEET_ATTENTION_ASPECTS", () => {
   });
 });
 
+describe("agent columns are excluded from extras", () => {
+  it("a header containing the Night Shift status column does not put its value into patch.extras", () => {
+    const h = [...header, "Night Shift", "Night Shift status"];
+    const r = rowToPatch(
+      { rowIndex: 7, cells: ["145219", "+15551234567", "Milan", "Dallas, TX", "Tulsa, OK", "PU: 07/14 - 12:00pm", "DEL: 07/15 - 10:00am", "", "", "", "Standard", "● WATCHING"] },
+      h, mapping, ctx,
+    );
+    expect(r.patch.extras).toBeUndefined();
+  });
+});
+
 describe("edge cases", () => {
   it("a duplicate header name: the mapped value resolves to the FIRST matching column (known limitation)", () => {
     const header = ["LOAD#", "RATE", "RATE"];
@@ -209,5 +220,51 @@ describe("edge cases", () => {
     expect(r.patch).toMatchObject({ boardLoadNo: "145219", driverCell: "+15551234567", carrierContactName: "Milan", customerEmail: "ops@acme.com", revenueCents: 400000,
       stops: { pickup: { address: "Dallas, TX" }, delivery: { address: "Tulsa, OK" } }, extras: { BROKER: "Acme" } });
     expect(r.attention).toEqual([]);
+  });
+});
+
+// Two-rows-per-load sheets: the broker layout keeps both appointments in ONE
+// column ("APPT SCHEDULE" — `PU:` on the customer row, `DEL:` on the carrier
+// row, folded into one multi-line cell by foldPairs.ts). When pickupAppt and
+// deliveryAppt map to the same header, that cell is a ready-made appointment
+// block: its lines go to parseApptText as-is.
+describe("a shared appointment column", () => {
+  const sharedHeader = ["LOAD#", "DRIVER PHONE", "APPT SCHEDULE", "RATE"];
+  const sharedMapping = { loadRef: "LOAD#", driverPhone: "DRIVER PHONE", pickupAppt: "APPT SCHEDULE", deliveryAppt: "APPT SCHEDULE", rate: "RATE" };
+
+  it("a two-line cell yields apptText with both lines and no attention", () => {
+    const r = rowToPatch({ rowIndex: 3, cells: ["145205", "+15551234567", "PU: 07/13 - 13:00\nDEL: 07/15 - 11:00", "$4,000.00"] }, sharedHeader, sharedMapping, ctx);
+    expect(r.patch.apptText).toBe("PU: 07/13 - 13:00\nDEL: 07/15 - 11:00");
+    expect(r.attention).toEqual([]);
+  });
+
+  it("a cell with only a PU line is attention: DEL missing", () => {
+    const r = rowToPatch({ rowIndex: 3, cells: ["145205", "+15551234567", "PU: 07/15 - 13:00", ""] }, sharedHeader, sharedMapping, ctx);
+    expect(r.attention).toEqual(["can't read DEL appointment: missing"]);
+    expect(r.patch.apptText).toBe("PU: 07/15 - 13:00");
+  });
+
+  it("the fixture's unassigned load — `PU: 07/15 - tbd` alone — is unreadable PU plus missing DEL", () => {
+    const r = rowToPatch({ rowIndex: 15, cells: ["2026-35100-00", "", "PU: 07/15 - tbd", ""] }, sharedHeader, sharedMapping, ctx);
+    expect(r.attention).toEqual(["driver phone: missing", `can't read PU appointment: no time in "PU: 07/15 - tbd"`, "can't read DEL appointment: missing"]);
+  });
+
+  it("a blank shared cell is attention: both missing", () => {
+    const r = rowToPatch({ rowIndex: 3, cells: ["145205", "+15551234567", "", ""] }, sharedHeader, sharedMapping, ctx);
+    expect(r.attention).toEqual(["can't read PU appointment: missing", "can't read DEL appointment: missing"]);
+    expect(r.patch.apptText).toBeUndefined();
+  });
+
+  it("an unreadable line surfaces the parser's note, on the known aspect", () => {
+    const r = rowToPatch({ rowIndex: 3, cells: ["145205", "+15551234567", "PU: 07/13 - 13:00\nDEL: sometime tuesday", ""] }, sharedHeader, sharedMapping, ctx);
+    expect(r.attention).toHaveLength(1);
+    expect(r.attention[0]).toMatch(/^can't read DEL appointment: /);
+    const known = SHEET_ATTENTION_ASPECTS.map(attentionAspect);
+    for (const line of r.attention) expect(known).toContain(attentionAspect(line));
+  });
+
+  it("the shared column's cell is not duplicated into extras", () => {
+    const r = rowToPatch({ rowIndex: 3, cells: ["145205", "+15551234567", "PU: 07/13 - 13:00\nDEL: 07/15 - 11:00", ""] }, sharedHeader, sharedMapping, ctx);
+    expect(r.patch.extras).toBeUndefined();
   });
 });

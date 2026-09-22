@@ -7,6 +7,7 @@ import type { SheetMapping, SheetColumnKey } from "./mapping.js";
 import type { LoadPatch } from "../loadWriter.js";
 import { parseApptText } from "../apptText.js";
 import { parseMoney } from "../brokerSheet.js";
+import { AGENT_COLUMN_NAMES } from "./installColumns.js";
 
 export interface RowResult { loadRef: string | null; patch: LoadPatch; attention: string[] }
 
@@ -59,7 +60,9 @@ function prefixed(raw: string, role: "PU" | "DEL"): string {
  *  `notes` (the actual reason a line failed, or a leftover it ignored) — the
  *  note text itself is surfaced in the attention line rather than discarded,
  *  so a dispatcher sees *why*, not just *that*. */
-function buildAppt(pickupCell: string, deliveryCell: string, ctx: { tz: string; year: number }): { apptText?: string; attention: string[] } {
+interface ApptResult { apptText?: string; attention: string[] }
+
+function buildAppt(pickupCell: string, deliveryCell: string, ctx: { tz: string; year: number }): ApptResult {
   // Both appointments are required (mapping.ts REQUIRED_KEYS — PU joined
   // in the final fix wave, I7), so a blank cell of either is its own
   // "missing" refusal, same shape for both.
@@ -74,6 +77,27 @@ function buildAppt(pickupCell: string, deliveryCell: string, ctx: { tz: string; 
 
   if (!lines.length) return { attention: missing };
 
+  return readAppt(lines, { pu: puLine !== null, del: delLine !== null }, missing, ctx);
+}
+
+/** Two-rows-per-load sheets: pickupAppt and deliveryAppt mapped to ONE
+ *  column (the broker layout's "APPT SCHEDULE", folded by foldPairs.ts into
+ *  a multi-line cell). The cell is a ready-made appointment block: its lines
+ *  go to `parseApptText` as-is — no `PU: `/`DEL: ` prefixing, the parser
+ *  finds each role by its own label or position — and a side the parser
+ *  yields no window for is that side's refusal. */
+function buildSharedAppt(cell: string, ctx: { tz: string; year: number }): ApptResult {
+  const lines = cell.split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== "");
+  if (!lines.length) return { attention: [`can't read PU appointment: missing`, `can't read DEL appointment: missing`] };
+  return readAppt(lines, { pu: true, del: true }, [], ctx);
+}
+
+/** The shared tail of both builders: parse `lines`, turn the parser's own
+ *  notes into attention lines by role. `present` says which roles the
+ *  caller actually handed over (a role it left out was already reported in
+ *  `missing`); for a shared cell both are "present" and the parser's own
+ *  "missing" note is the refusal. */
+function readAppt(lines: string[], present: { pu: boolean; del: boolean }, missing: string[], ctx: { tz: string; year: number }): ApptResult {
   const parsed = parseApptText(lines, ctx);
   const notesLeft = new Set(parsed.notes);
   // Pulls this role's note out of the pool (and off `notesLeft`), stripping
@@ -85,15 +109,16 @@ function buildAppt(pickupCell: string, deliveryCell: string, ctx: { tz: string; 
     return n.slice(role.length + 2);
   };
 
-  // A role we left out of `lines` (blank — already reported as missing
-  // above) still makes parseApptText synthesize a "missing" note for it —
-  // discard that artifact rather than surfacing it a second time as a bogus
-  // `appointment:` line.
-  if (!puLine) takeNote("PU");
-  if (!delLine) takeNote("DEL");
+  // A role the caller left out of `lines` (blank — already reported in
+  // `missing`) still makes parseApptText synthesize a "missing" note for it
+  // — discard that artifact rather than surfacing it a second time as a
+  // bogus `appointment:` line.
+  if (!present.pu) takeNote("PU");
+  if (!present.del) takeNote("DEL");
 
-  const puUnreadable = puLine && !parsed.pu ? [`can't read PU appointment: ${takeNote("PU") ?? `"${puLine}"`}`] : [];
-  const delUnreadable = delLine && !parsed.del ? [`can't read DEL appointment: ${takeNote("DEL") ?? `"${delLine}"`}`] : [];
+  const quoted = (role: "PU" | "DEL"): string => `"${lines.find((l) => new RegExp(`^${role}\\s*:`, "i").test(l)) ?? lines.join(" / ")}"`;
+  const puUnreadable = present.pu && !parsed.pu ? [`can't read PU appointment: ${takeNote("PU") ?? quoted("PU")}`] : [];
+  const delUnreadable = present.del && !parsed.del ? [`can't read DEL appointment: ${takeNote("DEL") ?? quoted("DEL")}`] : [];
   // Whatever note is left over described a line that DID parse to a window
   // (an ignored trailing scrap, a PU/DEL-order conflict resolved some other
   // way) — not a read failure, so it gets its own aspect.
@@ -118,7 +143,8 @@ export function rowToPatch(row: RawRow, header: string[], mapping: SheetMapping,
   const driverName = get("driverName");
   const pickup = get("pickup");
   const delivery = get("delivery");
-  const appt = buildAppt(get("pickupAppt"), get("deliveryAppt"), ctx);
+  const sharedAppt = mapping.pickupAppt !== undefined && mapping.pickupAppt === mapping.deliveryAppt;
+  const appt = sharedAppt ? buildSharedAppt(get("pickupAppt"), ctx) : buildAppt(get("pickupAppt"), get("deliveryAppt"), ctx);
   const customerEmail = get("customerEmail");
   const carrierName = get("carrierName");
   const carrierPhone = get("carrierPhone");
@@ -133,12 +159,17 @@ export function rowToPatch(row: RawRow, header: string[], mapping: SheetMapping,
 
   // A mapped header absent from this row's own header array (stale mapping)
   // reads as blank throughout `get`/`cellFor` above; extras below only ever
-  // sees headers actually present in `header`, so it never conflicts.
+  // sees headers actually present in `header`, so it never conflicts. The
+  // two agent columns are excluded too: a status write (e.g. "● WATCHING")
+  // would otherwise land in `extras` and trigger a Load update on the very
+  // next tick — the sheet layer already reads the switch column itself
+  // (sync.ts) and has no notion of the status column at all.
   const mappedHeaders = new Set(Object.values(mapping));
+  const agentHeaders = new Set<string>([AGENT_COLUMN_NAMES.switch, AGENT_COLUMN_NAMES.status]);
   const extras = Object.fromEntries(
     header
       .map((h, idx) => [h, (row.cells[idx] ?? "").trim()] as const)
-      .filter(([h, cell]) => cell !== "" && !mappedHeaders.has(h)),
+      .filter(([h, cell]) => cell !== "" && !mappedHeaders.has(h) && !agentHeaders.has(h)),
   );
 
   const patch: LoadPatch = {

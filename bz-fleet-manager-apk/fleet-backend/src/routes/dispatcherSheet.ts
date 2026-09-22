@@ -7,11 +7,13 @@ import { seal, open } from "../lib/secretBox.js";
 import { consentUrl, exchangeCode, clientFor } from "../lib/sheet/googleAuth.js";
 import { replyGoogleError } from "../lib/sheet/googleError.js";
 import { connectorFor } from "../lib/sheet/connectorFor.js";
+import type { SheetRead } from "../lib/sheet/connector.js";
 import { proposeSheetMapping, validateMapping, SHEET_COLUMN_KEYS, type SheetMapping } from "../lib/sheet/mapping.js";
 import { layoutFromMapping } from "../lib/sheet/layoutFromMapping.js";
 import { saveLayout } from "../lib/boardLayout.js";
 import { installAgentColumns } from "../lib/sheet/installColumns.js";
 import { syncBinding } from "../lib/sheet/sync.js";
+import { suggestRowsPerLoad } from "../lib/sheet/foldPairs.js";
 
 // Night Shift sheet slices (task 7, spec §5): connect a Google Sheet, pick
 // its tab and header row, confirm a column mapping, and hold the resulting
@@ -43,7 +45,7 @@ const validationMessage = (err: z.ZodError): string =>
 // dispatcherAuth.ts's /auth/me uses for its own sensitive columns.
 const SAFE_BINDING_SELECT = {
   id: true, orgId: true, provider: true, spreadsheetId: true, spreadsheetTitle: true, tabId: true,
-  tabTitle: true, headerRow: true, columns: true, agentSwitchCol: true,
+  tabTitle: true, headerRow: true, columns: true, rowsPerLoad: true, agentSwitchCol: true,
   agentStatusCol: true, accountEmail: true, lastVersion: true, lastSyncAt: true,
   lastError: true, status: true, createdAt: true, updatedAt: true,
 } satisfies Prisma.SheetBindingSelect;
@@ -170,6 +172,9 @@ dispatcherSheetRouter.get("/sheet/tabs", asyncRoute(async (req, res) => {
   res.json({ title, tabs });
 }));
 
+/** How many data rows `GET /sheet/header` looks at for `suggestedRowsPerLoad`. */
+const ROWS_SAMPLED_FOR_SUGGESTION = 40;
+
 const headerQuerySchema = z.object({
   spreadsheetId: spreadsheetIdField,
   tabId: z.string().min(1),
@@ -184,11 +189,16 @@ dispatcherSheetRouter.get("/sheet/header", asyncRoute(async (req, res) => {
   const binding = await activeBindingFor(orgId);
   if (!binding) return res.status(404).json({ error: NOT_CONNECTED });
   const { spreadsheetId, tabId, headerRow } = parsedQuery.data;
-  let header: string[];
-  try { header = await connectorFor(binding).readHeader({ spreadsheetId, tabId }, headerRow); }
+  // One read from the header down: the header itself for the proposal, and
+  // the first rows under it to tell a two-rows-per-load sheet apart (the
+  // broker layout — a carrier row with no cities right under each load).
+  let read: SheetRead;
+  try { read = await connectorFor(binding).readRows({ spreadsheetId, tabId }, headerRow); }
   catch (e) { if (replyGoogleError(res, e)) return; throw e; }
+  const { header } = read;
   const proposal = proposeSheetMapping(header);
-  res.json({ header, proposal });
+  const suggestedRowsPerLoad = suggestRowsPerLoad(read.rows.slice(0, ROWS_SAMPLED_FOR_SUGGESTION), header, proposal.mapping);
+  res.json({ header, proposal, suggestedRowsPerLoad });
 }));
 
 // --- Confirming the mapping --------------------------------------------------
@@ -208,6 +218,9 @@ const mappingBodySchema = z.object({
   tabTitle: z.string().min(1),
   headerRow: z.number().int().positive(),
   mapping: sheetMappingSchema,
+  /** Two-rows-per-load sheets: 2 folds each customer row with the carrier
+   *  row under it (lib/sheet/foldPairs.ts); 1 is one row per load. */
+  rowsPerLoad: z.union([z.literal(1), z.literal(2)]).default(1),
 });
 
 dispatcherSheetRouter.post("/sheet/mapping", asyncRoute(async (req, res) => {
@@ -215,7 +228,7 @@ dispatcherSheetRouter.post("/sheet/mapping", asyncRoute(async (req, res) => {
   if (!orgId) return res.status(400).json({ error: NO_ORG });
   const parsedBody = mappingBodySchema.safeParse(req.body);
   if (!parsedBody.success) return res.status(400).json({ error: validationMessage(parsedBody.error) });
-  const { spreadsheetId, tabId, tabTitle, headerRow, mapping } = parsedBody.data;
+  const { spreadsheetId, tabId, tabTitle, headerRow, mapping, rowsPerLoad } = parsedBody.data;
 
   const pending = await activeBindingFor(orgId);
   if (!pending) return res.status(404).json({ error: NOT_CONNECTED });
@@ -286,7 +299,7 @@ dispatcherSheetRouter.post("/sheet/mapping", asyncRoute(async (req, res) => {
       const target = await tx.sheetBinding.update({
         where: { id: existing.id },
         data: {
-          tabTitle, spreadsheetTitle, headerRow, columns: columnsJson, status: "connected",
+          tabTitle, spreadsheetTitle, headerRow, columns: columnsJson, rowsPerLoad, status: "connected",
           provider: pending.provider, refreshToken: pending.refreshToken, accountEmail: pending.accountEmail,
         },
         select: { id: true },
@@ -298,7 +311,7 @@ dispatcherSheetRouter.post("/sheet/mapping", asyncRoute(async (req, res) => {
       const updated = await tx.sheetBinding.update({
         where: { id: pending.id },
         data: {
-          spreadsheetId, tabId, tabTitle, spreadsheetTitle, headerRow, columns: columnsJson, status: "connected",
+          spreadsheetId, tabId, tabTitle, spreadsheetTitle, headerRow, columns: columnsJson, rowsPerLoad, status: "connected",
           ...(sameTab ? {} : { agentSwitchCol: null, agentStatusCol: null, lastVersion: null }),
         },
         select: { id: true },

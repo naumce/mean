@@ -134,10 +134,35 @@ describe('useSheetStore', () => {
     const mapping = { loadRef: 'Load', driverPhone: 'Driver Phone', pickup: 'Pickup', delivery: 'Delivery', pickupAppt: 'PU Appt', deliveryAppt: 'Del Appt' }
     const result = await store.saveMapping(mapping)
     expect(mockedPost).toHaveBeenCalledWith('/dispatcher/sheet/mapping', {
-      spreadsheetId: 'sheet-1', tabId: 'tab-1', tabTitle: 'Loads', headerRow: 1, mapping,
+      spreadsheetId: 'sheet-1', tabId: 'tab-1', tabTitle: 'Loads', headerRow: 1, mapping, rowsPerLoad: 1,
     })
     expect(result).toEqual(binding)
     expect(store.binding).toEqual(binding)
+  })
+
+  // Two-rows-per-load sheets.
+  it('readHeader() stores the server\'s suggestedRowsPerLoad', async () => {
+    const proposal = { mapping: { loadRef: 'LOAD#', pickupAppt: 'APPT SCHEDULE', deliveryAppt: 'APPT SCHEDULE' }, extras: [], missing: [] }
+    mockedGet.mockResolvedValueOnce({ data: { header: ['LOAD#', 'APPT SCHEDULE'], proposal, suggestedRowsPerLoad: 2 } })
+    const store = useSheetStore()
+    store.selectedSpreadsheetId = 's1'
+    store.selectedTabId = 't1'
+    await store.readHeader()
+    expect(store.suggestedRowsPerLoad).toBe(2)
+  })
+
+  it('saveMapping() sends rowsPerLoad: 2 when asked, and a shared appointment column passes local validation', async () => {
+    mockedPost.mockResolvedValueOnce({ data: { binding: { ...binding, rowsPerLoad: 2 } } })
+    const store = useSheetStore()
+    store.selectedSpreadsheetId = 'sheet-1'
+    store.selectedTabId = 'tab-1'
+    store.tabs = [{ id: 'tab-1', title: 'Board' }]
+    const mapping = { loadRef: 'LOAD#', driverPhone: 'TELEPHONE#', pickup: 'PICK UP', delivery: 'DELIVERY', pickupAppt: 'APPT SCHEDULE', deliveryAppt: 'APPT SCHEDULE' }
+    const result = await store.saveMapping(mapping, 2)
+    expect(mockedPost).toHaveBeenCalledWith('/dispatcher/sheet/mapping', {
+      spreadsheetId: 'sheet-1', tabId: 'tab-1', tabTitle: 'Board', headerRow: 1, mapping, rowsPerLoad: 2,
+    })
+    expect(result.rowsPerLoad).toBe(2)
   })
 
   it('install() calls POST /dispatcher/sheet/install and stores the returned binding', async () => {
@@ -203,6 +228,14 @@ describe('validateMappingLocally', () => {
   it('flags a header used for two keys', () => {
     const errors = validateMappingLocally({ loadRef: 'Load', driverPhone: 'Load' })
     expect(errors.some((e) => e.includes('used for both'))).toBe(true)
+  })
+
+  // Two-rows-per-load sheets: mirrors mapping.ts — only that pair may share.
+  it('allows pickupAppt and deliveryAppt to share one header, and nothing else', () => {
+    const shared = { loadRef: 'LOAD#', driverPhone: 'TELEPHONE#', pickup: 'PICK UP', delivery: 'DELIVERY', pickupAppt: 'APPT SCHEDULE', deliveryAppt: 'APPT SCHEDULE' }
+    expect(validateMappingLocally(shared)).toEqual([])
+    expect(validateMappingLocally({ ...shared, notes: 'APPT SCHEDULE' })).toEqual(['"APPT SCHEDULE" is used for both pickupAppt and deliveryAppt and notes'])
+    expect(validateMappingLocally({ ...shared, driverPhone: 'LOAD#' })).toEqual(['"LOAD#" is used for both loadRef and driverPhone'])
   })
 
   it('passes a complete, non-duplicated mapping', () => {

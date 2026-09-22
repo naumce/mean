@@ -20,6 +20,7 @@ import { settlePendingStops } from "../geocodeSettle.js";
 import { attentionDiffers, patchDiffers } from "./rowDiff.js";
 import { AGENT_COLUMN_NAMES } from "./installColumns.js";
 import { writeStatusCells, type SkippedRow } from "./statusPass.js";
+import { foldPairs } from "./foldPairs.js";
 
 export const SHEET_ACTOR = { dispatcherId: null, name: "sheet" } as const;
 
@@ -342,6 +343,13 @@ async function rowPass(
   return rows;
 }
 
+/** The read with its rows folded one-per-load (foldPairs.ts) and its header
+ *  extended with `ORDER REF`. The fold never drops a row. */
+function foldLoads(read: SheetRead, mapping: SheetMapping): SheetRead {
+  const folded = foldPairs(read.rows, read.header, mapping);
+  return { ...read, rows: folded.rows, header: folded.header };
+}
+
 export async function syncBinding(bindingId: string, deps: SyncDeps): Promise<SyncReport> {
   try {
     const binding = await prisma.sheetBinding.findUniqueOrThrow({
@@ -350,6 +358,12 @@ export async function syncBinding(bindingId: string, deps: SyncDeps): Promise<Sy
     });
     const ref: TabRef = { spreadsheetId: binding.spreadsheetId, tabId: binding.tabId };
     const read = await deps.connector.readRows(ref, binding.headerRow, binding.lastVersion ?? undefined);
+    const mapping = (binding.columns ?? {}) as SheetMapping;
+    // Two-rows-per-load sheets: every pass below (rows, switch, status,
+    // vanished) reads `loads` — the sheet's rows folded one-per-load when
+    // the binding says so, the read as-is otherwise. The agent columns are
+    // located on the ORIGINAL header (the fold only appends to it).
+    const loads = binding.rowsPerLoad === 2 ? foldLoads(read, mapping) : read;
 
     // Where the agent columns are THIS tick. A changed tick locates them by
     // name in the header just read (C4); an unchanged tick's header is the
@@ -381,13 +395,13 @@ export async function syncBinding(bindingId: string, deps: SyncDeps): Promise<Sy
     // pill change), which has nothing to do with whether a dispatcher edited
     // the sheet since the last tick.
     const rows = read.changed
-      ? await rowPass(bindingId, binding.orgId, binding.org.timezone, deps.nowMs(), (binding.columns ?? {}) as SheetMapping, read, columns.switchCol)
+      ? await rowPass(bindingId, binding.orgId, binding.org.timezone, deps.nowMs(), mapping, loads, columns.switchCol)
       : null;
 
     const statusWrites = columns.statusCol != null
       ? await writeStatusCells({
         orgId: binding.orgId, org: binding.org, agentStatusCol: columns.statusCol,
-        skipped: rows?.skipped ?? [], rows: read.rows, connector: deps.connector, ref, nowMs: deps.nowMs(),
+        skipped: rows?.skipped ?? [], rows: loads.rows, connector: deps.connector, ref, nowMs: deps.nowMs(),
       })
       : 0;
 
@@ -409,7 +423,7 @@ export async function syncBinding(bindingId: string, deps: SyncDeps): Promise<Sy
     await recordSuccess(bindingId, version, deps.nowMs(), binding.status === "error", columnsError ?? rowsLastError);
     return {
       created: rows?.created ?? 0, updated: rows?.updated ?? 0, unchanged: rows?.unchanged ?? 0,
-      skipped: rows?.skipped ?? [], read: rows ? read.rows.length : 0, statusWrites, error: null,
+      skipped: rows?.skipped ?? [], read: rows ? loads.rows.length : 0, statusWrites, error: null,
     };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

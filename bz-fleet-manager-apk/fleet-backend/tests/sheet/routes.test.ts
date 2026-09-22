@@ -35,6 +35,7 @@ vi.mock("../../src/lib/sheet/googleAuth.js", () => ({
 
 vi.mock("../../src/lib/sheet/connectorFor.js", async () => {
   const { FakeConnector } = await import("../../src/lib/sheet/fakeConnector.js");
+  const { BROKER_ROWS } = await import("../fixtures/brokerBoard.js");
   const connector = new FakeConnector({
     s1: {
       title: "Loads",
@@ -56,6 +57,9 @@ vi.mock("../../src/lib/sheet/connectorFor.js", async () => {
             ["145219", "+15551234567", "Dallas, TX", "Reno, NV", "09/21 08:00", "09/22 08:00", "x"],
           ],
         },
+        // The broker layout (two rows per load, header on row 2), for the
+        // two-rows-per-load tests.
+        "2": { title: "Board", grid: BROKER_ROWS.map((r) => [...r]) },
       },
     },
   });
@@ -150,7 +154,7 @@ describe("GET /sheet/tabs", () => {
     await seedPendingBinding(org.id);
     const res = await request(app).get("/api/dispatcher/sheet/tabs").set("Authorization", auth).query({ spreadsheetId: "s1" });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ title: "Loads", tabs: [{ id: "0", title: "Sheet1" }, { id: "1", title: "Sheet2" }] });
+    expect(res.body).toEqual({ title: "Loads", tabs: [{ id: "0", title: "Sheet1" }, { id: "1", title: "Sheet2" }, { id: "2", title: "Board" }] });
   });
 
   // Residual fix 3: the server tolerates a full Sheets URL where an id is
@@ -205,6 +209,65 @@ describe("GET /sheet/header", () => {
     });
     expect(res.body.proposal.extras).toEqual(["CUSTOM COL"]);
     expect(res.body.proposal.missing).toEqual([]);
+  });
+});
+
+// --- two rows per load ----------------------------------------------------------
+
+describe("two rows per load", () => {
+  it("GET /sheet/header suggests 2 for the broker grid and 1 for the one-row fixture", async () => {
+    const { org, auth } = await seedOrg();
+    await seedPendingBinding(org.id);
+    const broker = await request(app)
+      .get("/api/dispatcher/sheet/header")
+      .set("Authorization", auth)
+      .query({ spreadsheetId: "s1", tabId: "2", headerRow: 2 });
+    expect(broker.status).toBe(200);
+    expect(broker.body.suggestedRowsPerLoad).toBe(2);
+    expect(broker.body.proposal.mapping.pickupAppt).toBe("APPT SCHEDULE");
+    expect(broker.body.proposal.mapping.deliveryAppt).toBe("APPT SCHEDULE");
+
+    const oneRow = await request(app)
+      .get("/api/dispatcher/sheet/header")
+      .set("Authorization", auth)
+      .query({ spreadsheetId: "s1", tabId: "0", headerRow: 1 });
+    expect(oneRow.status).toBe(200);
+    expect(oneRow.body.suggestedRowsPerLoad).toBe(1);
+  });
+
+  it("POST /sheet/mapping stores rowsPerLoad (default 1) and GET /sheet returns it", async () => {
+    const { org, auth } = await seedOrg();
+    await seedPendingBinding(org.id);
+    const mapping = {
+      loadRef: "LOAD#", driverPhone: "TELEPHONE#", driverName: "CONTACT NAME", pickup: "PICK UP", delivery: "DELIVERY",
+      pickupAppt: "APPT SCHEDULE", deliveryAppt: "APPT SCHEDULE", carrierName: "CUSTOMER /CARRIER", rate: "RATE",
+    };
+    const saved = await request(app)
+      .post("/api/dispatcher/sheet/mapping")
+      .set("Authorization", auth)
+      .send({ spreadsheetId: "s1", tabId: "2", tabTitle: "Board", headerRow: 2, mapping, rowsPerLoad: 2 });
+    expect(saved.status).toBe(200);
+    expect(saved.body.binding.rowsPerLoad).toBe(2);
+
+    const got = await request(app).get("/api/dispatcher/sheet").set("Authorization", auth);
+    expect(got.status).toBe(200);
+    expect(got.body.binding.rowsPerLoad).toBe(2);
+
+    // omitted -> 1
+    const again = await request(app)
+      .post("/api/dispatcher/sheet/mapping")
+      .set("Authorization", auth)
+      .send({ spreadsheetId: "s1", tabId: "2", tabTitle: "Board", headerRow: 2, mapping });
+    expect(again.status).toBe(200);
+    expect(again.body.binding.rowsPerLoad).toBe(1);
+
+    // anything but 1 or 2 is refused at the boundary
+    const bad = await request(app)
+      .post("/api/dispatcher/sheet/mapping")
+      .set("Authorization", auth)
+      .send({ spreadsheetId: "s1", tabId: "2", tabTitle: "Board", headerRow: 2, mapping, rowsPerLoad: 3 });
+    expect(bad.status).toBe(400);
+    expect(bad.body.error).toContain("rowsPerLoad");
   });
 });
 

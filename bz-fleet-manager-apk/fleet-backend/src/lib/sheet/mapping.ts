@@ -36,6 +36,15 @@ const ALIASES: Record<SheetColumnKey, string[]> = {
 
 const KEYS = Object.keys(ALIASES) as SheetColumnKey[];
 
+/** The one pair allowed to share a header (two-rows-per-load sheets): the
+ *  broker layout keeps both appointments in a single "APPT SCHEDULE" column
+ *  — `PU:` on the customer row, `DEL:` on the carrier row — and rowToPatch
+ *  reads such a cell as one multi-line appointment block. */
+const SHARED_PAIR: readonly SheetColumnKey[] = ["pickupAppt", "deliveryAppt"];
+
+const isSharedPair = (keys: SheetColumnKey[]): boolean =>
+  keys.length === SHARED_PAIR.length && SHARED_PAIR.every((k) => keys.includes(k));
+
 /** Every valid `SheetColumnKey`, for callers (e.g. dispatcherSheet.ts's
  *  `POST /mapping` zod schema) that need to reject an unknown key at the
  *  boundary rather than silently accept it into a `SheetMapping`. */
@@ -57,11 +66,18 @@ export function proposeSheetMapping(header: string[]): { mapping: SheetMapping; 
       extras.push(raw);
     }
   }
-  const missing = REQUIRED_KEYS.filter((k) => !taken.has(k));
-  return { mapping, extras, missing };
+  // Exactly one appointment-ish column (a deliveryAppt alias hit, none for
+  // pickupAppt): it is the sheet's whole appointment block, so it serves
+  // both keys.
+  const shared = mapping.deliveryAppt !== undefined && mapping.pickupAppt === undefined
+    ? { ...mapping, pickupAppt: mapping.deliveryAppt }
+    : mapping;
+  const missing = REQUIRED_KEYS.filter((k) => shared[k] === undefined);
+  return { mapping: shared, extras, missing };
 }
 
-/** required present, every header exists, no header used twice. */
+/** required present, every header exists, no header used twice — except by
+ *  the pickupAppt/deliveryAppt pair alone (`SHARED_PAIR`). */
 export function validateMapping(header: string[], mapping: SheetMapping): { ok: true } | { ok: false; errors: string[] } {
   const errors: string[] = [];
   const headerSet = new Set(header);
@@ -75,7 +91,7 @@ export function validateMapping(header: string[], mapping: SheetMapping): { ok: 
     usedBy.set(h, [...list, key]);
   }
   for (const [h, keys] of usedBy) {
-    if (keys.length > 1) errors.push(`"${h}" is used for both ${keys.join(" and ")}`);
+    if (keys.length > 1 && !isSharedPair(keys)) errors.push(`"${h}" is used for both ${keys.join(" and ")}`);
   }
   for (const req of REQUIRED_KEYS) {
     if (!mapping[req]) errors.push(`missing required key "${req}"`);

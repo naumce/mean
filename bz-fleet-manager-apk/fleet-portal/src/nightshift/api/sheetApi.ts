@@ -28,6 +28,16 @@ export const REQUIRED_KEYS: readonly SheetColumnKey[] = ['loadRef', 'driverPhone
 
 export type SheetMapping = Partial<Record<SheetColumnKey, string>>
 
+/** How many sheet rows make one load (SheetBinding.rowsPerLoad): 2 is the
+ *  broker layout — a customer row with the carrier row under it, folded by
+ *  the server (lib/sheet/foldPairs.ts); 1 is one row per load. */
+export type RowsPerLoad = 1 | 2
+
+/** The one pair of keys allowed to share a header — mirrors mapping.ts
+ *  (two-rows-per-load sheets: the broker layout keeps both appointments in
+ *  one "APPT SCHEDULE" column). */
+export const SHARED_HEADER_PAIR: readonly SheetColumnKey[] = ['pickupAppt', 'deliveryAppt']
+
 export interface SheetMappingProposal {
   mapping: SheetMapping
   extras: string[]
@@ -66,6 +76,7 @@ export interface SheetBinding {
   tabTitle: string
   headerRow: number
   columns: SheetMapping
+  rowsPerLoad: RowsPerLoad
   agentSwitchCol: string | null
   agentStatusCol: string | null
   accountEmail: string
@@ -101,12 +112,16 @@ export async function fetchTabs(spreadsheetId: string): Promise<SheetSpreadsheet
   return data
 }
 
-export async function fetchHeader(
-  spreadsheetId: string,
-  tabId: string,
-  headerRow = 1,
-): Promise<{ header: string[]; proposal: SheetMappingProposal }> {
-  const { data } = await api.get<{ header: string[]; proposal: SheetMappingProposal }>('/dispatcher/sheet/header', {
+export interface SheetHeaderResponse {
+  header: string[]
+  proposal: SheetMappingProposal
+  /** 2 when the first rows under the header look like the broker layout
+   *  (a carrier row with no cities right under each load), else 1. */
+  suggestedRowsPerLoad: RowsPerLoad
+}
+
+export async function fetchHeader(spreadsheetId: string, tabId: string, headerRow = 1): Promise<SheetHeaderResponse> {
+  const { data } = await api.get<SheetHeaderResponse>('/dispatcher/sheet/header', {
     params: { spreadsheetId, tabId, headerRow },
   })
   return data
@@ -118,6 +133,7 @@ export interface SaveMappingBody {
   tabTitle: string
   headerRow: number
   mapping: SheetMapping
+  rowsPerLoad: RowsPerLoad
 }
 
 export async function saveMapping(body: SaveMappingBody): Promise<SheetBinding> {

@@ -92,11 +92,24 @@ watch(
   { immediate: true },
 )
 const isMissing = (key: SheetColumnKey): boolean => isRequired(key) && !mappingDraft[key]
+// Two-rows-per-load sheets: pre-checked from the server's look at the first
+// rows under the header (a carrier row with no cities under each load), or
+// from the binding itself when re-mapping.
+const TWO_ROWS_LABEL = 'Each load takes two rows (customer row + carrier row)'
+const TWO_ROWS_HELP = "The top row is the load; the carrier row below it supplies the carrier's phone, contact and LOAD#. Night Shift's two cells go on the top row."
+const twoRows = ref(false)
+watch(
+  () => sheet.suggestedRowsPerLoad,
+  (suggested) => {
+    twoRows.value = suggested === 2
+  },
+  { immediate: true },
+)
 const mappingError = ref<string | null>(null)
 async function onSaveMapping(): Promise<void> {
   mappingError.value = null
   try {
-    await sheet.saveMapping({ ...mappingDraft })
+    await sheet.saveMapping({ ...mappingDraft }, twoRows.value ? 2 : 1)
     step.value = 4
   } catch {
     mappingError.value = sheet.error
@@ -230,7 +243,7 @@ function backTo(n: 1 | 2 | 3): void {
       <div class="flex items-start justify-between gap-4">
         <div>
           <h2 class="text-sm font-semibold text-ink" data-testid="summary-title">{{ sheet.binding.spreadsheetTitle || sheet.binding.tabTitle || sheet.binding.spreadsheetId }}</h2>
-          <p class="text-xs text-ink-3">Tab: {{ sheet.binding.tabTitle }}</p>
+          <p class="text-xs text-ink-3">Tab: {{ sheet.binding.tabTitle }}<template v-if="sheet.binding.rowsPerLoad === 2"> — 2 rows per load</template></p>
           <p class="text-xs text-ink-3">Account: {{ sheet.binding.accountEmail }}</p>
           <p class="text-xs text-ink-3">Last sync: {{ sheet.binding.lastSyncAt ?? 'never' }}</p>
           <p v-if="sheet.binding.lastError" class="text-xs text-red-600" data-testid="sheet-last-error">{{ sheet.binding.lastError }}</p>
@@ -353,6 +366,14 @@ function backTo(n: 1 | 2 | 3): void {
           <p v-if="sheet.proposal?.extras?.length" class="text-xs text-ink-3" data-testid="mapping-extras">
             kept as extra: {{ sheet.proposal.extras.join(', ') }}
           </p>
+
+          <label class="flex items-start gap-2 text-sm text-ink">
+            <input v-model="twoRows" type="checkbox" class="mt-1" data-testid="two-rows" />
+            <span>
+              {{ TWO_ROWS_LABEL }}
+              <span class="block text-xs text-ink-3">{{ TWO_ROWS_HELP }}</span>
+            </span>
+          </label>
 
           <p v-if="mappingError" class="text-sm text-red-600" role="alert" data-testid="mapping-error">{{ mappingError }}</p>
 

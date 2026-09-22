@@ -1,13 +1,18 @@
 import { defineStore } from 'pinia'
 import { extractApiErrorMessage } from '../../lib/errors'
 import * as sheetApi from '../api/sheetApi'
-import { REQUIRED_KEYS, spreadsheetIdFromLink, type SheetBinding, type SheetMapping, type SheetMappingProposal, type SheetSyncReport, type SheetTab } from '../api/sheetApi'
+import { REQUIRED_KEYS, SHARED_HEADER_PAIR, spreadsheetIdFromLink, type RowsPerLoad, type SheetBinding, type SheetMapping, type SheetMappingProposal, type SheetSyncReport, type SheetTab } from '../api/sheetApi'
 
-export type { SheetBinding, SheetMapping, SheetMappingProposal, SheetSyncReport, SheetTab }
+export type { RowsPerLoad, SheetBinding, SheetMapping, SheetMappingProposal, SheetSyncReport, SheetTab }
 export { REQUIRED_KEYS, SHEET_COLUMN_KEYS, spreadsheetIdFromLink, type SheetColumnKey } from '../api/sheetApi'
 
+/** Exactly the pickupAppt/deliveryAppt pair — the one header share allowed. */
+const isSharedPair = (keys: string[]): boolean =>
+  keys.length === SHARED_HEADER_PAIR.length && SHARED_HEADER_PAIR.every((k) => keys.includes(k))
+
 /** Mirrors fleet-backend/src/lib/sheet/mapping.ts `validateMapping`'s two
- *  mapping-shape checks (required present, no header used twice) — the
+ *  mapping-shape checks (required present, no header used twice — except by
+ *  the pickupAppt/deliveryAppt pair alone, two-rows-per-load sheets) — the
  *  "does this header exist in the sheet" check is not repeated here because
  *  the picker only ever offers headers pulled from the sheet itself, so a
  *  mapping built through this UI cannot name one that isn't there. Run
@@ -22,7 +27,7 @@ export function validateMappingLocally(mapping: SheetMapping): string[] {
     usedBy.set(header, [...list, key])
   }
   for (const [header, keys] of usedBy) {
-    if (keys.length > 1) errors.push(`"${header}" is used for both ${keys.join(' and ')}`)
+    if (keys.length > 1 && !isSharedPair(keys)) errors.push(`"${header}" is used for both ${keys.join(' and ')}`)
   }
   for (const key of REQUIRED_KEYS) {
     if (!mapping[key]) errors.push(`missing required key "${key}"`)
@@ -35,6 +40,8 @@ interface SheetState {
   tabs: SheetTab[]
   header: string[]
   proposal: SheetMappingProposal | null
+  /** GET /sheet/header's hint for step 3's "two rows per load" checkbox. */
+  suggestedRowsPerLoad: RowsPerLoad
   selectedSpreadsheetId: string | null
   /** The opened spreadsheet's own title (GET /sheet/tabs), for step 2. */
   selectedSpreadsheetTitle: string | null
@@ -50,6 +57,7 @@ export const useSheetStore = defineStore('sheet', {
     tabs: [],
     header: [],
     proposal: null,
+    suggestedRowsPerLoad: 1,
     selectedSpreadsheetId: null,
     selectedSpreadsheetTitle: null,
     selectedTabId: null,
@@ -140,9 +148,10 @@ export const useSheetStore = defineStore('sheet', {
       this.loading = true
       this.error = null
       try {
-        const { header, proposal } = await sheetApi.fetchHeader(this.selectedSpreadsheetId, this.selectedTabId)
+        const { header, proposal, suggestedRowsPerLoad } = await sheetApi.fetchHeader(this.selectedSpreadsheetId, this.selectedTabId)
         this.header = header
         this.proposal = proposal
+        this.suggestedRowsPerLoad = suggestedRowsPerLoad
       } catch (error) {
         this.error = extractApiErrorMessage(error, 'Unable to read that tab\'s header row right now.')
       } finally {
@@ -155,7 +164,7 @@ export const useSheetStore = defineStore('sheet', {
      *  required key or a header used twice never leaves the browser. Throws
      *  on either kind of refusal so a caller's own try/catch (as
      *  `savePolicy` does) can stop and leave the step open. */
-    async saveMapping(mapping: SheetMapping): Promise<SheetBinding> {
+    async saveMapping(mapping: SheetMapping, rowsPerLoad: RowsPerLoad = 1): Promise<SheetBinding> {
       this.error = null
       const localErrors = validateMappingLocally(mapping)
       if (localErrors.length > 0) {
@@ -174,6 +183,7 @@ export const useSheetStore = defineStore('sheet', {
           tabTitle: this.selectedTabTitle,
           headerRow: 1,
           mapping,
+          rowsPerLoad,
         })
         return this.binding
       } catch (error) {
@@ -253,6 +263,9 @@ export const useSheetStore = defineStore('sheet', {
       this.selectedTabId = this.binding.tabId
       this.tabs = [{ id: this.binding.tabId, title: this.binding.tabTitle }]
       await this.readHeader()
+      // Re-mapping starts from what the binding already says about its
+      // rows, not the server's fresh look at them.
+      this.suggestedRowsPerLoad = this.binding.rowsPerLoad
       if (this.proposal) {
         // Re-mapping starts from what is actually installed, not the
         // server's fresh alias guess — a dispatcher who already fixed a
