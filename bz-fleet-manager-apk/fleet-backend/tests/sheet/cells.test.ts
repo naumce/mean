@@ -358,11 +358,14 @@ describe("syncBinding — vanished rows, unchanged cells, duplicates", () => {
     expect(report1.statusWrites).toBe(2); // the load's ● OFF and the blank row's attention cell
     expect(connector.grid(ref)[2][STATUS_COL]).toBe("● ATTENTION — needs a load number");
 
-    // Our own writes changed the sheet's digest, so the second tick re-reads
-    // the rows — and finds every status cell already says what it would
-    // write. The third tick is a plain unchanged one.
+    // Task 1: `lastVersion` is now the PREDICTED post-write digest, which
+    // already matches what tick 1's own writes just left in the sheet — so
+    // the second tick reads the sheet as unchanged and skips the row pass
+    // entirely, rather than re-reading and re-running it only to find every
+    // status cell already says what it would write.
     const report2 = await syncBinding(binding.id, { connector, nowMs: () => 2000 });
-    expect(report2.skipped).toEqual([{ rowIndex: 3, reason: "needs a load number" }]);
+    expect(report2.read).toBe(0);
+    expect(report2.skipped).toEqual([]);
     expect(report2.statusWrites).toBe(0);
     const report3 = await syncBinding(binding.id, { connector, nowMs: () => 3000 });
     expect(report3.read).toBe(0);

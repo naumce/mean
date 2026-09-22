@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
 import { google, type sheets_v4 } from "googleapis";
 import type { OAuth2Client } from "google-auth-library";
 import type { AgentColumnNames, CellWrite, RawRow, SheetConnector, SheetRead, SpreadsheetInfo, TabRef } from "./connector.js";
+import { digestOf } from "./digest.js";
 
 /** Spec pill colours (RGB, 0..1) for the status column's conditional
  *  formatting. The exact values are this connector's own choice. */
@@ -53,11 +53,6 @@ const isBlankRow = (row: string[]): boolean => row.every((cell) => !cell);
 const padRow = (row: string[], width: number): string[] =>
   row.length >= width ? row : [...row, ...Array(width - row.length).fill("")];
 
-/** The tab's version is a digest of what `values.get` answered — the one
- *  call a changed tick costs anyway — never a Drive revision (final fix
- *  wave, C1: no Drive API at all). */
-const versionOf = (values: unknown[][]): string => createHash("sha256").update(JSON.stringify(values)).digest("hex");
-
 /** `SheetConnector` backed by Google Sheets alone: `spreadsheets.get` for
  *  the title/tabs, `values.get` for reads (and the content digest that is
  *  the version), `values.batchUpdate`/`spreadsheets.batchUpdate` for writes. */
@@ -107,9 +102,12 @@ export class GoogleSheetsConnector implements SheetConnector {
   }
 
   /** ONE `values.get` from the header row down; the header is split off
-   *  the top of the answer (its width pads the rows), and the digest of the
-   *  whole answer is the version. A tick — changed or not — therefore costs
-   *  exactly one values call and no metadata call. */
+   *  the top of the answer (its width pads the rows). The digest (Task 1,
+   *  `digestOf`) is taken over `[header, ...rows]` AS RETURNED — padded,
+   *  blank rows already dropped — never the raw `values.get` answer, so the
+   *  sync layer can reproduce it ahead of a write with `predictedVersion`. A
+   *  tick — changed or not — therefore costs exactly one values call and no
+   *  metadata call. */
   async readRows(ref: TabRef, headerRow: number, sinceVersion?: string): Promise<SheetRead> {
     const title = await this.tabTitle(ref);
     const res = await this.sheets.spreadsheets.values.get({
@@ -118,7 +116,6 @@ export class GoogleSheetsConnector implements SheetConnector {
       valueRenderOption: "FORMATTED_VALUE",
     });
     const values = res.data.values ?? [];
-    const version = versionOf(values);
     const [headerRaw, ...body] = values;
     const header = (headerRaw ?? []).map((cell) => String(cell ?? ""));
     const width = header.length;
@@ -128,6 +125,7 @@ export class GoogleSheetsConnector implements SheetConnector {
       if (isBlankRow(cells)) return;
       rows.push({ rowIndex: headerRow + 1 + i, cells: padRow(cells, width) });
     });
+    const version = digestOf([header, ...rows.map((r) => r.cells)]);
     return { header, rows, version, changed: sinceVersion === undefined || sinceVersion !== version };
   }
 

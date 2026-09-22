@@ -21,6 +21,7 @@ import { attentionDiffers, patchDiffers } from "./rowDiff.js";
 import { AGENT_COLUMN_NAMES } from "./installColumns.js";
 import { writeStatusCells, type SkippedRow } from "./statusPass.js";
 import { foldPairs } from "./foldPairs.js";
+import { digestOf } from "./digest.js";
 
 export const SHEET_ACTOR = { dispatcherId: null, name: "sheet" } as const;
 
@@ -398,12 +399,18 @@ export async function syncBinding(bindingId: string, deps: SyncDeps): Promise<Sy
       ? await rowPass(bindingId, binding.orgId, binding.org.timezone, deps.nowMs(), mapping, loads, columns.switchCol)
       : null;
 
-    const statusWrites = columns.statusCol != null
+    // `rows: read.rows` — the UNFOLDED rows, always, even for a `rowsPerLoad
+    // === 2` binding (Task 1): the switch/status columns fold "top row
+    // only", so a folded row's cell there is identical to the raw top row's,
+    // and `rowsAfter` below must be in the same row space `digestOf` hashes
+    // (the connector never sees the fold — that is downstream of the read).
+    const statusResult = columns.statusCol != null
       ? await writeStatusCells({
         orgId: binding.orgId, org: binding.org, agentStatusCol: columns.statusCol,
-        skipped: rows?.skipped ?? [], rows: loads.rows, connector: deps.connector, ref, nowMs: deps.nowMs(),
+        skipped: rows?.skipped ?? [], rows: read.rows, connector: deps.connector, ref, nowMs: deps.nowMs(),
       })
-      : 0;
+      : { count: 0, rowsAfter: read.rows };
+    const statusWrites = statusResult.count;
 
     // Row-level failures (a lock, a stale version, …) never touch the
     // consecutive-failure counter or flip `status` to "error" — the sheet
@@ -417,9 +424,22 @@ export async function syncBinding(bindingId: string, deps: SyncDeps): Promise<Sy
     // version is a content digest now (C1), so nothing else would ever
     // bump it — and re-running an unchanged row pass is cheap (every
     // untouched row is `unchanged`, no write).
+    //
+    // Task 1: when the status pass wrote at least one cell, `lastVersion`
+    // is the PREDICTED post-write digest (`statusResult.rowsAfter`, already
+    // in the unfolded row space `read.rows`/`read.header` hash) rather than
+    // `read.version` — the version this tick actually read, before that
+    // write landed. Without this, our own status write always changes the
+    // sheet's real digest, so the very next tick reads it as "changed" and
+    // pays for a row pass that finds nothing new. When nothing was written,
+    // `read.version` stands exactly as before.
     const rowErrors = rows !== null && rows.rowErrorCount > 0;
     const rowsLastError = rowErrors ? `${rows.rowErrorCount} rows skipped — see log` : null;
-    const version = rowErrors ? binding.lastVersion ?? "" : read.version;
+    const version = rowErrors
+      ? binding.lastVersion ?? ""
+      : statusWrites > 0
+        ? digestOf([read.header, ...statusResult.rowsAfter.map((r) => r.cells)])
+        : read.version;
     await recordSuccess(bindingId, version, deps.nowMs(), binding.status === "error", columnsError ?? rowsLastError);
     return {
       created: rows?.created ?? 0, updated: rows?.updated ?? 0, unchanged: rows?.unchanged ?? 0,

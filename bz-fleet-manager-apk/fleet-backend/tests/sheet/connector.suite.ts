@@ -1,5 +1,6 @@
 import { it, expect } from "vitest";
 import type { SheetConnector, TabRef } from "../../src/lib/sheet/connector.js";
+import { digestOf } from "../../src/lib/sheet/digest.js";
 
 /** Every connector passes the same suite. `make` returns a connector whose
  *  spreadsheet "s1" has tab "t1" with the header on row 1 and two data rows. */
@@ -30,6 +31,16 @@ export function connectorSuite(make: () => Promise<{ c: SheetConnector; ref: Tab
     expect(after.version).not.toBe(v0);
     expect(after.rows[0].cells[4]).toBe("● SHADOW — would say: hi");
   });
+  // Task 1: both connectors hash EXACTLY `[header, ...rows]` as `readRows`
+  // returns them (padded, blank rows already gone) — never the raw answer
+  // underneath — so the sync layer's `predictedVersion` (digest.ts) always
+  // agrees with whichever connector is behind `SheetConnector`.
+  it("version is digestOf([header, ...rows])", async () => {
+    const { c, ref } = await make();
+    const read = await c.readRows(ref, 1);
+    expect(read.version).toBe(digestOf([read.header, ...read.rows.map((r) => r.cells)]));
+  });
+
   it("ensureAgentColumns adds the two headers at the right edge once, and is idempotent", async () => {
     const { c, ref } = await make();
     const a = await c.ensureAgentColumns(ref, 1, { switch: "Night Shift", status: "Night Shift status" }, ["Standard"]);

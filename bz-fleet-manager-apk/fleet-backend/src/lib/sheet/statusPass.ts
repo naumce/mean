@@ -10,6 +10,7 @@ import { prisma } from "../../db.js";
 import type { CellWrite, RawRow, SheetConnector, TabRef } from "./connector.js";
 import { statusCellText } from "./statusCell.js";
 import { linkUrlFor, type LinkOrg } from "../nightShiftLink.js";
+import { applyWrites } from "./digest.js";
 
 /** A row the row pass skipped, with why. Only the two reasons a dispatcher
  *  can fix in the sheet itself get a status cell (see `attentionCellFor`). */
@@ -20,14 +21,29 @@ export interface StatusPassArgs {
   org: LinkOrg;
   agentStatusCol: number;
   skipped: SkippedRow[];
-  /** The rows exactly as this tick read them — the status column of each
-   *  is what an intended write is compared against (final fix wave, I9b):
-   *  a cell that already says what we would write is not written again,
-   *  whether it is a load's pill/line or a skipped row's attention text. */
+  /** The rows exactly as this tick read them, in the UNFOLDED row space
+   *  (Task 1) — `sync.ts` passes `read.rows`, never a two-row fold's virtual
+   *  rows, so `rowsAfter` below lines up with what the connector's own next
+   *  read will return. The status column of each is what an intended write
+   *  is compared against (final fix wave, I9b): a cell that already says
+   *  what we would write is not written again, whether it is a load's
+   *  pill/line or a skipped row's attention text. This is safe for a
+   *  two-row binding too: the switch/status columns fold "top row only", so
+   *  a folded row's cell at `agentStatusCol` is always identical to the
+   *  matching raw top row's cell. */
   rows: RawRow[];
   connector: SheetConnector;
   ref: TabRef;
   nowMs: number;
+}
+
+export interface StatusPassResult {
+  /** How many cells this pass wrote — what `SyncReport.statusWrites` reports. */
+  count: number;
+  /** `args.rows` with every write applied (Task 1): the caller predicts the
+   *  post-write digest from this rather than waiting for the next read to
+   *  discover the sheet only changed because of the agent's own cells. */
+  rowsAfter: RawRow[];
 }
 
 /** `● ATTENTION — <reason>` for the skip reasons that are the sheet's own
@@ -60,10 +76,10 @@ async function newestAttentionByLoad(loadIds: string[]): Promise<Map<string, str
   return newest;
 }
 
-/** Returns the number of cells written. A `writeCells` failure is left to
- *  propagate to `syncBinding`'s own try/catch — the connector itself failed,
- *  which is that failure counter's job, not a row error. */
-export async function writeStatusCells(args: StatusPassArgs): Promise<number> {
+/** A `writeCells` failure is left to propagate to `syncBinding`'s own
+ *  try/catch — the connector itself failed, which is that failure counter's
+ *  job, not a row error. */
+export async function writeStatusCells(args: StatusPassArgs): Promise<StatusPassResult> {
   const { orgId, org, agentStatusCol, skipped, rows, connector, ref, nowMs } = args;
   const currentCell = new Map(rows.map((r) => [r.rowIndex, r.cells[agentStatusCol] ?? ""]));
 
@@ -93,10 +109,10 @@ export async function writeStatusCells(args: StatusPassArgs): Promise<number> {
     writes.push({ rowIndex: s.rowIndex, col: agentStatusCol, value });
   }
 
-  if (writes.length === 0) return 0;
+  if (writes.length === 0) return { count: 0, rowsAfter: rows };
   await connector.writeCells(ref, writes);
   if (written.length > 0) {
     await prisma.load.updateMany({ where: { id: { in: written } }, data: { sheetStatusWrittenAt: new Date(nowMs) } });
   }
-  return writes.length;
+  return { count: writes.length, rowsAfter: applyWrites(rows, writes) };
 }

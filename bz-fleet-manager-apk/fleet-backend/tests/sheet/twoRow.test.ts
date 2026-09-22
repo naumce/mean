@@ -113,11 +113,14 @@ describe("syncBinding with rowsPerLoad 2", () => {
     expect(Object.keys(written).map(Number).sort((a, b) => a - b)).toEqual(TOP_ROWS);
     for (const r of BOTTOM_ROWS) expect(written[r]).toBeUndefined();
 
-    // Tick 1's own status writes changed the content digest, so tick 2
-    // re-runs the row pass but writes nothing back to the sheet; tick 3
-    // sees the sheet still and reads nothing at all.
+    // Task 1: `lastVersion` is now the PREDICTED post-write digest, computed
+    // in the UNFOLDED row space (the fold is downstream of the read) — so
+    // it already matches what tick 1's status writes just left in the real
+    // sheet, and tick 2 reads the sheet as unchanged, skipping the row pass
+    // entirely rather than re-running it only to find nothing left to do.
     const second = await syncBinding(binding.id, { connector, nowMs: () => 2000 });
     expect(second.error).toBeNull();
+    expect(second.read).toBe(0);
     expect(second.statusWrites).toBe(0);
     expect(second.created).toBe(0);
     expect(second.skipped).toEqual([]);

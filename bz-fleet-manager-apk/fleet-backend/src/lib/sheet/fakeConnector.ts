@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
 import type { AgentColumnNames, CellWrite, RawRow, SheetConnector, SheetRead, SpreadsheetInfo, TabRef } from "./connector.js";
+import { digestOf } from "./digest.js";
 
 export interface FakeTabSeed {
   title: string;
@@ -35,16 +35,13 @@ const padRow = (row: string[], width: number): string[] => {
   return [...row, ...Array(width - row.length).fill("")];
 };
 
-/** Same digest rule as `GoogleSheetsConnector.readRows`: sha256 of the
- *  JSON of the values read from the header row down. Two FakeConnector
- *  instances seeded with the same grid therefore report the same version,
- *  exactly as two reads of one real sheet would. */
-const versionOf = (values: string[][]): string => createHash("sha256").update(JSON.stringify(values)).digest("hex");
-
 /** In-memory `SheetConnector`, seeded with grids the tests control directly.
  *  Copies on every read so callers can never mutate internal state. The
- *  version is a content digest (see `versionOf`), so a write that changes a
- *  cell changes the version and an identical grid never does. */
+ *  version is `digestOf([header, ...rows])` — the same rule
+ *  `GoogleSheetsConnector.readRows` uses (Task 1's `digest.ts`) — so a write
+ *  that changes a cell changes the version, an identical grid never does,
+ *  and the sync layer's predicted post-write version matches either
+ *  connector alike. */
 export class FakeConnector implements SheetConnector {
   private readonly spreadsheets: Record<string, FakeSpreadsheetState>;
 
@@ -106,7 +103,6 @@ export class FakeConnector implements SheetConnector {
 
   async readRows(ref: TabRef, headerRow: number, sinceVersion?: string): Promise<SheetRead> {
     const tab = this.tab(ref);
-    const version = versionOf(tab.grid.slice(headerRow - 1).map((row) => [...row]));
     const header = [...(tab.grid[headerRow - 1] ?? [])];
     const width = header.length;
     const rows: RawRow[] = [];
@@ -115,6 +111,7 @@ export class FakeConnector implements SheetConnector {
       if (isBlankRow(row)) continue;
       rows.push({ rowIndex: i + 1, cells: padRow([...row], width) });
     }
+    const version = digestOf([header, ...rows.map((r) => r.cells)]);
     return { header, rows, version, changed: sinceVersion === undefined || sinceVersion !== version };
   }
 
