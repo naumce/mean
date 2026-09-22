@@ -31,6 +31,9 @@ export interface RowResult { loadRef: string | null; patch: LoadPatch; attention
 // The seventh (RATE) was missing until the final fix wave (I9a): a row with
 // an unparsable rate raised a line no aspect owned, so `attentionDiffers`
 // saw a new line on every tick and rewrote the load every tick.
+// The eighth (Slice 4, Task 3) is `sync.ts`'s own, the same way the sixth
+// is — a new row bearing an ARCHIVED load's number, which `rowToPatch` has
+// no way to know about (it has no DB access at all).
 export const SHEET_ATTENTION_ASPECTS: readonly string[] = [
   `driver phone: missing`,
   `can't read DEL appointment: missing`,
@@ -39,6 +42,7 @@ export const SHEET_ATTENTION_ASPECTS: readonly string[] = [
   `appointment: ignored "note"`,
   `unknown policy: "x"`,
   `can't read RATE "x"`,
+  `archived load: "x"`,
 ];
 
 const E164_RE = /^\+[1-9]\d{6,14}$/;

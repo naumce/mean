@@ -56,6 +56,9 @@ export interface StatusPassResult {
  *  and must not paint the row. */
 export function attentionCellFor(reason: string): string | null {
   if (reason === "needs a load number" || reason.startsWith("duplicate load number ")) return `● ATTENTION — ${reason}`;
+  // Slice 4, Task 3: a new row bearing an archived load's number — the sheet's
+  // own problem, same treatment as the two reasons above.
+  if (reason.startsWith("archived load: ")) return `● ATTENTION — ${reason} — use a new load number`;
   return null;
 }
 

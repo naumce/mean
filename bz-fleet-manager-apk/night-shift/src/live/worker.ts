@@ -30,6 +30,7 @@ import { PendingCalls } from "./pendingCalls.js";
 import { PlatformSheet } from "./platformSheet.js";
 import { syncPlatformLoads } from "./platformLoads.js";
 import { syncAllSheets } from "../../../fleet-backend/src/lib/sheet/sync.js";
+import { alertSheetFailures } from "./sheetAlerts.js";
 import { PrismaEvents } from "./prismaEvents.js";
 import { restStopsNear } from "./prismaRestStops.js";
 import { Registry } from "./registry.js";
@@ -48,6 +49,13 @@ async function main(): Promise<void> {
   const twilioClient = twilio(config.twilio.accountSid, config.twilio.authToken);
   const transport = nodemailer.createTransport({ host: config.smtp.host, port: config.smtp.port, secure: config.smtp.port === 465, auth: { user: config.smtp.user, pass: config.smtp.pass } });
   const router = new MapboxRouter();
+  // Slice 4, Task 4: one mailer for the sheet-failure alert, org-scoped (not
+  // trip-scoped) — `dispatcherEmail: ""` in its opts can never equal a real
+  // "to" address, so `SmtpMailer`'s one-click "send the customer email" link
+  // (a trip's own escalation feature) never gets appended to this mail.
+  const sheetAlertMailer = new SmtpMailer(transport, config.smtp.from, {
+    dispatcherEmail: "", publicUrl: config.publicUrl, linkSecret: config.linkSecret, tripId: "sheet-alerts", clock: clock.nowMs,
+  });
   // One pending-call map for the whole process — every trip's TwilioPhone
   // registers into it, and the voice webhook router resolves against it.
   const pending = new PendingCalls(config.publicUrl);
@@ -90,6 +98,7 @@ async function main(): Promise<void> {
     const poll = async (): Promise<void> => {
       try {
         await syncAllSheets();
+        if (config.portalUrl) await alertSheetFailures({ mailer: sheetAlertMailer, portalUrl: config.portalUrl });
         await syncPlatformLoads(registry, {
           router, restStopsNear,
           telephonyFor: (orgId) => telephonyFor(orgId, { fromNumber: config.twilio.fromNumber, callerId: config.twilio.callerId }),

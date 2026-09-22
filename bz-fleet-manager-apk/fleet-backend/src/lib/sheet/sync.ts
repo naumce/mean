@@ -11,8 +11,9 @@ import type { RawRow, SheetConnector, SheetRead, TabRef } from "./connector.js";
 import { connectorFor } from "./connectorFor.js";
 import type { SheetMapping } from "./mapping.js";
 import { rowToPatch, SHEET_ATTENTION_ASPECTS, type RowResult } from "./rowToPatch.js";
-import { applyLoadChange, attentionAspect, rendered, type LoadPatch } from "../loadWriter.js";
+import { applyLoadChange, applyStatusChange, attentionAspect, nextAtMs, rendered, type LoadPatch } from "../loadWriter.js";
 import { applyAgentSwitch } from "../agentSwitch.js";
+import { ACTIVE_STATUSES } from "../activeStatuses.js";
 import { emitLoadChanged } from "../loadEvents.js";
 import { DEFAULT_EQUIPMENT } from "../brokerImport.js";
 import { LoadLocked } from "../loadLocks.js";
@@ -136,6 +137,15 @@ interface RowsOutcome extends Pick<SyncReport, "created" | "updated" | "unchange
   /** Every load this pass created or updated — what gets settled against
    *  the geocoder afterwards (final fix wave, I8). */
   touched: string[];
+  /** Fix round 1 (review of Slice 4, Tasks 3/4): non-null when this tick's
+   *  vanished-row set looked like a whole-sheet accident (more than 5 rows
+   *  AND over half the binding's mirrored loads) rather than ordinary
+   *  deletions — nothing was archived or unlinked, and this becomes
+   *  `SheetBinding.lastError` so both the Connect page and Task 4's email
+   *  surface it. Null on every ordinary tick, including one that DID
+   *  perform the 3-consecutive-ticks bulk unlink (that resolves the
+   *  condition, so it clears like any other clean pass). */
+  massVanishError: string | null;
 }
 
 /** `LoadLocked` names its holder; anything else is reported by its own
@@ -200,7 +210,7 @@ function countLoadRefs(mapped: MappedRow[]): Map<string, number> {
   return counts;
 }
 
-async function syncRows(bindingId: string, orgId: string, mapped: MappedRow[]): Promise<RowsOutcome> {
+async function syncRows(bindingId: string, orgId: string, mapped: MappedRow[]): Promise<Omit<RowsOutcome, "massVanishError">> {
   const loadRefCounts = countLoadRefs(mapped);
 
   let created = 0;
@@ -227,6 +237,17 @@ async function syncRows(bindingId: string, orgId: string, mapped: MappedRow[]): 
         carrier: { select: { name: true, mcNumber: true } },
       },
     });
+
+    // Slice 4, Task 3 (ruling): a new row bearing an ARCHIVED load's number
+    // creates nothing and re-links nothing — the load was archived because
+    // its row vanished, and reusing its number is a dispatcher mistake, not
+    // a resurrection. The row gets an attention cell instead
+    // (`attentionCellFor` in statusPass.ts), the same "sheet's own problem"
+    // treatment as a missing or duplicated load number.
+    if (existing && existing.status === "archived") {
+      skipped.push({ rowIndex: row.rowIndex, reason: `archived load: "${result.loadRef}"` });
+      continue;
+    }
 
     // The switch is only consulted when its cell changed against what the
     // load last saw (`applySwitchChange`, which also records the new cell —
@@ -293,22 +314,138 @@ async function syncRows(bindingId: string, orgId: string, mapped: MappedRow[]): 
  *  The row patch re-links it the tick the duplicate is resolved. Traced
  *  through `applyLoadChange` like every other sheet write; a lock here is
  *  this load's problem alone, logged and retried next tick. */
-async function forgetVanishedRows(bindingId: string, orgId: string, mapped: MappedRow[]): Promise<void> {
-  const presentRefs = [...countLoadRefs(mapped)].filter(([, n]) => n === 1).map(([ref]) => ref);
-  const vanished = await prisma.load.findMany({
-    where: { orgId, sheetBindingId: bindingId, sheetRowIndex: { not: null }, NOT: { boardLoadNo: { in: presentRefs } } },
-    select: { id: true },
-  });
-  for (const load of vanished) {
-    try {
-      const write = await prisma.$transaction((tx) => applyLoadChange(tx, {
+// Slice 4, Task 3: statuses a vanished load is already "done" in — its row
+// leaving the sheet says nothing new, so it is neither archived nor stopped
+// again.
+const ALREADY_SETTLED_STATUSES = new Set(["archived", "delivered", "canceled"]);
+
+/** Fix round 1, item 2: a whole-sheet accident (a filter, a bad paste, an
+ *  "undo" that didn't) must never mass-archive — only a genuinely small,
+ *  ordinary set of deletions gets the per-load treatment below. Module-level
+ *  and per-binding, like `failures` above: it has to survive from one tick
+ *  to the next to count to three. */
+let massVanishStreak: Record<string, number> = {};
+
+function massVanishMessage(vanishedCount: number, mirroredCount: number): string {
+  return `${vanishedCount} of ${mirroredCount} rows vanished at once — nothing archived; check the sheet or click Sync now`;
+}
+
+interface VanishOutcome { massVanishError: string | null }
+
+/** One vanished load's disposition, applied inside its own transaction —
+ *  same per-load try/catch grain as the rest of this file: one bad load
+ *  never blocks the rest. `isDuplicated` (both of a duplicated ref's rows
+ *  still present) only ever unlinks — the load isn't gone, its number is
+ *  just ambiguous this tick. Fix round 1, item 1: a load an Assignment (or
+ *  an active status) still occupies is never archived or stopped either —
+ *  its row leaving the sheet is not permission to end a trip a driver is
+ *  mid-way through; it only unlinks, with one line explaining why. */
+async function settleVanishedLoad(
+  orgId: string,
+  load: { id: string; status: string; agentEnabled: boolean; boardLoadNo: string | null; assignment: { id: string } | null },
+  isDuplicated: boolean,
+): Promise<void> {
+  try {
+    const write = await prisma.$transaction(async (tx) => {
+      const unlinked = await applyLoadChange(tx, {
         loadId: load.id, orgId, actor: SHEET_ACTOR, source: "sheet", patch: { sheetRowIndex: null, sheetBindingId: null },
-      }));
-      if (write.changed.length > 0) emitLoadChanged(orgId, { loadId: load.id, version: write.version, fields: write.changed });
-    } catch (e) {
-      console.error("sheet sync: could not forget a vanished row", { bindingId, loadId: load.id, error: rowErrorReason(e) });
-    }
+      });
+      let version = unlinked.version;
+      const changed = [...unlinked.changed];
+      const hasActiveAssignment = load.assignment !== null || ACTIVE_STATUSES.includes(load.status);
+
+      if (isDuplicated) {
+        // Unlink only — the existing I6 behaviour; nothing else to say.
+      } else if (hasActiveAssignment) {
+        await tx.agentUpdate.create({
+          data: { loadId: load.id, atMs: nextAtMs(), kind: "status", text: "row removed from sheet — load kept, it has an active assignment" },
+        });
+      } else if (!ALREADY_SETTLED_STATUSES.has(load.status)) {
+        const archived = await applyStatusChange(tx, {
+          loadId: load.id, orgId, actor: SHEET_ACTOR, source: "sheet", status: "archived", note: "row removed from sheet",
+        });
+        version = archived.version;
+        changed.push("status");
+        if (load.agentEnabled) {
+          const stopped = await applyAgentSwitch(tx, { loadId: load.id, orgId, actor: SHEET_ACTOR, source: "sheet", enabled: false });
+          version = stopped.version;
+          changed.push(...stopped.changed);
+        }
+        await tx.agentUpdate.create({ data: { loadId: load.id, atMs: nextAtMs(), kind: "status", text: "row removed from sheet" } });
+      }
+      return { version, changed };
+    });
+    if (write.changed.length > 0) emitLoadChanged(orgId, { loadId: load.id, version: write.version, fields: write.changed });
+  } catch (e) {
+    console.error("sheet sync: could not forget a vanished row", { loadId: load.id, error: rowErrorReason(e) });
   }
+}
+
+/** The persisted-mass-vanish path's own disposition: unlink, nothing else —
+ *  no archive, no stop, no attention line, for ANY load, active assignment
+ *  or not. "Never archive in bulk" (fix round 1, item 2) means never, not
+ *  "unless the per-load rules would have allowed it" — a load this path
+ *  reaches already survived the accident-vs-real-deletion question by
+ *  outlasting it three ticks running; only its link to the sheet is cut. */
+async function bulkUnlinkOnly(orgId: string, load: { id: string }): Promise<void> {
+  try {
+    const write = await prisma.$transaction((tx) => applyLoadChange(tx, {
+      loadId: load.id, orgId, actor: SHEET_ACTOR, source: "sheet", patch: { sheetRowIndex: null, sheetBindingId: null },
+    }));
+    if (write.changed.length > 0) emitLoadChanged(orgId, { loadId: load.id, version: write.version, fields: write.changed });
+  } catch (e) {
+    console.error("sheet sync: could not bulk-unlink a mass-vanished row", { loadId: load.id, error: rowErrorReason(e) });
+  }
+}
+
+async function forgetVanishedRows(bindingId: string, orgId: string, mapped: MappedRow[]): Promise<VanishOutcome> {
+  const counts = countLoadRefs(mapped);
+  const presentRefs = new Set([...counts].filter(([, n]) => n === 1).map(([ref]) => ref));
+  const duplicatedRefs = new Set([...counts].filter(([, n]) => n > 1).map(([ref]) => ref));
+
+  // One query for every load this binding currently mirrors — vanished and
+  // still-present alike — so `mirroredCount` (the mass-vanish ratio's
+  // denominator) needs no second round-trip.
+  const mirrored = await prisma.load.findMany({
+    where: { orgId, sheetBindingId: bindingId, sheetRowIndex: { not: null } },
+    select: { id: true, status: true, agentEnabled: true, boardLoadNo: true, assignment: { select: { id: true } } },
+  });
+  const vanished = mirrored.filter((l) => l.boardLoadNo === null || !presentRefs.has(l.boardLoadNo));
+
+  if (vanished.length === 0) {
+    massVanishStreak = { ...massVanishStreak, [bindingId]: 0 };
+    return { massVanishError: null };
+  }
+
+  // Fix round 1, item 2: more than 5 rows AND over half of what this
+  // binding mirrors vanishing in ONE tick reads as an accident, not a
+  // dispatcher's ordinary deletions.
+  const isMassVanish = vanished.length > 5 && vanished.length > mirrored.length * 0.5;
+  if (isMassVanish) {
+    const streak = (massVanishStreak[bindingId] ?? 0) + 1;
+    massVanishStreak = { ...massVanishStreak, [bindingId]: streak };
+    if (streak < 3) {
+      // Blocked: touch nothing this tick. `lastError` still moves (the
+      // count can change tick to tick), which is what re-triggers Task 4's
+      // email on a worsening or still-ongoing outage.
+      return { massVanishError: massVanishMessage(vanished.length, mirrored.length) };
+    }
+    // Persisted three consecutive ticks: the dispatcher isn't coming back to
+    // fix it (or really did mean to clear the sheet) — unlink everything so
+    // the pill stops fighting a row that no longer exists, but still never
+    // archive in bulk; an active trip stays exactly as protected as it is
+    // in the ordinary per-load path.
+    for (const load of vanished) await bulkUnlinkOnly(orgId, load);
+    massVanishStreak = { ...massVanishStreak, [bindingId]: 0 };
+    return { massVanishError: null };
+  }
+
+  massVanishStreak = { ...massVanishStreak, [bindingId]: 0 };
+  for (const load of vanished) {
+    const isDuplicated = load.boardLoadNo !== null && duplicatedRefs.has(load.boardLoadNo);
+    await settleVanishedLoad(orgId, load, isDuplicated);
+  }
+  return { massVanishError: null };
 }
 
 /** The row pass, on a changed tick: mirror every row, then forget the rows
@@ -341,10 +478,10 @@ async function rowPass(
   });
 
   const rows = await syncRows(bindingId, orgId, mapped);
-  await forgetVanishedRows(bindingId, orgId, mapped);
+  const vanishOutcome = await forgetVanishedRows(bindingId, orgId, mapped);
   const settled = await settlePendingStops(orgId, rows.touched);
   for (const s of settled) emitLoadChanged(orgId, { loadId: s.loadId, version: s.version, fields: s.roles });
-  return rows;
+  return { ...rows, massVanishError: vanishOutcome.massVanishError };
 }
 
 /** The read with its rows folded one-per-load (foldPairs.ts) and its header
@@ -453,12 +590,17 @@ export async function syncBinding(bindingId: string, deps: SyncDeps): Promise<Sy
     // invisible to the next tick's read.
     const rowErrors = rows !== null && rows.rowErrorCount > 0;
     const rowsLastError = rowErrors ? `${rows.rowErrorCount} rows skipped — see log` : null;
+    // Fix round 1, item 2: a blocked mass-vanish tick reports through
+    // `lastError` (status stays "connected" via `recordSuccess`'s own
+    // `wasError` rule) so both the Connect page and Task 4's sync-failure
+    // email surface it the same way any other sheet trouble does.
+    const massVanishError = rows?.massVanishError ?? null;
     const version = rowErrors
       ? binding.lastVersion ?? ""
       : statusWrites > 0 || writeBackResult.writes.length > 0
         ? digestOf([read.header, ...applyWrites(statusResult.rowsAfter, writeBackResult.writes).map((r) => r.cells)])
         : read.version;
-    await recordSuccess(bindingId, version, deps.nowMs(), binding.status === "error", columnsError ?? rowsLastError);
+    await recordSuccess(bindingId, version, deps.nowMs(), binding.status === "error", columnsError ?? massVanishError ?? rowsLastError);
     return {
       created: rows?.created ?? 0, updated: rows?.updated ?? 0, unchanged: rows?.unchanged ?? 0,
       skipped: rows?.skipped ?? [], read: rows ? loads.rows.length : 0, statusWrites, error: null,

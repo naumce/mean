@@ -115,7 +115,14 @@ describe("SHEET_ATTENTION_ASPECTS", () => {
   it("sync.ts's own 'unknown policy' line shares its aspect with the sixth representative", () => {
     const line = `unknown policy: "Bogus"`;
     expect(attentionAspect(line)).toBe(attentionAspect(SHEET_ATTENTION_ASPECTS[5]));
-    expect(SHEET_ATTENTION_ASPECTS).toHaveLength(7);
+    expect(SHEET_ATTENTION_ASPECTS).toHaveLength(8);
+  });
+
+  // sync.ts's own line too (Slice 4, Task 3) — a new row bearing an ARCHIVED
+  // load's number, which rowToPatch cannot see (no DB access).
+  it("sync.ts's own 'archived load' line shares its aspect with the eighth representative", () => {
+    const line = `archived load: "145219"`;
+    expect(attentionAspect(line)).toBe(attentionAspect(SHEET_ATTENTION_ASPECTS[7]));
   });
 
   it("a missing DEL appointment shares its aspect with the representative (CRITICAL fix)", () => {
