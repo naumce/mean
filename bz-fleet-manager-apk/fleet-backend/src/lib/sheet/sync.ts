@@ -21,7 +21,8 @@ import { attentionDiffers, patchDiffers } from "./rowDiff.js";
 import { AGENT_COLUMN_NAMES } from "./installColumns.js";
 import { writeStatusCells, type SkippedRow } from "./statusPass.js";
 import { foldPairs } from "./foldPairs.js";
-import { digestOf } from "./digest.js";
+import { digestOf, applyWrites } from "./digest.js";
+import { runWriteBackPass } from "./writeBackPass.js";
 
 export const SHEET_ACTOR = { dispatcherId: null, name: "sheet" } as const;
 
@@ -230,7 +231,9 @@ async function syncRows(bindingId: string, orgId: string, mapped: MappedRow[]): 
     // The switch is only consulted when its cell changed against what the
     // load last saw (`applySwitchChange`, which also records the new cell —
     // after the row's own content write, in its own transaction).
-    const patch: LoadPatch = result.patch;
+    // Fix round 1: every row this pass writes records WHICH binding mirrored
+    // it — `sheetRowIndex` alone can't tell two connected sheets apart.
+    const patch: LoadPatch = { ...result.patch, sheetBindingId: bindingId };
     const cellChanged = switchRead !== null && rendered(switchRead.cell) !== rendered(existing?.sheetSwitchSeen ?? null);
     const writeArgs = { orgId, actor: SHEET_ACTOR, source: "sheet" as const, patch, attention: result.attention, attentionOwned: [...SHEET_ATTENTION_ASPECTS] };
 
@@ -293,13 +296,13 @@ async function syncRows(bindingId: string, orgId: string, mapped: MappedRow[]): 
 async function forgetVanishedRows(bindingId: string, orgId: string, mapped: MappedRow[]): Promise<void> {
   const presentRefs = [...countLoadRefs(mapped)].filter(([, n]) => n === 1).map(([ref]) => ref);
   const vanished = await prisma.load.findMany({
-    where: { orgId, sheetRowIndex: { not: null }, NOT: { boardLoadNo: { in: presentRefs } } },
+    where: { orgId, sheetBindingId: bindingId, sheetRowIndex: { not: null }, NOT: { boardLoadNo: { in: presentRefs } } },
     select: { id: true },
   });
   for (const load of vanished) {
     try {
       const write = await prisma.$transaction((tx) => applyLoadChange(tx, {
-        loadId: load.id, orgId, actor: SHEET_ACTOR, source: "sheet", patch: { sheetRowIndex: null },
+        loadId: load.id, orgId, actor: SHEET_ACTOR, source: "sheet", patch: { sheetRowIndex: null, sheetBindingId: null },
       }));
       if (write.changed.length > 0) emitLoadChanged(orgId, { loadId: load.id, version: write.version, fields: write.changed });
     } catch (e) {
@@ -406,11 +409,23 @@ export async function syncBinding(bindingId: string, deps: SyncDeps): Promise<Sy
     // (the connector never sees the fold — that is downstream of the read).
     const statusResult = columns.statusCol != null
       ? await writeStatusCells({
-        orgId: binding.orgId, org: binding.org, agentStatusCol: columns.statusCol,
+        orgId: binding.orgId, bindingId, org: binding.org, agentStatusCol: columns.statusCol,
         skipped: rows?.skipped ?? [], rows: read.rows, connector: deps.connector, ref, nowMs: deps.nowMs(),
       })
       : { count: 0, rowsAfter: read.rows };
     const statusWrites = statusResult.count;
+
+    // Task 2: board/paste/loadboard edits of a mirrored load flow back into
+    // the sheet every tick the sheet was read — changed or not, since a
+    // board edit has nothing to do with whether a human touched the sheet
+    // since the last tick. Runs against THIS tick's raw rows/header (the
+    // same row space `Load.sheetRowIndex` and `hasBottomByRow` live in),
+    // never the folded ones.
+    const writeBackResult = await runWriteBackPass({
+      orgId: binding.orgId, bindingId, boardSyncAtMs: binding.boardSyncAtMs, mapping,
+      rowsPerLoad: binding.rowsPerLoad === 2 ? 2 : 1, header: read.header, rows: read.rows,
+      connector: deps.connector, ref,
+    });
 
     // Row-level failures (a lock, a stale version, …) never touch the
     // consecutive-failure counter or flip `status` to "error" — the sheet
@@ -432,13 +447,16 @@ export async function syncBinding(bindingId: string, deps: SyncDeps): Promise<Sy
     // write landed. Without this, our own status write always changes the
     // sheet's real digest, so the very next tick reads it as "changed" and
     // pays for a row pass that finds nothing new. When nothing was written,
-    // `read.version` stands exactly as before.
+    // `read.version` stands exactly as before. Task 2: the write-back pass's
+    // own cells land on TOP of the status pass's predicted rows the same
+    // way, so a board edit that reaches an otherwise-idle sheet is just as
+    // invisible to the next tick's read.
     const rowErrors = rows !== null && rows.rowErrorCount > 0;
     const rowsLastError = rowErrors ? `${rows.rowErrorCount} rows skipped — see log` : null;
     const version = rowErrors
       ? binding.lastVersion ?? ""
-      : statusWrites > 0
-        ? digestOf([read.header, ...statusResult.rowsAfter.map((r) => r.cells)])
+      : statusWrites > 0 || writeBackResult.writes.length > 0
+        ? digestOf([read.header, ...applyWrites(statusResult.rowsAfter, writeBackResult.writes).map((r) => r.cells)])
         : read.version;
     await recordSuccess(bindingId, version, deps.nowMs(), binding.status === "error", columnsError ?? rowsLastError);
     return {

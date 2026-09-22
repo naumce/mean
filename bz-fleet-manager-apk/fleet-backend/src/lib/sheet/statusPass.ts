@@ -18,6 +18,10 @@ export interface SkippedRow { rowIndex: number; reason: string }
 
 export interface StatusPassArgs {
   orgId: string;
+  /** Fix round 1: scopes the mirrored-loads lookup to THIS binding — an org
+   *  can run more than one connected sheet, and `sheetRowIndex` alone can't
+   *  tell them apart. */
+  bindingId: string;
   org: LinkOrg;
   agentStatusCol: number;
   skipped: SkippedRow[];
@@ -80,11 +84,11 @@ async function newestAttentionByLoad(loadIds: string[]): Promise<Map<string, str
  *  try/catch — the connector itself failed, which is that failure counter's
  *  job, not a row error. */
 export async function writeStatusCells(args: StatusPassArgs): Promise<StatusPassResult> {
-  const { orgId, org, agentStatusCol, skipped, rows, connector, ref, nowMs } = args;
+  const { orgId, bindingId, org, agentStatusCol, skipped, rows, connector, ref, nowMs } = args;
   const currentCell = new Map(rows.map((r) => [r.rowIndex, r.cells[agentStatusCol] ?? ""]));
 
   const loads = await prisma.load.findMany({
-    where: { orgId, sheetRowIndex: { not: null } },
+    where: { orgId, sheetBindingId: bindingId, sheetRowIndex: { not: null } },
     include: { agentUpdates: { where: { kind: { not: "attention" } }, orderBy: { atMs: "desc" }, take: 1 } },
   });
   const attentionLines = await newestAttentionByLoad(loads.filter((l) => l.agentPill === "attention").map((l) => l.id));

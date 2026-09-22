@@ -51,6 +51,9 @@ export interface LoadPatch {
   // reacts to cell CHANGES, so the sync has to remember what it saw). Plain
   // scalars, same as `customerName` above — no derivation here.
   customerEmail?: string | null; sheetRowIndex?: number | null; sheetSwitchSeen?: string | null;
+  /// Slice 4, Task 2 fix round 1: which SheetBinding mirrored this load —
+  /// set by the row pass on every tick, the same way `sheetRowIndex` is.
+  sheetBindingId?: string | null;
 }
 
 export interface StopSetEntry { sequence: number; type: "pickup" | "delivery" | "intermediate"; address: string; lat?: number | null; lng?: number | null; dwellMin?: number | null; windowStart?: Date | null; windowEnd?: Date | null }
@@ -101,7 +104,7 @@ const SCALARS = [
   "carrierPhone", "carrierContactName", "driverCell", "shipDate", "revenueCents", "soldRateCents", "carrierId", "extras",
   "requiredEquip", "fscCents", "hazmatClass", "commodity", "brokerName", "weightLbs",
   "agentEnabled", "agentPolicyId", "agentPill",
-  "customerEmail", "sheetRowIndex", "sheetSwitchSeen",
+  "customerEmail", "sheetRowIndex", "sheetSwitchSeen", "sheetBindingId",
 ] as const;
 type Scalar = (typeof SCALARS)[number];
 

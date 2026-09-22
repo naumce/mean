@@ -10,7 +10,7 @@ import { rendered, type LoadPatch } from "../loadWriter.js";
  *  than a plain `rendered()` equality. */
 const SCALAR_PATCH_KEYS = [
   "boardLoadNo", "updateText", "apptText", "carrierPhone", "carrierContactName",
-  "driverCell", "revenueCents", "customerEmail", "sheetRowIndex",
+  "driverCell", "revenueCents", "customerEmail", "sheetRowIndex", "sheetBindingId",
 ] as const;
 
 /** The Load columns/relations `patchDiffers` reads. A Prisma `Load` row

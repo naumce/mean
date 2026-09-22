@@ -25,6 +25,13 @@ export interface FoldResult {
   /** The input header plus `ORDER REF` appended — what the folded rows'
    *  cells line up with. */
   header: string[];
+  /** Slice 4, Task 2: keyed by a folded row's `rowIndex` (the TOP row's own
+   *  sheet row number, same as what ends up in `Load.sheetRowIndex`), true
+   *  when that virtual row consumed a bottom (carrier) row. The write-back
+   *  pass uses this to decide whether a bottom-owned field (loadRef,
+   *  driverPhone, carrierPhone, driverName, carrierName) is written to the
+   *  top row or the one under it. */
+  hasBottomByRow: Record<number, boolean>;
 }
 
 /** Columns whose cell lives on the carrier row: the bottom wins when it is
@@ -104,15 +111,17 @@ export function foldPairs(rows: RawRow[], header: string[], mapping: SheetMappin
   const rules = rulesFor(header, mapping);
 
   const folded: RawRow[] = [];
+  const hasBottomByRow: Record<number, boolean> = {};
   let i = 0;
   while (i < rows.length) {
     const row = rows[i];
     const next = rows[i + 1];
     const bottom = next !== undefined && bothBlank(next, pickupCol, deliveryCol) ? next : null;
     folded.push(foldPair(row, bottom, rules, loadRefCol));
+    hasBottomByRow[row.rowIndex] = bottom !== null;
     i += bottom === null ? 1 : 2;
   }
-  return { rows: folded, header: [...header, ORDER_REF_HEADER] };
+  return { rows: folded, header: [...header, ORDER_REF_HEADER], hasBottomByRow };
 }
 
 /** `GET /sheet/header`'s hint for the Connect page: 2 when, among `rows`

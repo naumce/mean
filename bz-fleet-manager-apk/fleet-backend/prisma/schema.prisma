@@ -440,9 +440,17 @@ model SheetBinding {
   /// broker layout — a customer row with the carrier row under it; see
   /// lib/sheet/foldPairs.ts).
   rowsPerLoad    Int       @default(1)
+  /// The high-water mark of `LoadChange.atMs` this binding's write-back pass
+  /// (Slice 4, Task 2) has already flowed into the sheet — a board/paste/
+  /// loadboard edit newer than this is a candidate for the next tick's
+  /// write-back; one already folded in is never re-examined even if it lost
+  /// a conflict (the sheet kept its own value and that is final).
+  boardSyncAtMs  BigInt    @default(0)
   status         String    @default("connected")  // connected | paused | error
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+  /// The loads this binding mirrors — `Load.sheetBindingId` (fix round 1).
+  loads          Load[]
 
   @@unique([orgId, spreadsheetId, tabId])
   @@index([status])
@@ -668,7 +676,14 @@ model Load {
   /// the switch reacts to cell CHANGES, not to the cell's value every tick,
   /// so a drawer/deep-link stop is not reverted while the cell sits still.
   sheetSwitchSeen String?
+  /// Slice 4, Task 2 fix round 1: WHICH SheetBinding mirrored this load — an
+  /// org can run more than one connected sheet, so `sheetRowIndex` alone is
+  /// ambiguous between them. Set by the row pass through the traced writer;
+  /// `SetNull` so deleting a binding never blocks on its own loads.
+  sheetBindingId String?
+  sheetBinding   SheetBinding? @relation(fields: [sheetBindingId], references: [id], onDelete: SetNull)
   @@index([orgId, status])
+  @@index([sheetBindingId])
   @@index([orgId, boardLine])
   // Reconciliation identity: one load per external reference per org.
   // (Postgres allows multiple NULL externalIds, so manual loads are unaffected.)
