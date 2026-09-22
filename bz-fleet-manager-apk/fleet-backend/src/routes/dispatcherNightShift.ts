@@ -27,6 +27,15 @@ const validationMessage = (err: z.ZodError): string =>
 
 const isUniqueViolation = (e: unknown): boolean => (e as { code?: string }).code === "P2002";
 
+// PATCH /night-shift/policies/:id (fix round 1): the merge happens INSIDE
+// the transaction below, keyed off a fresh read of the row — thrown, not
+// returned, so it can cross the `prisma.$transaction` boundary and still
+// pick the right HTTP status once caught outside it.
+class PatchPolicyNotFound extends Error {}
+class PatchMergeInvalid extends Error {}
+
+const agentPolicyPatchSchema = agentPolicySchema.partial();
+
 /** A policy's name is one of the two dropdown-relevant things the connected
  *  sheet's Night Shift column shows (spec: the switch's data validation list
  *  is "OFF" + every policy name) — a create or a rename must not leave that
@@ -92,6 +101,16 @@ dispatcherNightShiftRouter.put("/night-shift/policies/:id", asyncRoute(async (re
   if (!existing || outsideOrg(req, existing.orgId)) return res.status(404).json({ error: POLICY_NOT_FOUND });
   const parsed = agentPolicySchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: validationMessage(parsed.error) });
+  // Task 5 / controller ruling: an API-key caller (the MCP server's
+  // set_policy tool) can edit every other field of a policy but can never
+  // flip shadow — that stays a click on the Night Shift page with its own
+  // confirmation sentence (spec §10/§13). The MCP tool already refuses
+  // locally when its patch touches shadow at all; this is the route's own
+  // backstop for any other key caller, checked against the STORED value so
+  // a patch that merely repeats the current value is not refused.
+  if (req.viaApiKey && parsed.data.shadow !== existing.shadow) {
+    return res.status(403).json({ error: "FORBIDDEN", message: "shadow can only be changed from the Night Shift page" });
+  }
   const actor = await actorOf(req);
   try {
     const policy = await prisma.agentPolicy.update({ where: { id: existing.id }, data: parsed.data });
@@ -108,6 +127,53 @@ dispatcherNightShiftRouter.put("/night-shift/policies/:id", asyncRoute(async (re
     if (isUniqueViolation(e)) return res.status(409).json({ error: "A policy with that name already exists" });
     throw e;
   }
+}));
+
+// Fix round 1: the MCP `set_policy` tool used to GET the policy, merge the
+// patch onto it in the MCP process, and PUT the whole merged object back —
+// a dispatcher (or a second tool call) editing any OTHER field in between
+// those two round trips got silently reverted by the stale copy the tool
+// was still holding. The merge now happens here, inside one transaction
+// against a FRESH read, so nothing can land between "read" and "write".
+// Session and key callers both use this the same way; the Night Shift
+// page itself keeps using PUT (whole-object) — this exists for a caller
+// that only knows what it wants to CHANGE. `shadow` is refused outright,
+// unconditionally, for either caller: PUT already lets a dispatcher's own
+// session flip it (that page IS "the Night Shift page" the message points
+// to), so a session has no reason to reach for this route to do the same
+// thing, and a key can never do it from anywhere.
+dispatcherNightShiftRouter.patch("/night-shift/policies/:id", asyncRoute(async (req, res) => {
+  const orgId = req.orgScope;
+  if (!orgId) return res.status(400).json({ error: NO_ORG });
+  if (req.body && typeof req.body === "object" && Object.prototype.hasOwnProperty.call(req.body, "shadow")) {
+    return res.status(403).json({ error: "FORBIDDEN", message: "shadow can only be changed from the Night Shift page" });
+  }
+  const parsed = agentPolicyPatchSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: validationMessage(parsed.error) });
+
+  let renamed = false;
+  let policy;
+  try {
+    policy = await prisma.$transaction(async (tx) => {
+      const existing = await tx.agentPolicy.findUnique({ where: { id: req.params.id as string } });
+      if (!existing || outsideOrg(req, existing.orgId)) throw new PatchPolicyNotFound();
+      // Merge onto the FRESH row this transaction just read, not onto
+      // whatever the caller might have cached — the entire point of moving
+      // this server-side.
+      const merged = { ...existing, ...parsed.data };
+      const validated = agentPolicySchema.safeParse(merged);
+      if (!validated.success) throw new PatchMergeInvalid(validationMessage(validated.error));
+      renamed = existing.name !== validated.data.name;
+      return tx.agentPolicy.update({ where: { id: existing.id }, data: validated.data });
+    });
+  } catch (e) {
+    if (e instanceof PatchPolicyNotFound) return res.status(404).json({ error: POLICY_NOT_FOUND });
+    if (e instanceof PatchMergeInvalid) return res.status(400).json({ error: e.message });
+    if (isUniqueViolation(e)) return res.status(409).json({ error: "A policy with that name already exists" });
+    throw e;
+  }
+  if (renamed) await reinstallSheetColumnsIfConnected(orgId);
+  res.json({ policy });
 }));
 
 dispatcherNightShiftRouter.delete("/night-shift/policies/:id", asyncRoute(async (req, res) => {
@@ -214,4 +280,43 @@ dispatcherNightShiftRouter.post("/loads/:id/agent/commands", asyncRoute(async (r
   // passes actorName: "link" instead of a dispatcher's name.
   const command = await queueCommand({ loadId: load.id, kind: parsed.data.kind, payload: parsed.data.payload, actorName: actor.name });
   res.status(202).json({ command });
+}));
+
+// --- Watched loads (Task 5: the MCP list_watched_loads tool) -----------------
+
+dispatcherNightShiftRouter.get("/night-shift/loads", asyncRoute(async (req, res) => {
+  const orgId = req.orgScope;
+  if (!orgId) return res.status(400).json({ error: NO_ORG });
+  // "Watched" = the switch is on, org-wide — not filtered to any one policy.
+  // agentUpdates newest-first, same source timelineFor()/dispatcherBrokerBoard
+  // already use for "the load's current line": the newest entry that is not
+  // an attention line.
+  const loads = await prisma.load.findMany({
+    where: { orgId, agentEnabled: true },
+    include: { agentPolicy: { select: { name: true } }, agentUpdates: { orderBy: { atMs: "desc" } } },
+    orderBy: { createdAt: "desc" },
+  });
+  res.json({
+    loads: loads.map((l) => ({
+      id: l.id,
+      boardLoadNo: l.boardLoadNo,
+      orderRef: l.orderRef,
+      agentPill: l.agentPill,
+      agentLine: l.agentUpdates.find((u) => u.kind !== "attention")?.text ?? null,
+      policyName: l.agentPolicy?.name ?? null,
+    })),
+  });
+}));
+
+// --- Usage (Task 5: the MCP usage tool; placeholder ahead of the wallet) ----
+
+dispatcherNightShiftRouter.get("/night-shift/usage", asyncRoute(async (req, res) => {
+  const orgId = req.orgScope;
+  if (!orgId) return res.status(400).json({ error: NO_ORG });
+  // The wallet/metering ledger (spec §8, OrgWallet/WalletEntry) is the next
+  // plan's work, not this one's — this route exists now only so the MCP
+  // usage(range?) tool and the Settings page have something real to call
+  // rather than a 404, and returns an honestly-empty list until that ledger
+  // lands.
+  res.json({ nights: [] });
 }));

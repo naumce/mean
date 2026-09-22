@@ -17,6 +17,11 @@ declare global {
 }
 
 export const requireAuth: RequestHandler = (req, res, next) => {
+  // apiKeyAuth (mounted ahead of this on /api/dispatcher, Task 5) already
+  // authenticated this request against OrgApiKey and set req.orgScope
+  // itself — there is no bearer token to check and none is required. See
+  // apiKeyAuth.ts's own comment for the full mount-order reasoning.
+  if (req.viaApiKey) return next();
   const h = req.header("authorization");
   if (!h?.startsWith("Bearer ")) return res.status(401).json({ error: "Missing token" });
   try {
@@ -30,6 +35,11 @@ export const requireAuth: RequestHandler = (req, res, next) => {
 
 // dispatcher-only gate: layered after requireAuth on dispatcher routes.
 export const requireDispatcher: RequestHandler = (req, res, next) => {
+  // Same reasoning as requireAuth above: an API-key request has no
+  // req.auth at all (there was no bearer token to derive it from), so the
+  // role check below would 403 it. apiKeyAllowList (mounted right after
+  // this gate, app.ts) is what actually restricts a key to its routes.
+  if (req.viaApiKey) return next();
   if (req.auth?.role !== "dispatcher") return res.status(403).json({ error: "Forbidden" });
   next();
 };

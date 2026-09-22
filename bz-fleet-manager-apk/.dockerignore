@@ -9,3 +9,7 @@ mockups
 .superpowers
 *.png
 fleet-backend/uploads
+# Task 5: the MCP server is a separate published package the dispatcher
+# installs themselves (npm/npx) — the container that serves the API and
+# portal has no use for its source.
+night-shift-mcp

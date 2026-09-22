@@ -2,8 +2,13 @@ import { prisma } from "../db.js";
 import type { Actor } from "./loadWriter.js";
 
 /** Who is writing, for the trace (spec §5.2). A route reads the dispatcher
- *  off the token and looks the name up once; a system source names itself. */
-export async function actorOf(req: { auth?: { dispatcherId?: string } }): Promise<Actor> {
+ *  off the token and looks the name up once; a system source names itself.
+ *  Task 5: a request authenticated by an OrgApiKey (req.viaApiKey, set by
+ *  middleware/apiKeyAuth.ts) has no dispatcher at all — it names itself
+ *  "api:<key name>" instead, the same way a system write names itself, so a
+ *  trace line never claims a dispatcher who was not there. */
+export async function actorOf(req: { auth?: { dispatcherId?: string }; viaApiKey?: boolean; apiKeyName?: string }): Promise<Actor> {
+  if (req.viaApiKey) return { dispatcherId: null, name: `api:${req.apiKeyName ?? "key"}` };
   const id = req.auth?.dispatcherId ?? null;
   if (!id) return { dispatcherId: null, name: "dispatcher" };
   const d = await prisma.dispatcher.findUnique({ where: { id }, select: { name: true } });

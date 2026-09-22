@@ -372,6 +372,33 @@ model Org {
   plan        Plan?
   telephony   OrgTelephony?
   sheetBindings SheetBinding[]
+  apiKeys     OrgApiKey[]
+}
+
+/// Night Shift's own API keys (spec §10/§12), separate from `Org.apiKey`
+/// (the webhook ingest credential above — out of scope here, left
+/// untouched). One row per issued key: `nightshift` is the only role issued
+/// today, but the column stays open for a future one rather than baking
+/// "this table is nightshift-only" into a caller's assumptions. The raw key
+/// (`ns_live_<32 base64url bytes>`) is shown exactly once, at creation, in
+/// the route's response body — never again, and never persisted: `keyHash`
+/// (sha256 hex of the whole key) is what a request is checked against, and
+/// `prefix` (the key's first 10 characters, "ns_live_XX") is what the
+/// management UI shows afterward so a dispatcher can tell keys apart without
+/// the server ever holding a value that lets it reconstruct the secret.
+model OrgApiKey {
+  id        String    @id @default(uuid())
+  orgId     String
+  org       Org       @relation(fields: [orgId], references: [id])
+  role      String    @default("nightshift")
+  name      String
+  prefix    String
+  keyHash   String
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  @@index([orgId])
+  @@unique([keyHash])
 }
 
 /// Spec §4a / §7.1. Which product this org bought. `sheet` hides the Control

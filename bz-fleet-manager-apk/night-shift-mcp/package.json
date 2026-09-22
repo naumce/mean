@@ -1,0 +1,37 @@
+{
+  "name": "night-shift-mcp",
+  "version": "0.1.0",
+  "description": "MCP server that lets Claude, Cursor, or any other MCP-capable tool drive Night Shift (watch loads, take over, reply, check usage) using a dispatcher's own API key.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "night-shift-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.23.12",
+    "typescript": "^5.9.3",
+    "vitest": "^1.6.1"
+  },
+  "keywords": [
+    "mcp",
+    "night-shift",
+    "fleet"
+  ],
+  "license": "ISC"
+}

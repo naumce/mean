@@ -32,6 +32,22 @@ dispatcherLoadsRouter.get("/loads", asyncRoute(async (req, res) => {
   res.json(loads);
 }));
 
+// Task 5: resolves a human-typed reference (the board's LOAD# first, then
+// the TMS orderRef) to a load id — what the MCP tools' `loadRef` argument
+// goes through so a dispatcher never has to paste a uuid into a chat.
+// Registered ahead of "/loads/:id" below so "lookup" is never swallowed by
+// that route's :id param.
+dispatcherLoadsRouter.get("/loads/lookup", asyncRoute(async (req, res) => {
+  const ref = typeof req.query.ref === "string" ? req.query.ref.trim() : "";
+  if (!ref) return res.status(400).json({ error: "Provide ?ref=<LOAD# or order reference>" });
+  const load = await prisma.load.findFirst({
+    where: { ...orgWhere(req), OR: [{ boardLoadNo: ref }, { orderRef: ref }] },
+    select: { id: true, boardLoadNo: true, orderRef: true },
+  });
+  if (!load) return res.status(404).json({ error: "Load not found" });
+  res.json({ load });
+}));
+
 dispatcherLoadsRouter.get("/loads/:id", asyncRoute(async (req, res) => {
   const load = await prisma.load.findUnique({
     where: { id: req.params.id as string },

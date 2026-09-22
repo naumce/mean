@@ -50,6 +50,8 @@ import { dispatcherBrokerBoardRouter } from "./routes/dispatcherBrokerBoard.js";
 import { dispatcherLoadLocksRouter } from "./routes/dispatcherLoadLocks.js";
 import { dispatcherLoadTruthRouter } from "./routes/dispatcherLoadTruth.js";
 import { requireAuth, requireDispatcher } from "./middleware/auth.js";
+import { apiKeyAllowList, apiKeyAuth } from "./middleware/apiKeyAuth.js";
+import { dispatcherApiKeysRouter } from "./routes/dispatcherApiKeys.js";
 import { uploadsDir } from "./lib/upload.js";
 import { rejectNulBytes } from "./middleware/rejectNulBytes.js";
 import { errorHandler } from "./middleware/errorHandler.js";
@@ -153,7 +155,21 @@ export function createApp() {
   // tests/dispatcher-mount-order.test.ts asserts the gate precedes every
   // router that can serve an /api/dispatcher request, so that mistake fails
   // a test instead of leaking tenant data.
+  // Night Shift API keys (Task 5): a request carrying x-api-key and no
+  // bearer is authenticated here, BEFORE the session gate below, against
+  // OrgApiKey — see middleware/apiKeyAuth.ts. It sets req.orgScope and
+  // req.viaApiKey itself; requireAuth/requireDispatcher/attachOrgScope each
+  // check req.viaApiKey first and let a flagged request straight through
+  // rather than demanding the bearer token this request never carried.
+  app.use("/api/dispatcher", apiKeyAuth);
   app.use("/api/dispatcher", requireAuth, requireDispatcher, attachOrgScope);
+  // Right after the gate: restricts an API-key request (req.viaApiKey) to
+  // the small allow-list of routes an MCP tool actually needs — everything
+  // else, including the sheet OAuth routes, 401s a key exactly like it does
+  // a request with no credential at all. A dispatcher's bearer session is
+  // untouched (req.viaApiKey is never set for one), so this is a no-op on
+  // every route that already worked.
+  app.use("/api/dispatcher", apiKeyAllowList);
   // The legacy Trip/Conversation routers (drivers, trips, board, approvals,
   // comms) need req.orgScope for the same reason the Control Tower ones do:
   // their rows are tenant data, and without it every handler in them queried
@@ -179,6 +195,7 @@ export function createApp() {
   app.use("/api/dispatcher", dispatcherSuggestRouter);
   app.use("/api/dispatcher", dispatcherLoadboardRouter);
   app.use("/api/dispatcher", dispatcherNightShiftRouter);
+  app.use("/api/dispatcher", dispatcherApiKeysRouter);
   app.use("/api/dispatcher", dispatcherSheetRouter);
   app.use("/api/dispatcher", dispatcherAlertsRouter);
   app.use("/api/dispatcher", dispatcherImportRouter);

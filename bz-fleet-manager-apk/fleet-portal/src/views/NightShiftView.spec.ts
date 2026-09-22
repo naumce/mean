@@ -23,8 +23,21 @@ vi.mock('vue-router', () => ({
 // useSheetStore() — mocked here at the shared axios client (not the store)
 // purely so switching to that tab in these tests never fires a real network
 // request; ConnectSheet's own behavior is covered by ConnectSheet.spec.ts.
+// Task 5: the Settings tab mounts ApiKeysCard, which owns a real
+// useApiKeysStore() — routed here by URL so it gets its own shape
+// ({ keys: [] }) instead of the Connect tab's { binding: null }, same
+// generic-mock-by-url approach the api-keys.spec.ts file below repeats for
+// ApiKeysCard's own tests.
 vi.mock('../lib/api', () => ({
-  api: { get: vi.fn().mockResolvedValue({ data: { binding: null } }), post: vi.fn(), put: vi.fn(), delete: vi.fn() },
+  api: {
+    get: vi.fn((url: string) => {
+      if (url.includes('api-keys')) return Promise.resolve({ data: { keys: [] } })
+      return Promise.resolve({ data: { binding: null } })
+    }),
+    post: vi.fn(),
+    put: vi.fn(),
+    delete: vi.fn(),
+  },
 }))
 
 const mockedUseNightShiftStore = vi.mocked(useNightShiftStore)
@@ -256,17 +269,21 @@ describe('NightShiftView', () => {
       expect(wrapper.find('[data-testid="policy-list"]').exists()).toBe(false)
     })
 
-    it('?tab=usage and ?tab=settings show a one-line "Coming next" panel', async () => {
+    it('?tab=usage shows a one-line "Coming next" panel', async () => {
       routeQuery = { tab: 'usage' }
       mockedUseNightShiftStore.mockReturnValue(createStoreStub() as unknown as ReturnType<typeof useNightShiftStore>)
       const usageWrapper = mount(NightShiftView)
       await flushPromises()
       expect(usageWrapper.get('[data-testid="coming-next"]').text()).toContain('usage')
+    })
 
+    it('?tab=settings opens the API keys card (Task 5) instead of Policies', async () => {
       routeQuery = { tab: 'settings' }
-      const settingsWrapper = mount(NightShiftView)
+      mockedUseNightShiftStore.mockReturnValue(createStoreStub() as unknown as ReturnType<typeof useNightShiftStore>)
+      const wrapper = mount(NightShiftView)
       await flushPromises()
-      expect(settingsWrapper.get('[data-testid="coming-next"]').text()).toContain('settings')
+      expect(wrapper.find('[data-testid="api-keys-card"]').exists()).toBe(true)
+      expect(wrapper.find('[data-testid="policy-list"]').exists()).toBe(false)
     })
 
     it('clicking the Connect tab button switches views without a query param', async () => {

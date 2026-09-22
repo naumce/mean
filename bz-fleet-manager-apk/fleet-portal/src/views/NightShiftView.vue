@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import AppButton from '../components/AppButton.vue'
 import Modal from '../components/Modal.vue'
 import ConnectSheet from '../nightshift/components/ConnectSheet.vue'
+import ApiKeysCard from '../nightshift/components/ApiKeysCard.vue'
 import { useSheetStore } from '../nightshift/stores/sheet'
 import { useAuthStore } from '../stores/auth'
 import { useNightShiftStore, type AgentPolicy, type AgentPolicyInput } from '../stores/nightShift'
@@ -266,12 +267,23 @@ onMounted(async () => {
       >
         Policies
       </button>
+      <button
+        type="button"
+        data-testid="tab-settings"
+        class="border-b-2 px-3 py-2 text-sm font-medium"
+        :class="activeTab === 'settings' ? 'border-brand text-ink' : 'border-transparent text-ink-3 hover:text-ink'"
+        @click="activeTab = 'settings'"
+      >
+        Settings
+      </button>
     </div>
 
     <ConnectSheet v-if="activeTab === 'connect'" />
 
-    <p v-else-if="activeTab === 'usage' || activeTab === 'settings'" class="text-sm text-ink-2" data-testid="coming-next">
-      Coming next — {{ activeTab === 'usage' ? 'usage' : 'settings' }} lands in the next plan.
+    <ApiKeysCard v-else-if="activeTab === 'settings'" />
+
+    <p v-else-if="activeTab === 'usage'" class="text-sm text-ink-2" data-testid="coming-next">
+      Coming next — usage lands in the next plan.
     </p>
 
     <template v-else>

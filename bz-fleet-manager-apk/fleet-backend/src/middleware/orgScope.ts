@@ -68,6 +68,12 @@ declare global {
 }
 
 const attachOrgScopeMW: RequestHandler = asyncRoute(async function attachOrgScope(req, res, next) {
+  // apiKeyAuth (mounted ahead of the whole /api/dispatcher gate, Task 5)
+  // already set req.orgScope from the verified OrgApiKey row for this
+  // request — nothing to look up. Re-deriving it from req.auth.dispatcherId
+  // below would also just fail closed (there is no dispatcherId on an
+  // API-key request), so this has to be checked first, not as a fallback.
+  if (req.viaApiKey) return next();
   const dispatcherId = req.auth?.dispatcherId;
   if (!dispatcherId) return res.status(403).json({ error: "Forbidden" });
   const dispatcher = await prisma.dispatcher.findUnique({

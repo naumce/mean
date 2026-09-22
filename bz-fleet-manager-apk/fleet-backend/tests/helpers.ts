@@ -61,6 +61,9 @@ export async function resetDb() {
     prisma.plan.deleteMany(),
     prisma.orgTelephony.deleteMany(),
     prisma.sheetBinding.deleteMany(),
+    // Task 5: OrgApiKey is org-scoped with an FK to Org — clear before org,
+    // same reasoning as plan/orgTelephony/sheetBinding above.
+    prisma.orgApiKey.deleteMany(),
     // Org last — drivers/loads/tractors/trailers/assignments all reference it
     prisma.org.deleteMany(),
   ]);

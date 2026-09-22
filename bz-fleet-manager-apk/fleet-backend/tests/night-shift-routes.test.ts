@@ -240,6 +240,91 @@ describe("PUT /night-shift/policies/:id", () => {
   });
 });
 
+// --- PATCH /night-shift/policies/:id (fix round 1) ----------------------------------
+
+describe("PATCH /night-shift/policies/:id", () => {
+  it("changes only the named field, leaving the rest untouched", async () => {
+    const { org, auth } = await seedOrg();
+    const policy = await prisma.agentPolicy.create({ data: policyData(org.id, { name: "Aggressive", maxCalls: 2 }) });
+
+    const res = await request(app).patch(`/api/dispatcher/night-shift/policies/${policy.id}`).set("authorization", auth)
+      .send({ maxCalls: 4 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.policy.maxCalls).toBe(4);
+    expect(res.body.policy.name).toBe("Aggressive");
+    expect(res.body.policy.stopMin).toBe(policy.stopMin);
+    expect(res.body.policy.dispatcherEmail).toBe(policy.dispatcherEmail);
+  });
+
+  it("merges against a FRESH read, so a field changed concurrently between two reads is not reverted", async () => {
+    const { org, auth } = await seedOrg();
+    const policy = await prisma.agentPolicy.create({ data: policyData(org.id, { name: "Aggressive", maxCalls: 2, stopMin: 15 }) });
+
+    // Simulates a concurrent write (a dispatcher on the Settings page, or a
+    // second tool call) landing between this caller's own "read" and
+    // "write" — there is no read here at all on this caller's side, which
+    // is exactly the point: the merge happens server-side against whatever
+    // is in the database the instant this request's transaction runs.
+    await prisma.agentPolicy.update({ where: { id: policy.id }, data: { stopMin: 99 } });
+
+    const res = await request(app).patch(`/api/dispatcher/night-shift/policies/${policy.id}`).set("authorization", auth)
+      .send({ maxCalls: 4 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.policy.maxCalls).toBe(4);
+    // The concurrent change survives — PATCH never had a stale copy of
+    // stopMin to revert it with.
+    expect(res.body.policy.stopMin).toBe(99);
+  });
+
+  it("403s a body carrying shadow — via a session, not only a key (the Night Shift page uses PUT for that)", async () => {
+    const { org, auth } = await seedOrg();
+    const policy = await prisma.agentPolicy.create({ data: policyData(org.id, { name: "Aggressive", shadow: true }) });
+
+    const res = await request(app).patch(`/api/dispatcher/night-shift/policies/${policy.id}`).set("authorization", auth)
+      .send({ shadow: false });
+
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual({ error: "FORBIDDEN", message: "shadow can only be changed from the Night Shift page" });
+    const unchanged = await prisma.agentPolicy.findUniqueOrThrow({ where: { id: policy.id } });
+    expect(unchanged.shadow).toBe(true);
+  });
+
+  it("403s even when shadow is repeated at its own current value", async () => {
+    const { org, auth } = await seedOrg();
+    const policy = await prisma.agentPolicy.create({ data: policyData(org.id, { name: "Aggressive", shadow: true }) });
+
+    const res = await request(app).patch(`/api/dispatcher/night-shift/policies/${policy.id}`).set("authorization", auth)
+      .send({ shadow: true });
+
+    expect(res.status).toBe(403);
+  });
+
+  it("400s when the merged result fails full validation (quietFrom not in HH:MM shape)", async () => {
+    const { org, auth } = await seedOrg();
+    const policy = await prisma.agentPolicy.create({ data: policyData(org.id, { name: "Aggressive" }) });
+
+    const res = await request(app).patch(`/api/dispatcher/night-shift/policies/${policy.id}`).set("authorization", auth)
+      .send({ quietFrom: "9pm" });
+
+    expect(res.status).toBe(400);
+    const unchanged = await prisma.agentPolicy.findUniqueOrThrow({ where: { id: policy.id } });
+    expect(unchanged.quietFrom).toBeNull();
+  });
+
+  it("404s another org's policy, never 403", async () => {
+    const { auth } = await seedOrg();
+    const otherOrg = await prisma.org.create({ data: { name: "Other" } });
+    const foreign = await prisma.agentPolicy.create({ data: policyData(otherOrg.id, { name: "Foreign" }) });
+
+    const res = await request(app).patch(`/api/dispatcher/night-shift/policies/${foreign.id}`).set("authorization", auth).send({ maxCalls: 3 });
+
+    expect(res.status).toBe(404);
+  });
+
+});
+
 // --- DELETE /night-shift/policies/:id ------------------------------------------------
 
 describe("DELETE /night-shift/policies/:id", () => {
@@ -357,6 +442,22 @@ describe("policy writes re-install a connected sheet's Night Shift columns", () 
     expect(binding.agentSwitchCol).not.toBeNull();
     expect((sheetConnector as FakeConnector).validation({ spreadsheetId: "s1", tabId: "t1" }, binding.agentSwitchCol as number))
       .toEqual(["OFF", "Renamed"]);
+  });
+
+  it("PATCH .../:id re-installs only when the name actually changes (fix round 1)", async () => {
+    const { org, auth } = await seedOrg();
+    const policy = await prisma.agentPolicy.create({ data: policyData(org.id, { name: "Aggressive" }) });
+    await seedConnectedBinding(org.id);
+
+    const unchanged = await request(app).patch(`/api/dispatcher/night-shift/policies/${policy.id}`).set("authorization", auth).send({ maxCalls: 3 });
+    expect(unchanged.status).toBe(200);
+    let binding = await prisma.sheetBinding.findFirstOrThrow({ where: { orgId: org.id } });
+    expect(binding.agentSwitchCol).toBeNull();
+
+    const renamed = await request(app).patch(`/api/dispatcher/night-shift/policies/${policy.id}`).set("authorization", auth).send({ name: "Renamed" });
+    expect(renamed.status).toBe(200);
+    binding = await prisma.sheetBinding.findFirstOrThrow({ where: { orgId: org.id } });
+    expect(binding.agentSwitchCol).not.toBeNull();
   });
 
   it("a connector failure during re-install does not fail the policy write, and sets binding.lastError", async () => {
