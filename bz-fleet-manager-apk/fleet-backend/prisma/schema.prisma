@@ -8,60 +8,78 @@ datasource db {
 }
 
 model Driver {
-  id                    String   @id @default(uuid())
-  email                 String   @unique
-  passwordHash          String
-  name                  String
-  phone                 String?
-  status                String   @default("offline")
-  requiresPasswordChange Boolean @default(false)
-  pushToken             String?
-  vehicle               Vehicle?
-  trips                 Trip[]
-  createdAt             DateTime @default(now())
+  id                     String   @id @default(uuid())
+  email                  String   @unique
+  passwordHash           String
+  name                   String
+  phone                  String?
+  status                 String   @default("offline")
+  requiresPasswordChange Boolean  @default(false)
+  pushToken              String?
+  vehicle                Vehicle?
+  trips                  Trip[]
+  createdAt              DateTime @default(now())
 
   // --- Control Tower dispatch fields (additive, all optional/defaulted) ---
-  orgId          String?
-  org            Org?         @relation(fields: [orgId], references: [id])
-  externalId     String?      // id in the source TMS/ELD (import reconciliation)
-  cdlClass       String       @default("A")
-  hazmatEndorsed Boolean      @default(false)
+  orgId                String?
+  org                  Org?         @relation(fields: [orgId], references: [id])
+  externalId           String? // id in the source TMS/ELD (import reconciliation)
+  cdlClass             String       @default("A")
+  hazmatEndorsed       Boolean      @default(false)
   // DOT medical certificate expiry — same overlap rules as unit compliance.
   medicalCertExpiresAt DateTime?
-  homeBase       String?
-  lastLat        Float?
-  lastLng        Float?
-  lastLocationAt DateTime?
+  homeBase             String?
+  lastLat              Float?
+  lastLng              Float?
+  lastLocationAt       DateTime?
   // Cockpit pairing: the unit this driver normally runs. Feeds the lane
   // header and the default equipment on drop; the engine still validates the
   // actual assignment. No FK on purpose — units are org-scoped and validated
   // at write time (S2 exposes the writes).
-  defaultTractorId String?
-  defaultTrailerId String?
-  hos            HosState?
-  assignments    Assignment[]
+  defaultTractorId     String?
+  defaultTrailerId     String?
+  hos                  HosState?
+  assignments          Assignment[]
 
   // Carrier layer (T1): which client-carrier's truck this driver runs. Null =
   // dispatched directly by the org (no carrier layer in play).
-  carrierId String?
-  carrier   Carrier? @relation(fields: [carrierId], references: [id])
+  carrierId        String?
+  carrier          Carrier?          @relation(fields: [carrierId], references: [id])
   locationRequests LocationRequest[]
+
+  // --- AI Dispatch Foundation (Task 1): enrichment for matching/scoring.
+  // availability/preference/simState are 1-1 child rows (see below), kept
+  // separate from Driver itself so a busy dispatch loop can poll just the
+  // availability row without loading the whole driver.
+  firstName         String?
+  lastName          String?
+  homeBaseCity      String?
+  homeBaseState     String?
+  preferredLanguage String              @default("en")
+  languages         String[]            @default([])
+  yearsExperience   Int?
+  timezone          String?
+  endorsements      String[]            @default([]) // CDL endorsement letters for display: T N P X … ; hazmat authority stays `hazmatEndorsed`
+  equipmentTypes    String[]            @default([]) // trailer types the driver is qualified on: DryVan Reefer Flatbed StepDeck Tanker Intermodal
+  availability      DriverAvailability?
+  preference        DriverPreference?
+  simState          SimDriverState?
 }
 
 model Vehicle {
-  id        String  @id @default(uuid())
-  plate     String  @unique
-  model     String?
-  driver    Driver? @relation(fields: [driverId], references: [id])
-  driverId  String? @unique
+  id       String  @id @default(uuid())
+  plate    String  @unique
+  model    String?
+  driver   Driver? @relation(fields: [driverId], references: [id])
+  driverId String? @unique
 }
 
 model Trip {
-  id                    String   @id @default(uuid())
-  identifier            String   @unique
-  status                String   @default("pending")
-  preTripCheckCompleted Boolean  @default(false)
-  driver                Driver?  @relation(fields: [driverId], references: [id])
+  id                    String          @id @default(uuid())
+  identifier            String          @unique
+  status                String          @default("pending")
+  preTripCheckCompleted Boolean         @default(false)
+  driver                Driver?         @relation(fields: [driverId], references: [id])
   driverId              String?
   approvedAt            DateTime?
   approvedBy            String?
@@ -71,23 +89,25 @@ model Trip {
   completedAt           DateTime?
   scheduledStart        DateTime?
   scheduledEnd          DateTime?
-  createdAt             DateTime @default(now())
+  createdAt             DateTime        @default(now())
+
   @@index([driverId, status])
 }
 
 model Stop {
-  id           String   @id @default(uuid())
-  trip         Trip     @relation(fields: [tripId], references: [id])
+  id           String                  @id @default(uuid())
+  trip         Trip                    @relation(fields: [tripId], references: [id])
   tripId       String
   sequence     Int
   address      String
-  status       String   @default("pending")
+  status       String                  @default("pending")
   arrivedAt    DateTime?
   departedAt   DateTime?
   completedAt  DateTime?
   uploads      Upload[]
   signsProofs  SignsProof[]
   requirements SignsProofRequirement[]
+
   @@index([tripId])
 }
 
@@ -98,6 +118,7 @@ model ChecklistItem {
   label     String
   required  Boolean @default(true)
   completed Boolean @default(false)
+
   @@index([tripId])
 }
 
@@ -105,10 +126,11 @@ model Upload {
   id        String   @id @default(uuid())
   stop      Stop     @relation(fields: [stopId], references: [id])
   stopId    String
-  kind      String   // "photo" | "document"
+  kind      String // "photo" | "document"
   url       String
   mimeType  String?
   createdAt DateTime @default(now())
+
   @@index([stopId])
 }
 
@@ -116,9 +138,10 @@ model SignsProofRequirement {
   id             String  @id @default(uuid())
   stop           Stop    @relation(fields: [stopId], references: [id])
   stopId         String
-  proofType      String  // e.g. "signature" | "photo" | "barcode"
+  proofType      String // e.g. "signature" | "photo" | "barcode"
   validationType String?
   required       Boolean @default(true)
+
   @@index([stopId])
 }
 
@@ -132,6 +155,7 @@ model SignsProof {
   hasLocation   Boolean  @default(false)
   status        String   @default("pending") // pending | approved | rejected
   createdAt     DateTime @default(now())
+
   @@index([stopId])
 }
 
@@ -161,6 +185,7 @@ model RoutePreAssignment {
   declineReason String?
   createdAt     DateTime  @default(now())
   respondedAt   DateTime?
+
   @@index([driverId])
   @@index([tripId])
 }
@@ -171,6 +196,7 @@ model DriverLocation {
   latitude  Float
   longitude Float
   createdAt DateTime @default(now())
+
   @@index([driverId, createdAt])
 }
 
@@ -180,6 +206,7 @@ model Conversation {
   tripId    String?
   createdAt DateTime  @default(now())
   messages  Message[]
+
   @@index([driverId])
 }
 
@@ -187,11 +214,12 @@ model Message {
   id             String       @id @default(uuid())
   conversation   Conversation @relation(fields: [conversationId], references: [id])
   conversationId String
-  senderType     String       // "driver" for anything this API creates; dispatcher side arrives in BE-4
+  senderType     String // "driver" for anything this API creates; dispatcher side arrives in BE-4
   text           String?
   attachmentUrl  String?
   readAt         DateTime?
   createdAt      DateTime     @default(now())
+
   @@index([conversationId])
 }
 
@@ -203,6 +231,7 @@ model Notification {
   body      String?
   readAt    DateTime?
   createdAt DateTime  @default(now())
+
   @@index([driverId, readAt])
 }
 
@@ -214,19 +243,21 @@ model DriverSession {
   status         String    @default("active") // active | on_break | ended
   totalBreakMs   Int       @default(0)
   breakStartedAt DateTime?
+
   @@index([driverId])
 }
 
 model SafetyAlert {
   id          String   @id @default(uuid())
   driverId    String
-  kind        String   // "panic" | "emergency"
+  kind        String // "panic" | "emergency"
   latitude    Float?
   longitude   Float?
   description String?
   reason      String?
   status      String   @default("open")
   createdAt   DateTime @default(now())
+
   @@index([driverId])
 }
 
@@ -248,6 +279,7 @@ model VehicleIssue {
   severity    String?
   status      String   @default("open")
   createdAt   DateTime @default(now())
+
   @@index([vehicleId])
 }
 
@@ -314,65 +346,69 @@ model RoutePoiCache {
 // denied (they said no), expired (nobody answered in time). Only `approved`
 // carries a location.
 model LocationRequest {
-  id           String    @id @default(uuid())
-  orgId        String
-  org          Org       @relation(fields: [orgId], references: [id])
-  driverId     String
-  driver       Driver    @relation(fields: [driverId], references: [id])
+  id          String    @id @default(uuid())
+  orgId       String
+  org         Org       @relation(fields: [orgId], references: [id])
+  driverId    String
+  driver      Driver    @relation(fields: [driverId], references: [id])
   /// which dispatcher asked — a request is from a person, not from "the system"
-  requestedBy  String
-  status       String    @default("pending") // pending | approved | denied | expired
-  requestedAt  DateTime  @default(now())
-  respondedAt  DateTime?
+  requestedBy String
+  status      String    @default("pending") // pending | approved | denied | expired
+  requestedAt DateTime  @default(now())
+  respondedAt DateTime?
   /// the ping the driver shared, when they approved. NULL for every other
   /// status — an approved request without a location would be a lie.
-  locationId   String?
+  locationId  String?
 
   @@index([orgId, status, requestedAt])
   @@index([driverId, status])
 }
 
 model Org {
-  id          String             @id @default(uuid())
-  name        String
-  timezone    String             @default("America/Chicago")
+  id                  String             @id @default(uuid())
+  name                String
+  timezone            String             @default("America/Chicago")
   // Webhook ingest credential ("whk_…"); null until a dispatcher generates one.
-  apiKey      String?            @unique
+  apiKey              String?            @unique
   // Cost model (mirrors domain RateConfig): prices every commit's estCost /
   // margin. Committed Rate rows are snapshots — editing these only affects
   // future dispatches.
-  mpg                 Float @default(6.5)
-  dieselCentsPerGal   Int   @default(400)
-  driverPayCentsPerMi Int   @default(60)
-  fixedCentsPerMi     Int   @default(45)
+  mpg                 Float              @default(6.5)
+  dieselCentsPerGal   Int                @default(400)
+  driverPayCentsPerMi Int                @default(60)
+  fixedCentsPerMi     Int                @default(45)
   /// Org-wide default free time. 120 min is the common contractual figure.
-  detentionFreeMin    Int   @default(120)
-  createdAt   DateTime           @default(now())
-  drivers     Driver[]
-  dispatchers Dispatcher[]
-  tractors    Tractor[]
-  trailers    Trailer[]
-  loads       Load[]
-  assignments Assignment[]
-  conflicts   DispatchConflict[]
-  serviceShops ServiceShop[]
-  carriers    Carrier[]
-  locationRequests LocationRequest[]
-  restStops   RestStop[]
-  fuelPrices  FuelPrice[]
-  boardLayout BoardLayout?
-  boardView   BoardView?
-  updateRules UpdateRule[]
-  agentPolicies AgentPolicy[]
+  detentionFreeMin    Int                @default(120)
+  createdAt           DateTime           @default(now())
+  drivers             Driver[]
+  dispatchers         Dispatcher[]
+  tractors            Tractor[]
+  trailers            Trailer[]
+  loads               Load[]
+  assignments         Assignment[]
+  conflicts           DispatchConflict[]
+  serviceShops        ServiceShop[]
+  carriers            Carrier[]
+  locationRequests    LocationRequest[]
+  restStops           RestStop[]
+  fuelPrices          FuelPrice[]
+  boardLayout         BoardLayout?
+  boardView           BoardView?
+  updateRules         UpdateRule[]
+  agentPolicies       AgentPolicy[]
   /// Random per-org secret (32 bytes, hex) used to sign/verify links that
   /// must work without a dispatcher session (Night Shift sheet callbacks).
   /// Generated by the database on insert; backfilled for every existing
   /// org by the migrations that add it and its default.
-  linkSecret  String             @default(dbgenerated("encode(gen_random_bytes(32), 'hex')"))
-  plan        Plan?
-  telephony   OrgTelephony?
-  sheetBindings SheetBinding[]
-  apiKeys     OrgApiKey[]
+  linkSecret          String             @default(dbgenerated("encode(gen_random_bytes(32), 'hex')"))
+  plan                Plan?
+  telephony           OrgTelephony?
+  sheetBindings       SheetBinding[]
+  apiKeys             OrgApiKey[]
+  // AI Dispatch Foundation (Task 1)
+  customers           Customer[]
+  simulationState     SimulationState?
+  aiExperiments       AiExperiment[]
 }
 
 /// Night Shift's own API keys (spec §10/§12), separate from `Org.apiKey`
@@ -397,8 +433,8 @@ model OrgApiKey {
   createdAt DateTime  @default(now())
   revokedAt DateTime?
 
-  @@index([orgId])
   @@unique([keyHash])
+  @@index([orgId])
 }
 
 /// Spec §4a / §7.1. Which product this org bought. `sheet` hides the Control
@@ -414,7 +450,7 @@ model Plan {
   id                 String   @id @default(uuid())
   orgId              String   @unique
   org                Org      @relation(fields: [orgId], references: [id])
-  tier               String   // sheet | tower
+  tier               String // sheet | tower
   loadNightCents     Int?
   messagingMarkup    Float    @default(1.5)
   dailyCommsCapCents Int      @default(2000)
@@ -427,15 +463,15 @@ model OrgTelephony {
   id                  String    @id @default(uuid())
   orgId               String    @unique
   org                 Org       @relation(fields: [orgId], references: [id])
-  provider            String    @default("ours")   // ours | byo
-  region              String    @default("US")     // US | intl
+  provider            String    @default("ours") // ours | byo
+  region              String    @default("US") // US | intl
   smsSender           String?
   callerId            String?
   messagingServiceSid String?
   tenDlcCampaignSid   String?
-  tenDlcStatus        String    @default("none")   // none | pending | approved | rejected
-  byoAccountSid       String?   // sealed by secretBox
-  byoAuthToken        String?   // sealed by secretBox
+  tenDlcStatus        String    @default("none") // none | pending | approved | rejected
+  byoAccountSid       String? // sealed by secretBox
+  byoAuthToken        String? // sealed by secretBox
   numberPurchasedAt   DateTime?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
@@ -444,45 +480,45 @@ model OrgTelephony {
 /// Spec §5.2. One connected tab. `columns` is Record<SheetColumnKey, string>
 /// (our key → their header). `refreshToken` is sealed by secretBox.
 model SheetBinding {
-  id             String    @id @default(uuid())
-  orgId          String
-  org            Org       @relation(fields: [orgId], references: [id])
-  provider       String    // google | graph
-  spreadsheetId  String
-  tabId          String
-  tabTitle       String
-  headerRow      Int       @default(1)
-  columns        Json
-  agentSwitchCol Int?
-  agentStatusCol Int?
-  refreshToken   String
-  accountEmail   String?
-  lastVersion    String?
-  lastSyncAt     DateTime?
-  lastError      String?
+  id               String    @id @default(uuid())
+  orgId            String
+  org              Org       @relation(fields: [orgId], references: [id])
+  provider         String // google | graph
+  spreadsheetId    String
+  tabId            String
+  tabTitle         String
+  headerRow        Int       @default(1)
+  columns          Json
+  agentSwitchCol   Int?
+  agentStatusCol   Int?
+  refreshToken     String
+  accountEmail     String?
+  lastVersion      String?
+  lastSyncAt       DateTime?
+  lastError        String?
   /// The spreadsheet's own title (from spreadsheets.get), for the Connect
   /// page's summary card. Null on bindings made before it was recorded.
   spreadsheetTitle String?
   /// How many sheet rows make one load: 1 (a row is a load) or 2 (the
   /// broker layout — a customer row with the carrier row under it; see
   /// lib/sheet/foldPairs.ts).
-  rowsPerLoad    Int       @default(1)
+  rowsPerLoad      Int       @default(1)
   /// The high-water mark of `LoadChange.atMs` this binding's write-back pass
   /// (Slice 4, Task 2) has already flowed into the sheet — a board/paste/
   /// loadboard edit newer than this is a candidate for the next tick's
   /// write-back; one already folded in is never re-examined even if it lost
   /// a conflict (the sheet kept its own value and that is final).
-  boardSyncAtMs  BigInt    @default(0)
-  status         String    @default("connected")  // connected | paused | error
+  boardSyncAtMs    BigInt    @default(0)
+  status           String    @default("connected") // connected | paused | error
   /// Slice 4, Task 4: `lastError` at the moment the last sync-failure email
   /// went out — so a restart never re-emails an outage already reported,
   /// and a second tick with the SAME error stays silent. Null once the
   /// binding reads clean again (`status` back to "connected").
-  alertedError   String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  alertedError     String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
   /// The loads this binding mirrors — `Load.sheetBindingId` (fix round 1).
-  loads          Load[]
+  loads            Load[]
 
   @@unique([orgId, spreadsheetId, tabId])
   @@index([status])
@@ -503,7 +539,7 @@ model Carrier {
   name      String
   mcNumber  String?
   dotNumber String?
-  status    String  @default("active")   // active | paused | archived
+  status    String  @default("active") // active | paused | archived
 
   // Cost model — the reason this entity exists. Null = inherit the org default,
   // so an existing single-carrier org keeps working untouched.
@@ -513,8 +549,8 @@ model Carrier {
   fixedCentsPerMi     Int?
 
   // Compliance clocks (rendered in T2, enforced later)
-  insuranceExpiresAt  DateTime?
-  authorityStatus     String?
+  insuranceExpiresAt DateTime?
+  authorityStatus    String?
 
   // ── What this dispatch service charges THIS carrier ──────────────────────
   // NULL model = no terms agreed yet. That is not "free": a carrier with no
@@ -526,74 +562,77 @@ model Carrier {
   // `rate` whose meaning depends on the model. A single field read as percent
   // in one place and cents in another is the shape of a very expensive bug.
   /// percent_linehaul | per_load | per_truck_week
-  commissionModel      String?
+  commissionModel     String?
   /// basis points, for percent_linehaul. 800 = 8.00%. Integer so a percentage
   /// never accumulates float error across a month of loads.
-  commissionPctBps     Int?
+  commissionPctBps    Int?
   /// cents, for per_load and per_truck_week
-  commissionFlatCents  Int?
+  commissionFlatCents Int?
 
   drivers   Driver[]
   tractors  Tractor[]
   trailers  Trailer[]
   loads     Load[]
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
+
   @@index([orgId, status])
 }
 
 model Tractor {
-  id          String       @id @default(uuid())
-  orgId       String
-  org         Org          @relation(fields: [orgId], references: [id])
-  externalId  String?
-  unit        String
-  make        String?
-  cab         String       @default("Sleeper") // Sleeper | DayCab
-  status      String       @default("active")  // active | in_shop | inactive
-  lastLat     Float?
-  lastLng     Float?
+  id                    String          @id @default(uuid())
+  orgId                 String
+  org                   Org             @relation(fields: [orgId], references: [id])
+  externalId            String?
+  unit                  String
+  make                  String?
+  cab                   String          @default("Sleeper") // Sleeper | DayCab
+  status                String          @default("active") // active | in_shop | inactive
+  lastLat               Float?
+  lastLng               Float?
   // Compliance clock: the engine warns when a trip overlaps an expiry and
   // blocks when the unit is already out of compliance at departure.
   inspectionExpiresAt   DateTime?
   registrationExpiresAt DateTime?
   nextServiceAt         DateTime?
-  serviceRecords ServiceRecord[]
-  assignments Assignment[]
-  createdAt   DateTime     @default(now())
+  serviceRecords        ServiceRecord[]
+  assignments           Assignment[]
+  createdAt             DateTime        @default(now())
 
   // Carrier layer (T1): null = dispatched directly by the org.
   carrierId String?
   carrier   Carrier? @relation(fields: [carrierId], references: [id])
+
   @@index([orgId, status])
 }
 
 model Trailer {
-  id          String       @id @default(uuid())
-  orgId       String
-  org         Org          @relation(fields: [orgId], references: [id])
-  externalId  String?
-  unit        String
-  type        String       // DryVan | Reefer | Flatbed | StepDeck | Tanker | Intermodal
-  length      String?
-  features    String?      // JSON-encoded (SQLite has no Json type)
-  lastLat     Float?
-  lastLng     Float?
+  id                    String          @id @default(uuid())
+  orgId                 String
+  org                   Org             @relation(fields: [orgId], references: [id])
+  externalId            String?
+  unit                  String
+  type                  String // DryVan | Reefer | Flatbed | StepDeck | Tanker | Intermodal
+  length                String?
+  features              String? // JSON-encoded (SQLite has no Json type)
+  lastLat               Float?
+  lastLng               Float?
   // T2 Task 6: when lastLat/lastLng were last stamped (assignment completion
   // -> the load's delivery stop). Null whenever the position is, and the two
   // are always written together — a position without a timestamp can't tell
   // "dropped an hour ago" from "dropped in March", so neither is ever set alone.
-  lastSeenAt  DateTime?
-  status      String       @default("active") // active | idle | in_shop
+  lastSeenAt            DateTime?
+  status                String          @default("active") // active | idle | in_shop
   inspectionExpiresAt   DateTime?
   registrationExpiresAt DateTime?
   nextServiceAt         DateTime?
-  serviceRecords ServiceRecord[]
-  assignments Assignment[]
-  createdAt   DateTime     @default(now())
+  serviceRecords        ServiceRecord[]
+  assignments           Assignment[]
+  createdAt             DateTime        @default(now())
 
   // Carrier layer (T1): null = dispatched directly by the org.
   carrierId String?
   carrier   Carrier? @relation(fields: [carrierId], references: [id])
+
   @@index([orgId, type, status])
 }
 
@@ -610,6 +649,7 @@ model ServiceShop {
   phone     String?
   records   ServiceRecord[]
   createdAt DateTime        @default(now())
+
   @@index([orgId])
 }
 
@@ -625,127 +665,135 @@ model ServiceRecord {
   tractor     Tractor?    @relation(fields: [tractorId], references: [id])
   trailerId   String?
   trailer     Trailer?    @relation(fields: [trailerId], references: [id])
-  kind        String      // inspection | registration | service | repair
+  kind        String // inspection | registration | service | repair
   notes       String?
   performedAt DateTime    @default(now())
   nextDueAt   DateTime?
   createdAt   DateTime    @default(now())
+
   @@index([orgId, tractorId])
   @@index([orgId, trailerId])
   @@index([orgId, shopId])
 }
 
 model Load {
-  id            String             @id @default(uuid())
-  orgId         String
-  org           Org                @relation(fields: [orgId], references: [id])
-  externalId    String?
-  orderRef      String?
-  legType       String             @default("linehaul") // collection | linehaul | delivery | drop_swap | intermodal
-  status        String             @default("open")      // open | tendered | assigned | in_progress | delivered | canceled
-  commodity     String?
-  weightLbs     Int?
-  requiredEquip String                                   // trailer type this load needs
-  hazmatClass   String?                                  // null = non-hazardous
-  unNumber      String?
-  revenueCents  Int                @default(0)
-  fscCents      Int                @default(0)
-  brokerName    String?
+  id                   String             @id @default(uuid())
+  orgId                String
+  org                  Org                @relation(fields: [orgId], references: [id])
+  externalId           String?
+  orderRef             String?
+  legType              String             @default("linehaul") // collection | linehaul | delivery | drop_swap | intermodal
+  status               String             @default("open") // open | tendered | assigned | in_progress | delivered | canceled
+  commodity            String?
+  weightLbs            Int?
+  requiredEquip        String // trailer type this load needs
+  hazmatClass          String? // null = non-hazardous
+  unNumber             String?
+  revenueCents         Int                @default(0)
+  fscCents             Int                @default(0)
+  brokerName           String?
   // Broker Board (spec 2026-09-07-broker-board §5.2): the columns a brokered
   // row carries that a fleet's own load did not. Free text is verbatim; the
   // parsed appointment lives on the stops.
-  bolNumber          String?
-  customerName       String?
-  soldRateCents      Int?
-  trackingUrl        String?   // the customer's Samsara/Motive/Linxup share link — human-only, never fetched
-  shipDate           DateTime?
-  updateText         String?   // the dispatcher's UPDATE cell, verbatim; the agent never writes here
-  apptText           String?   // APPT SCHEDULE cell(s), verbatim
-  carrierId          String?
-  carrier            Carrier?  @relation(fields: [carrierId], references: [id])
-  carrierPhone       String?   // as typed, extension and all
-  carrierContactName String?
-  driverCell         String?   // E.164 when the broker adds a driver phone; else the agent talks to the carrier contact
+  bolNumber            String?
+  customerName         String?
+  /// Resolved link to the Customer row this load's free-text customerName
+  /// matched at backfill/write time (Task 1 migration). Nullable — a load
+  /// can carry customerName without ever resolving to a Customer.
+  customerId           String?
+  customer             Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  soldRateCents        Int?
+  trackingUrl          String? // the customer's Samsara/Motive/Linxup share link — human-only, never fetched
+  shipDate             DateTime?
+  updateText           String? // the dispatcher's UPDATE cell, verbatim; the agent never writes here
+  apptText             String? // APPT SCHEDULE cell(s), verbatim
+  carrierId            String?
+  carrier              Carrier?           @relation(fields: [carrierId], references: [id])
+  carrierPhone         String? // as typed, extension and all
+  carrierContactName   String?
+  driverCell           String? // E.164 when the broker adds a driver phone; else the agent talks to the carrier contact
   /// The load's row in the broker's sheet (the customer row's line). The
   /// board's default order is this, then createdAt for loads that never
   /// came from a sheet.
-  boardLine          Int?
+  boardLine            Int?
   /// The LOAD# as the dispatcher typed it on their board. Kept apart from
   /// `externalId`, which is a TMS system's identity for the same org: slice 1
   /// had to prefix a board number with `board:` to stop a sheet row from
   /// overwriting a live TMS load that happened to share it. This column
   /// retires that trick — the two numbers now live in two places and neither
   /// can claim the other's row.
-  boardLoadNo        String?
+  boardLoadNo          String?
   /// Cells their sheet has that our schema does not: an unmapped column,
   /// keyed by the sheet's own header text, and a line-2 value whose column
   /// has no carrier-side field, keyed `<columnKey>:2`. Never a parsed value —
   /// this is the last resort so that a paste never silently drops a cell.
-  extras             Json?
+  extras               Json?
   /// Bumped by the LoadWriter on every change (spec §5.1). A client sends the
   /// version it rendered; a write on a stale one is refused (plan A2).
-  version            Int      @default(0)
-  changes            LoadChange[]
+  version              Int                @default(0)
+  changes              LoadChange[]
   /// One editor at a time (spec §7); rows so a paste can take every target
   /// inside the transaction that writes them.
-  lock               LoadLock?
-  agentUpdates       AgentUpdate[]
+  lock                 LoadLock?
+  agentUpdates         AgentUpdate[]
   // The switch, the chosen policy, and the pill the boards show (spec §6.1/§17).
-  agentEnabled  Boolean @default(false)
-  agentPolicyId String?
-  agentPolicy   AgentPolicy? @relation(fields: [agentPolicyId], references: [id])
-  agentPill     String  @default("off")   // off|watching|asked|calling|escalated|delivered|attention|shadow|held
-  agentCommands AgentCommand[]
-  agentTrips    AgentTrip[]
-  stops         LoadStop[]
-  assignment    Assignment?
-  rate          Rate?
-  conflicts     DispatchConflict[]
-  createdAt     DateTime           @default(now())
+  agentEnabled         Boolean            @default(false)
+  agentPolicyId        String?
+  agentPolicy          AgentPolicy?       @relation(fields: [agentPolicyId], references: [id])
+  agentPill            String             @default("off") // off|watching|asked|calling|escalated|delivered|attention|shadow|held
+  agentCommands        AgentCommand[]
+  agentTrips           AgentTrip[]
+  stops                LoadStop[]
+  assignment           Assignment?
+  rate                 Rate?
+  conflicts            DispatchConflict[]
+  createdAt            DateTime           @default(now())
   /// Night Shift sheet slices: the customer's email off the connected sheet
   /// row, this load's row index in that sheet, and when the agent last wrote
   /// a status cell back to it (throttles redundant writes).
-  customerEmail String?
-  sheetRowIndex Int?
+  customerEmail        String?
+  sheetRowIndex        Int?
   sheetStatusWrittenAt DateTime?
   /// The normalised Night Shift switch cell text the sync last acted on —
   /// the switch reacts to cell CHANGES, not to the cell's value every tick,
   /// so a drawer/deep-link stop is not reverted while the cell sits still.
-  sheetSwitchSeen String?
+  sheetSwitchSeen      String?
   /// Slice 4, Task 2 fix round 1: WHICH SheetBinding mirrored this load — an
   /// org can run more than one connected sheet, so `sheetRowIndex` alone is
   /// ambiguous between them. Set by the row pass through the traced writer;
   /// `SetNull` so deleting a binding never blocks on its own loads.
-  sheetBindingId String?
-  sheetBinding   SheetBinding? @relation(fields: [sheetBindingId], references: [id], onDelete: SetNull)
-  @@index([orgId, status])
-  @@index([sheetBindingId])
-  @@index([orgId, boardLine])
+  sheetBindingId       String?
+  sheetBinding         SheetBinding?      @relation(fields: [sheetBindingId], references: [id], onDelete: SetNull)
+
   // Reconciliation identity: one load per external reference per org.
   // (Postgres allows multiple NULL externalIds, so manual loads are unaffected.)
   @@unique([orgId, externalId])
   // The board's own identity, in its own namespace. Same NULL rule: loads
   // that never came from a board are unaffected.
   @@unique([orgId, boardLoadNo])
+  @@index([orgId, status])
+  @@index([sheetBindingId])
+  @@index([orgId, boardLine])
 }
 
 model LoadStop {
-  id            String       @id @default(uuid())
-  loadId        String
-  load          Load         @relation(fields: [loadId], references: [id])
-  sequence      Int
-  type          String       @default("pickup") // pickup | delivery | intermediate
-  locationId    String?
-  address       String
-  lat           Float?
-  lng           Float?
-  geocodeStatus String?      @default("pending") // pending | ok | failed
-  dwellMin      Int?
+  id               String       @id @default(uuid())
+  loadId           String
+  load             Load         @relation(fields: [loadId], references: [id])
+  sequence         Int
+  type             String       @default("pickup") // pickup | delivery | intermediate
+  locationId       String?
+  address          String
+  lat              Float?
+  lng              Float?
+  geocodeStatus    String?      @default("pending") // pending | ok | failed
+  dwellMin         Int?
   /// Free minutes before detention accrues at THIS stop, when the broker
   /// agreed something other than the default. NULL = inherit the org's
   /// value — never 0, which would mean "detention starts on arrival".
   detentionFreeMin Int?
-  appointment   Appointment?
+  appointment      Appointment?
+
   @@index([loadId, sequence])
 }
 
@@ -754,36 +802,36 @@ model Appointment {
   stopId      String    @unique
   stop        LoadStop  @relation(fields: [stopId], references: [id])
   windowStart DateTime?
-  windowEnd   DateTime  // "must be done by"
+  windowEnd   DateTime // "must be done by"
   type        String    @default("delivery") // pickup | delivery
   kind        String    @default("appointment") // appointment | fcfs — a window with a start is fcfs when the sheet said so
 }
 
 model Assignment {
-  id           String        @id @default(uuid())
-  orgId        String
-  org          Org           @relation(fields: [orgId], references: [id])
-  loadId       String        @unique
-  load         Load          @relation(fields: [loadId], references: [id])
-  driverId     String
-  driver       Driver        @relation(fields: [driverId], references: [id])
-  tractorId    String?
-  tractor      Tractor?      @relation(fields: [tractorId], references: [id])
-  trailerId    String?
-  trailer      Trailer?      @relation(fields: [trailerId], references: [id])
-  plannedStart DateTime
-  plannedEnd   DateTime
-  deadheadMi   Float         @default(0)
-  loadedMi     Float         @default(0)
-  marginCents  Int           @default(0)
+  id              String        @id @default(uuid())
+  orgId           String
+  org             Org           @relation(fields: [orgId], references: [id])
+  loadId          String        @unique
+  load            Load          @relation(fields: [loadId], references: [id])
+  driverId        String
+  driver          Driver        @relation(fields: [driverId], references: [id])
+  tractorId       String?
+  tractor         Tractor?      @relation(fields: [tractorId], references: [id])
+  trailerId       String?
+  trailer         Trailer?      @relation(fields: [trailerId], references: [id])
+  plannedStart    DateTime
+  plannedEnd      DateTime
+  deadheadMi      Float         @default(0)
+  loadedMi        Float         @default(0)
+  marginCents     Int           @default(0)
   // Empty miles saved vs. the median feasible alternative at commit time —
   // the product's headline ROI metric.
-  savedMi      Float         @default(0)
+  savedMi         Float         @default(0)
   // Planned HOS consumption, snapshotted at commit so an unassign can restore
   // the driver's clocks exactly (until the next real ELD import overwrites).
-  driveMin     Int           @default(0)
-  onDutyMin    Int           @default(0)
-  tookBreak    Boolean       @default(false)
+  driveMin        Int           @default(0)
+  onDutyMin       Int           @default(0)
+  tookBreak       Boolean       @default(false)
   // Exact pre-commit HosState values — unassign writes these back verbatim,
   // immune to clamp/floor information loss. Null on legacy rows (fallback to
   // the arithmetic restore).
@@ -791,15 +839,16 @@ model Assignment {
   hosWindowBefore Int?
   hosCycleBefore  Int?
   hosBreakBefore  Int?
-  status       String        @default("assigned") // assigned | in_progress | completed | canceled
-  startedAt    DateTime?
+  status          String        @default("assigned") // assigned | in_progress | completed | canceled
+  startedAt       DateTime?
   // When this assignment was offered to the driver. Null = never tendered
   // (it was assigned directly, or the tender was accepted and cleared).
-  tenderedAt   DateTime?
-  completedAt  DateTime?
-  assignedBy   String?
-  deadheadLegs DeadheadLeg[]
-  createdAt    DateTime      @default(now())
+  tenderedAt      DateTime?
+  completedAt     DateTime?
+  assignedBy      String?
+  deadheadLegs    DeadheadLeg[]
+  createdAt       DateTime      @default(now())
+
   @@index([orgId, driverId])
   @@index([orgId, status])
 }
@@ -807,9 +856,9 @@ model Assignment {
 model HosState {
   driverId           String    @id
   driver             Driver    @relation(fields: [driverId], references: [id])
-  driveRemainingMin  Int       // of the 11h (660) driving limit
-  windowRemainingMin Int       // of the 14h (840) on-duty window
-  cycleRemainingMin  Int       // of the 60/70h cycle
+  driveRemainingMin  Int // of the 11h (660) driving limit
+  windowRemainingMin Int // of the 14h (840) on-duty window
+  cycleRemainingMin  Int // of the 60/70h cycle
   minutesSinceBreak  Int       @default(0)
   lastResetAt        DateTime?
   updatedAt          DateTime  @default(now())
@@ -842,17 +891,19 @@ model DeadheadLeg {
   toLng        Float
   miles        Float
   costCents    Int
+
   @@index([assignmentId])
 }
 
 model ImportBatch {
   id        String   @id @default(uuid())
   orgId     String
-  source    String   // csv | api
-  entity    String   // loads | drivers | hos
-  rows      Int      // successfully imported rows
-  errors    String?  // JSON-encoded row-level errors (SQLite has no Json type)
+  source    String // csv | api
+  entity    String // loads | drivers | hos
+  rows      Int // successfully imported rows
+  errors    String? // JSON-encoded row-level errors (SQLite has no Json type)
   createdAt DateTime @default(now())
+
   @@index([orgId, createdAt])
 }
 
@@ -863,10 +914,11 @@ model DispatchConflict {
   loadId    String
   load      Load     @relation(fields: [loadId], references: [id])
   driverId  String
-  kind      String   // hos | equipment | hazmat | overlap | late_pickup | late_delivery | tractor_unavail | trailer_unavail
+  kind      String // hos | equipment | hazmat | overlap | late_pickup | late_delivery | tractor_unavail | trailer_unavail
   severity  String   @default("block") // block | warn
   detail    String
   createdAt DateTime @default(now())
+
   @@index([orgId, loadId])
 }
 
@@ -882,7 +934,7 @@ model RestStop {
   orgId     String
   org       Org      @relation(fields: [orgId], references: [id])
   name      String
-  kind      String   // truck_stop | rest_area | yard | customer
+  kind      String // truck_stop | rest_area | yard | customer
   lat       Float
   lng       Float
   /// parking spaces, when known. NULL means unknown — never render as 0.
@@ -945,45 +997,45 @@ model AgentTrip {
 
 // Night Shift (spec §17.2): how the agent behaves, configured once.
 model AgentPolicy {
-  id        String   @id @default(uuid())
-  orgId     String
-  org       Org      @relation(fields: [orgId], references: [id])
-  name      String
+  id              String   @id @default(uuid())
+  orgId           String
+  org             Org      @relation(fields: [orgId], references: [id])
+  name            String
   // Thresholds — minutes unless stated. Defaults are the 2026-09-07 live run's.
-  stopMin        Int  @default(15)
-  delayMin       Int  @default(30)
-  darkMin        Int  @default(20)
-  darkAtStopMin  Int  @default(60)
-  offRouteMi     Float @default(3.1)
-  offRouteMin    Int  @default(10)
+  stopMin         Int      @default(15)
+  delayMin        Int      @default(30)
+  darkMin         Int      @default(20)
+  darkAtStopMin   Int      @default(60)
+  offRouteMi      Float    @default(3.1)
+  offRouteMin     Int      @default(10)
   // Ladder
-  rungGapMin     Int  @default(5)
-  maxCalls       Int  @default(2)
+  rungGapMin      Int      @default(5)
+  maxCalls        Int      @default(2)
   // Contacts
   dispatcherEmail String
   dispatcherPhone String?
-  customerEmailOn Boolean @default(false)
+  customerEmailOn Boolean  @default(false)
   // Permissions
-  shadow         Boolean @default(true)
-  bossCallOn     Boolean @default(true)
-  quietFrom      String?   // "22:00" local, or null
-  quietTo        String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  loads     Load[]
+  shadow          Boolean  @default(true)
+  bossCallOn      Boolean  @default(true)
+  quietFrom       String? // "22:00" local, or null
+  quietTo         String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  loads           Load[]
 
   @@unique([orgId, name])
 }
 
 // A supervision action from the drawer, consumed by the worker (spec §17.3).
 model AgentCommand {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   loadId    String
-  load      Load     @relation(fields: [loadId], references: [id], onDelete: Cascade)
-  kind      String   // stop|call|reply|correct|takeover|handback|send_customer_email
+  load      Load      @relation(fields: [loadId], references: [id], onDelete: Cascade)
+  kind      String // stop|call|reply|correct|takeover|handback|send_customer_email
   payload   Json?
   actorName String
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
   appliedAt DateTime?
 
   @@index([loadId, appliedAt])
@@ -1022,7 +1074,7 @@ model BoardLayout {
   id          String   @id @default(uuid())
   orgId       String   @unique
   org         Org      @relation(fields: [orgId], references: [id])
-  columns     Json     // ordered [{ key: BoardColumnKey, label: string }]
+  columns     Json // ordered [{ key: BoardColumnKey, label: string }]
   rowsPerLoad Int      @default(2)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -1049,18 +1101,19 @@ model BoardView {
 // undo (§6.4) and, in slice B, by the drawer. Never edited, never deleted
 // except with its load.
 model LoadChange {
-  id        String   @id @default(uuid())
+  id        String  @id @default(uuid())
   loadId    String
-  load      Load     @relation(fields: [loadId], references: [id], onDelete: Cascade)
+  load      Load    @relation(fields: [loadId], references: [id], onDelete: Cascade)
   orgId     String
   atMs      BigInt
-  actorId   String?  // a dispatcher id, or null for a system source
-  actorName String   // "Maria", or the source name for a system write
-  source    String   // board | paste | import | loadboard | agent | backfill | system
+  actorId   String? // a dispatcher id, or null for a system source
+  actorName String // "Maria", or the source name for a system write
+  source    String // board | paste | import | loadboard | agent | backfill | system
   field     String
-  before    String?  // rendered as the cell would show it
+  before    String? // rendered as the cell would show it
   after     String?
-  note      String?  // e.g. the UPDATE text that drove a status change
+  note      String? // e.g. the UPDATE text that drove a status change
+
   @@index([loadId, atMs])
 }
 
@@ -1089,9 +1142,162 @@ model UpdateRule {
   id        String   @id @default(uuid())
   orgId     String
   org       Org      @relation(fields: [orgId], references: [id])
-  prefix    String   // matched case-insensitively at the start of the cell
-  status    String   // open | assigned | in_progress | delivered | canceled
+  prefix    String // matched case-insensitively at the start of the cell
+  status    String // open | assigned | in_progress | delivered | canceled
   enabled   Boolean  @default(true)
   createdAt DateTime @default(now())
+
   @@unique([orgId, prefix])
+}
+
+// ============================================================================
+// AI Dispatch Foundation (docs/superpowers/plans/2026-09-24-ai-dispatch-foundation.md,
+// Task 1). Schema-only: driver enrichment (on Driver, above), availability,
+// preferences, a real Customer entity, dispatch simulation state, and an AI
+// decision audit trail. Nothing here is read or written by a service yet —
+// later tasks build on top of these tables.
+// ============================================================================
+
+/// One row per driver: is this driver open to a new load right now, and
+/// where are they. Split out from Driver so the board's availability poll
+/// reads a small, frequently-updated row instead of the whole driver.
+model DriverAvailability {
+  driverId String @id
+  driver   Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  acceptingLoads     Boolean   @default(false)
+  availabilityStatus String    @default("UNAVAILABLE") // AVAILABLE | AVAILABLE_SOON | ON_LOAD | OFF_DUTY | UNAVAILABLE
+  availableAt        DateTime?
+  availableLat       Float?
+  availableLng       Float?
+  availableCity      String?
+  availableState     String?
+
+  locationSharingEnabled   Boolean   @default(false)
+  locationSharingUpdatedAt DateTime?
+  /// Authorises the driver-facing availability page — a shareable link, not
+  /// a login. Rotate by regenerating rather than editing in place.
+  shareToken               String    @unique @default(uuid())
+  source                   String    @default("manual") // manual | derived | simulation
+  updatedAt                DateTime  @updatedAt
+}
+
+/// One row per driver: the lanes/regions/equipment a driver wants, used by
+/// matching/scoring — never enforced as a hard constraint by itself.
+model DriverPreference {
+  driverId String @id
+  driver   Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  maxTripMiles           Int?
+  preferredRegions       String[] @default([])
+  preferredLanes         String[] @default([])
+  avoidRegions           String[] @default([])
+  avoidLanes             String[] @default([])
+  homeTimeTarget         String?
+  willingToDriveNight    Boolean  @default(true)
+  willingToRelocateMiles Int?
+  preferredEquipment     String[] @default([])
+  updatedAt              DateTime @updatedAt
+}
+
+/// A real customer entity, resolved from Load.customerName (Broker Board's
+/// free-text column) so notification/communication preferences can live in
+/// one place instead of being re-typed onto every load. `name` is unique per
+/// org and matched against `btrim(Load.customerName)` verbatim — no case
+/// folding (migration backfill and, later, the write path both follow this
+/// rule).
+model Customer {
+  id    String @id @default(uuid())
+  orgId String
+  org   Org    @relation(fields: [orgId], references: [id])
+  name  String
+
+  primaryContactName            String?
+  primaryEmail                  String?
+  primaryPhone                  String?
+  preferredCommunicationChannel String  @default("email") // email | sms | phone
+  timezone                      String?
+  priority                      String  @default("standard") // standard | high
+
+  updateCadenceMinutes             Int?
+  lateNotificationThresholdMinutes Int?
+  detentionFreeMinutes             Int?
+  requiresArrivalNotification      Boolean @default(false)
+  requiresDelayNotification        Boolean @default(true)
+
+  loads     Load[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([orgId, name])
+}
+
+/// One row per org: whether its dispatch simulation is currently running, at
+/// what speed, and how far simulated time has advanced. Singleton per org.
+model SimulationState {
+  orgId              String    @id
+  org                Org       @relation(fields: [orgId], references: [id])
+  running            Boolean   @default(false)
+  speed              Float     @default(1)
+  simMinutesAdvanced Int       @default(0)
+  lastTickAt         DateTime?
+  seed               String?
+}
+
+/// One row per driver: the simulation's own perturbation of that driver's
+/// live state (stopped, gone dark, off route, idle) — layered on top of the
+/// real/derived position rather than overwriting it.
+model SimDriverState {
+  driverId  String    @id
+  driver    Driver    @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  mode      String    @default("auto") // auto | stopped | dark | offroute | idle
+  modeUntil DateTime?
+  offsetLat Float     @default(0)
+  offsetLng Float     @default(0)
+  updatedAt DateTime  @updatedAt
+}
+
+/// One named run of an AI dispatch model against an org's data — groups the
+/// individual decisions it proposed so a run can be compared against another.
+model AiExperiment {
+  id        String             @id @default(uuid())
+  orgId     String
+  org       Org                @relation(fields: [orgId], references: [id])
+  name      String
+  model     String
+  notes     String?
+  createdAt DateTime           @default(now())
+  decisions AiDecisionRecord[]
+}
+
+/// Append-only audit row for one AI decision: what it saw (context), what it
+/// called and got back (toolCalls/toolResults), what it proposed, and — once
+/// known — what a human decided and what actually happened. `orgId`/`loadId`/
+/// `driverId` are plain indexed strings, not relations: an audit trail must
+/// survive the load or driver it refers to being deleted, and the experiment
+/// already carries the real org FK.
+model AiDecisionRecord {
+  id           String       @id @default(uuid())
+  experimentId String
+  experiment   AiExperiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  orgId        String
+  loadId       String?
+  driverId     String?
+  kind         String // dispatch_candidate | escalation | eta | other
+
+  context          Json
+  toolCalls        Json
+  toolResults      Json
+  proposedDecision Json?
+  reason           String?
+  confidence       Float?
+  humanDecision    Json?
+  actualOutcome    Json?
+
+  proposedAt DateTime  @default(now())
+  decidedAt  DateTime?
+  outcomeAt  DateTime?
+
+  @@index([orgId, loadId])
+  @@index([experimentId])
 }

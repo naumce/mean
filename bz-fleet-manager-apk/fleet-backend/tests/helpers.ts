@@ -25,6 +25,12 @@ export async function resetDb() {
     // org, like boardLayout/boardView, or every later suite's resetDb fails.
     prisma.loadChange.deleteMany(),
     prisma.load.deleteMany(), prisma.hosState.deleteMany(),
+    // AI Dispatch Foundation (Task 1): Customer is org-scoped with an FK to
+    // Org that is RESTRICT — clear before org, same reasoning as
+    // carrier/restStop/fuelPrice/boardLayout above. Safe to clear any time
+    // after load.deleteMany() (Load.customerId is ON DELETE SET NULL, so it
+    // never blocks — but the loads referencing it are already gone by here).
+    prisma.customer.deleteMany(),
     prisma.serviceRecord.deleteMany(), prisma.serviceShop.deleteMany(),
     prisma.tractor.deleteMany(), prisma.trailer.deleteMany(),
     prisma.routeDistance.deleteMany(),
@@ -38,6 +44,15 @@ export async function resetDb() {
     prisma.upload.deleteMany(), prisma.checklistItem.deleteMany(),
     prisma.stop.deleteMany(), prisma.trip.deleteMany(),
     prisma.vehicle.deleteMany(), prisma.revokedToken.deleteMany(),
+    // AI Dispatch Foundation (Task 1): AiDecisionRecord/AiExperiment are
+    // org-scoped (AiExperiment's FK to Org is RESTRICT); SimDriverState/
+    // SimulationState/DriverAvailability/DriverPreference cascade with their
+    // Driver/Org but are cleared explicitly anyway, same as loadChange/
+    // loadLock above — clear all of them before driver (and, transitively,
+    // before org) below.
+    prisma.aiDecisionRecord.deleteMany(), prisma.aiExperiment.deleteMany(),
+    prisma.simDriverState.deleteMany(), prisma.simulationState.deleteMany(),
+    prisma.driverAvailability.deleteMany(), prisma.driverPreference.deleteMany(),
     prisma.driver.deleteMany(), prisma.dispatcher.deleteMany(),
     // Carrier layer (T1): drivers/tractors/trailers above may reference a
     // carrier, and carrier references org — must clear after them, before org.
