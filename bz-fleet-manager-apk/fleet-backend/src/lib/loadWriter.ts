@@ -30,6 +30,10 @@ export interface LoadPatch {
   carrierPhone?: string | null; carrierContactName?: string | null; driverCell?: string | null;
   shipDate?: Date | null; revenueCents?: number; soldRateCents?: number | null;
   carrierId?: string | null;
+  // Task 3: a direct link (a picker, not free text) — see `deriveCustomer`.
+  // Plain scalar like `carrierId` above: no derivation runs just because
+  // this key is present in a patch, `deriveCustomer` owns validating it.
+  customerId?: string | null;
   carrier?: { name?: string | null; mcNumber?: string | null };
   extras?: Prisma.InputJsonValue | null;
   stops?: { pickup?: { address: string }; delivery?: { address: string } };
@@ -96,12 +100,20 @@ export class StaleVersion extends Error {
  *  `sequence`, or both `stops` (the board's by-role edit) and `stopSet` (the
  *  Cockpit's whole-list edit) on one patch. Thrown before any write. */
 export class InvalidStopSet extends Error {}
+
+/** A direct `customerId` in a patch that does not name a Customer row in
+ *  this org (Task 3, rule 4) — the same "reject before a single statement
+ *  runs" shape as `InvalidStopSet` just above, not a try/catch: a bad
+ *  statement mid-transaction aborts every later one in the same Postgres tx
+ *  (`resolveCarrier`'s own comment explains why look-before-write is the
+ *  only safe pattern here). */
+export class InvalidCustomer extends Error {}
 const SKIPS_BASE_VERSION: ReadonlySet<ChangeSource> = new Set(["import", "backfill"]);
 
 /** The scalar columns a patch may carry, in the order the trace lists them. */
 const SCALARS = [
   "bolNumber", "customerName", "trackingUrl", "orderRef", "boardLoadNo", "updateText", "apptText",
-  "carrierPhone", "carrierContactName", "driverCell", "shipDate", "revenueCents", "soldRateCents", "carrierId", "extras",
+  "carrierPhone", "carrierContactName", "driverCell", "shipDate", "revenueCents", "soldRateCents", "carrierId", "customerId", "extras",
   "requiredEquip", "fscCents", "hazmatClass", "commodity", "brokerName", "weightLbs",
   "agentEnabled", "agentPolicyId", "agentPill",
   "customerEmail", "sheetRowIndex", "sheetSwitchSeen", "sheetBindingId",
@@ -217,6 +229,70 @@ async function resolveCarrier(tx: Tx, orgId: string, loadId: string, current: st
   return carrierId;
 }
 
+/** Link this load to a real `Customer` row (Task 3) — the same find-before-
+ *  create shape as `resolveCarrier` above, for the same reason: `Customer`
+ *  is a real entity (`customerHistory`, lane stats) other things join
+ *  against, so a name typed on the board has to resolve to ONE row per org
+ *  rather than live only as free text on the Load itself.
+ *
+ *  Wider inputs than `resolveCarrier`'s `(current, carrier)` — `before` and
+ *  `changed`, not just the current id — because rung 3 below reads the
+ *  Load's OWN `customerName`/`customerEmail` even on a patch that never
+ *  mentions them.
+ *
+ *  Three ways in, checked in this order:
+ *   1. A direct `customerId` (a picker, not free text): validated against
+ *      this org before a single statement runs — a cross-org id is not a
+ *      404 here (this is not a route), it is `InvalidCustomer`, the same
+ *      look-before-write discipline `resolveCarrier` uses throughout this
+ *      file. The display column then follows the id, overwritten with the
+ *      customer's own name, so the board/sheet still shows a name for a
+ *      load nobody typed one into directly.
+ *   2. `customerName` is part of THIS patch and actually differs (`changed`
+ *      already says so): found by exact, trimmed, non-case-folded name match
+ *      in this org (schema's own ruling on `Customer.name` — no
+ *      case-folding, ever), or created. Retyping the exact value already
+ *      there is a no-op, same as any other scalar — it does not fall
+ *      through to rung 3 just because this rung's own condition didn't
+ *      match. Emptying it (""/null) detaches (`customerId: null`) without
+ *      ever deleting the Customer row — the plan text said "leave
+ *      untouched" for a blanked name; overruled here for the same reason
+ *      `resolveCarrier` already detaches on an emptied carrier name:
+ *      consistency, and an honest customer history beats a link nobody can
+ *      see has gone stale.
+ *   3. `customerName` is NOT part of this patch at all, but the row already
+ *      carries one and has never linked a Customer row: every write path
+ *      this task does not touch (import, sheet sync, a backfill older than
+ *      this file) keeps writing `customerName` as a plain scalar with no
+ *      idea Customer rows exist — this rung is what makes such a load catch
+ *      up the moment ANYTHING about it is saved again, with zero changes to
+ *      any of those callers. A load that already has one linked is left
+ *      alone (nothing to bootstrap). */
+async function deriveCustomer(
+  tx: Tx, orgId: string, before: LoadRow, patch: LoadPatch, changed: string[],
+): Promise<{ customerId: string | null; customerName?: string }> {
+  if (patch.customerId !== undefined) {
+    if (patch.customerId === null) return { customerId: null };
+    const found = await tx.customer.findFirst({ where: { id: patch.customerId, orgId } });
+    if (!found) throw new InvalidCustomer(`customer ${patch.customerId} is not in org ${orgId}`);
+    return { customerId: found.id, customerName: found.name };
+  }
+  const nameInPatch = "customerName" in patch;
+  if (nameInPatch && !changed.includes("customerName")) return { customerId: before.customerId };
+  if (!nameInPatch && before.customerId != null) return { customerId: before.customerId };
+  const name = (nameInPatch ? patch.customerName : before.customerName)?.trim() ?? "";
+  if (name === "") return { customerId: nameInPatch ? null : before.customerId };
+  const foundByName = await tx.customer.findFirst({ where: { orgId, name } });
+  if (foundByName) return { customerId: foundByName.id };
+  // `!== undefined`, not `??`: a patch that both creates this customer (a
+  // new `customerName`) AND explicitly clears `customerEmail: null` in the
+  // SAME write must seed `primaryEmail: null`, not silently fall back to the
+  // load's own pre-patch email just because `null ?? x` also reaches for `x`.
+  const email = patch.customerEmail !== undefined ? patch.customerEmail : before.customerEmail;
+  const created = await tx.customer.create({ data: { orgId, name, primaryEmail: email } });
+  return { customerId: created.id };
+}
+
 /** Attention rows are ordered by atMs and an importer's suite asserts every
  *  line in a batch is distinct — two loads written in one millisecond must
  *  not tie. Monotonic within the process. */
@@ -265,6 +341,24 @@ export async function applyLoadChange(tx: Tx, args: ApplyArgs): Promise<ApplyRes
   if (patch.carrier) {
     const carrierId = await resolveCarrier(tx, orgId, loadId, before.carrierId, patch.carrier);
     if (carrierId !== before.carrierId) { data.carrierId = carrierId; if (!changed.includes("carrierId")) changed.push("carrierId"); }
+  }
+  // Customer (Task 3): a direct id, a typed/changed name, or a bootstrap for
+  // a load that already carries a name but has never linked a Customer row —
+  // see deriveCustomer's own doc comment for the three rungs and why they
+  // are checked in that order. Runs unconditionally (unlike the `if
+  // (patch.carrier)` gate above) because rung 3 has no single patch field of
+  // its own to gate on — it fires on the ABSENCE of `customerName` from the
+  // patch, not its presence.
+  const customer = await deriveCustomer(tx, orgId, before, patch, changed);
+  if (customer.customerId !== before.customerId) {
+    data.customerId = customer.customerId;
+    if (!changed.includes("customerId")) changed.push("customerId");
+  }
+  // Only rung 1 (a direct id) ever returns a `customerName` — the display
+  // column then follows the id rather than whatever free text was typed.
+  if (customer.customerName !== undefined && rendered(customer.customerName) !== rendered(before.customerName)) {
+    data.customerName = customer.customerName;
+    if (!changed.includes("customerName")) changed.push("customerName");
   }
   if (Object.keys(data).length) await tx.load.update({ where: { id: loadId }, data });
 

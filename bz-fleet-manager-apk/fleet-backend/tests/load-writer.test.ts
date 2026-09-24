@@ -24,13 +24,18 @@ describe("applyLoadChange — the patch, the version, the trace", () => {
     const { org, load } = await setup();
     const r = await apply(load.id, org.id, { customerName: "NEW CO", bolNumber: "0500001", revenueCents: 450000 });
     expect(r.version).toBe(1);
-    // bolNumber was patched to the value it already had: not a change, not a trace.
-    expect(r.changed.sort()).toEqual(["customerName", "revenueCents"]);
+    // bolNumber was patched to the value it already had: not a change, not a
+    // trace. customerName changing to a name with no Customer row yet (Task
+    // 3) derives and links one, traced as its own field like carrierId.
+    expect(r.changed.sort()).toEqual(["customerId", "customerName", "revenueCents"]);
     const after = await prisma.load.findUnique({ where: { id: load.id } });
     expect(after?.customerName).toBe("NEW CO");
     expect(after?.version).toBe(1);
+    const newCustomer = await prisma.customer.findFirstOrThrow({ where: { orgId: org.id, name: "NEW CO" } });
+    expect(after?.customerId).toBe(newCustomer.id);
     const trace = await prisma.loadChange.findMany({ where: { loadId: load.id }, orderBy: { field: "asc" } });
     expect(trace.map((t) => [t.field, t.before, t.after, t.actorName, t.source])).toEqual([
+      ["customerId", null, newCustomer.id, "Maria", "board"],
       ["customerName", "ACME", "NEW CO", "Maria", "board"],
       ["revenueCents", "400000", "450000", "Maria", "board"],
     ]);
@@ -479,7 +484,10 @@ describe("applyLoadChange — the Cockpit's fields and a full stop set (plan A3)
     const { org, load } = await setup();
     const r = await apply(load.id, org.id, { requiredEquip: "Reefer", commodity: "Frozen peas", weightLbs: 41000, hazmatClass: null, brokerName: "TQL", fscCents: 12000 }, { source: "loadboard" });
     expect(r.version).toBe(1);
-    expect(r.changed.sort()).toEqual(["brokerName", "commodity", "fscCents", "requiredEquip", "weightLbs"]);
+    // Task 3: this load's `setup()` fixture already carries customerName
+    // "ACME" with no linked Customer row — a write that never mentions
+    // customerName at all still bootstraps the link (deriveCustomer rung 3).
+    expect(r.changed.sort()).toEqual(["brokerName", "commodity", "customerId", "fscCents", "requiredEquip", "weightLbs"]);
     const after = await prisma.load.findUnique({ where: { id: load.id } });
     expect([after?.requiredEquip, after?.commodity, after?.weightLbs, after?.fscCents]).toEqual(["Reefer", "Frozen peas", 41000, 12000]);
     expect(await prisma.loadChange.count({ where: { loadId: load.id, field: "requiredEquip", before: "DryVan", after: "Reefer" } })).toBe(1);

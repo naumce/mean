@@ -75,8 +75,14 @@ describe("bulk archive / unarchive", () => {
   // the wrong cause. This isolates the archived->open transition itself.
   it("unarchiving writes exactly one LoadChange row naming the actor, and the version bumps by exactly one", async () => {
     const { org, auth } = await setup();
+    // No `customerName` here (Task 3): a name with no linked Customer row
+    // would give the unarchive's own `force` re-derive call a SECOND honest
+    // reason to bump the version (deriveCustomer's bootstrap rung), the same
+    // way an UPDATE-text re-derivation would — this fixture isolates the
+    // archived->open transition itself, same as the comment above already
+    // isolates it from that other confound.
     const load = await prisma.load.create({
-      data: { orgId: org.id, requiredEquip: "DryVan", revenueCents: 0, customerName: "ACME", status: "open" },
+      data: { orgId: org.id, requiredEquip: "DryVan", revenueCents: 0, status: "open" },
     });
     await request(app).post("/api/dispatcher/broker-board/loads/archive").set(auth).send({ ids: [load.id], archived: true });
     const before = await prisma.load.findUniqueOrThrow({ where: { id: load.id } });

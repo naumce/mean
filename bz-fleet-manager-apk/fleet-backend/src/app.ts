@@ -14,6 +14,7 @@ import { dispatcherAuthRouter, dispatcherMeRouter } from "./routes/dispatcherAut
 import { dispatcherDriversRouter } from "./routes/dispatcherDrivers.js";
 import { dispatcherDriverSupplyRouter } from "./routes/dispatcherDriverSupply.js";
 import { dispatcherCarriersRouter } from "./routes/dispatcherCarriers.js";
+import { dispatcherCustomersRouter } from "./routes/dispatcherCustomers.js";
 import { dispatcherCarrierStatementsRouter } from "./routes/dispatcherCarrierStatements.js";
 import { dispatcherRestStopsRouter } from "./routes/dispatcherRestStops.js";
 import { dispatcherRoutePoisRouter } from "./routes/dispatcherRoutePois.js";
@@ -189,6 +190,7 @@ export function createApp() {
   app.use("/api/dispatcher", dispatcherDriverSupplyRouter);
   app.use("/api/dispatcher", dispatcherDriversRouter);
   app.use("/api/dispatcher", dispatcherCarriersRouter);
+  app.use("/api/dispatcher", dispatcherCustomersRouter);
   app.use("/api/dispatcher", dispatcherCarrierStatementsRouter);
   app.use("/api/dispatcher", dispatcherRestStopsRouter);
   app.use("/api/dispatcher", dispatcherRoutePoisRouter);

@@ -424,9 +424,12 @@ describe("M6: a stop the provider places after the write reaches the board", () 
         .send({ row: "top", key: "customer", value: "ACME LOGISTICS", baseVersion: 0 });
       expect(res.status).toBe(200);
 
-      // First frame: the cell write itself.
+      // First frame: the cell write itself. This load's customerName started
+      // non-blank with no linked Customer row, so the rename also derives
+      // and links one (Task 3) in the same write — its own field, alongside
+      // customerName, not a second frame.
       const first = await nextLoadChanged(collector);
-      expect(first).toMatchObject({ loadId: load.id, fields: ["customerName"] });
+      expect(first).toMatchObject({ loadId: load.id, fields: ["customerName", "customerId"] });
 
       // Second frame: the settle, in its OWN transaction with its OWN version
       // bump — naming the stop role it placed, not folded into the frame above.

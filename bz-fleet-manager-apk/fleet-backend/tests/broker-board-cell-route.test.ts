@@ -132,7 +132,13 @@ describe("PATCH /dispatcher/broker-board/loads/:id/cell", () => {
     expect(res.status).toBe(200);
     expect(res.body.load.version).toBe(1);
     expect(res.body.load.bottom.loadNo).toBe("145205");          // defect 1: it used to vanish on refresh
-    const trace = await prisma.loadChange.findMany({ where: { loadId: load.id } });
+    // Filtered to this field: `setup()`'s load already carries a customerName
+    // with no linked Customer row, so this write also bootstraps that link
+    // (Task 3, deriveCustomer rung 3) — its own field, its own trace row,
+    // proven separately in tests/load-writer-customer.test.ts's bootstrap
+    // describe block ("traces the bootstrap link as its own LoadChange
+    // row..."), not this cell's concern.
+    const trace = await prisma.loadChange.findMany({ where: { loadId: load.id, field: "boardLoadNo" } });
     expect(trace.map((t) => [t.field, t.after, t.source])).toEqual([["boardLoadNo", "145205", "board"]]);
   });
 
