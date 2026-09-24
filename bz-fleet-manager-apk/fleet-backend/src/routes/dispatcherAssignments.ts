@@ -52,6 +52,7 @@ import {
 } from "../lib/assignmentActions.js";
 import { CommitConflict, respondToWriteConflict } from "../lib/writeConflict.js";
 import { applyStatusChange } from "../lib/loadWriter.js";
+import { transitionAssignment } from "../lib/assignmentLifecycle.js";
 import { actorOf } from "../lib/actor.js";
 import { emitLoadChanged } from "../lib/loadEvents.js";
 import { asyncRoute } from "../lib/asyncRoute.js";
@@ -619,45 +620,16 @@ dispatcherAssignmentsRouter.post(
     let loadVersion = 0;
     let updated: Assignment;
     try {
-      updated = await prisma.$transaction(async (tx) => {
-      const nextAssignment = await tx.assignment.update({
-        where: { id: assignment.id },
-        data: {
-          status: next,
-          ...(next === "in_progress" ? { startedAt: now } : {}),
-          ...(next === "completed" ? { completedAt: now, ...(assignment.startedAt ? {} : { startedAt: now }) } : {}),
-        },
-      });
-      // F6/plan A3: the load's status now moves through the one writer, same
-      // as every other Load write.
-      loadVersion = (await applyStatusChange(tx, {
-        loadId: assignment.loadId, orgId: assignment.load.orgId, actor, source: "loadboard",
-        status: next === "completed" ? "delivered" : "in_progress",
-        note: `assignment ${assignment.id} → ${next}`,
-      })).version;
-
-      // Trailer position (T2 Task 6): on completion, stamp the trailer's
-      // last-known position from the load's delivery stop (the same "delivery
-      // stop" definition dispatcherLoadboard.ts uses: the last delivery-typed
-      // stop, else the last stop by sequence), plus lastSeenAt. Purely
-      // additive — never alters the assignment/load writes above, and never
-      // touched for in_progress. A stop that was never geocoded writes
-      // NOTHING: not 0,0, not the driver's position, not lastSeenAt alone —
-      // absent must never be recorded as measured (a trailer pinned in the
-      // Gulf of Guinea is the textbook version of that bug).
-      if (next === "completed" && assignment.trailerId) {
-        const stops = assignment.load.stops;
-        const finalStop = [...stops].reverse().find((s) => s.type === "delivery") ?? stops[stops.length - 1];
-        if (finalStop?.lat != null && finalStop?.lng != null) {
-          await tx.trailer.update({
-            where: { id: assignment.trailerId },
-            data: { lastLat: finalStop.lat, lastLng: finalStop.lng, lastSeenAt: now },
-          });
-        }
-      }
-
-      return nextAssignment;
-      });
+      // The transition itself — assignment status, the load's mirrored
+      // status through the one writer, and the completion-time trailer
+      // stamp — is shared with the simulation (AI Dispatch Foundation Task
+      // 8), which drives the identical lifecycle from its own clock instead
+      // of a dispatcher's Start/Deliver button. See lib/assignmentLifecycle.ts.
+      const result = await prisma.$transaction((tx) =>
+        transitionAssignment(tx, assignment, next, { actor, source: "loadboard", now }),
+      );
+      updated = result.assignment;
+      loadVersion = result.loadVersion;
     } catch (err) {
       // This route ran as a plain sequence of writes until it became an
       // interactive transaction (T2 Task 6, for the trailer-position stamp),
