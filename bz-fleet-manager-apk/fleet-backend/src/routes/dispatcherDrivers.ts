@@ -21,8 +21,13 @@ const createDriverSchema = z.object({
   phone: z.string().optional(), password: z.string().min(6),
 });
 
+// `include: { hos: true }` (AI Dispatch Foundation, Task 9): Driver Supply's
+// HOS column needs each driver's clock alongside the rest of the profile —
+// every other Task 1 field (firstName, homeBaseCity, equipmentTypes, ...) is
+// already a plain scalar column on Driver, so a `findMany` with no `select`
+// already returns them; `hos` is the one relation, invisible without this.
 dispatcherDriversRouter.get("/drivers", asyncRoute(async (req, res) => {
-  const drivers = await prisma.driver.findMany({ where: orgWhere(req) });
+  const drivers = await prisma.driver.findMany({ where: orgWhere(req), include: { hos: true } });
   res.json(drivers.map(({ passwordHash, ...safe }) => safe));
 }));
 

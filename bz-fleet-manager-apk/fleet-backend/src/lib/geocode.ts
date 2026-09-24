@@ -1,4 +1,5 @@
-import { US_CITIES } from "./usCities.js";
+import { US_CITIES, titleCase } from "./usCities.js";
+import { haversineMi } from "../domain/dispatch/distance.js";
 
 // Pluggable geocoder for address-only imports (loads arrive from TMS exports
 // as "Kansas City, MO" with no coordinates; the dispatch engine refuses
@@ -90,4 +91,39 @@ export async function geocodeAddress(address: string): Promise<GeocodeHit | null
   const trimmed = address.trim();
   if (!trimmed) return null;
   return gazetteerLookup(trimmed) ?? (await fromProvider(trimmed));
+}
+
+// ---------------------------------------------------------------------------
+// Nearest known place (AI Dispatch Foundation, Task 9): Driver Supply's
+// CURRENT column needs "near Toledo, OH · 12 mi" / "at Toledo, OH" —
+// city/state as separate fields, not usCities.ts's own nearestCity() combined
+// "City, ST" label (that one feeds a map/lane pin, a different caller with a
+// different shape need). Same gazetteer, same 150-mi ceiling, same
+// first-key-in-insertion-order tiebreak as nearestCity — this is a second,
+// differently-shaped view over identical data rather than either forcing one
+// shape to serve both callers or re-parsing the other's formatted output
+// (the same reasoning driverAvailability.ts's cityStateFromAddress gives for
+// being its own function alongside this file's parseCityState).
+// ---------------------------------------------------------------------------
+
+export interface NearestKnownPlace {
+  city: string;
+  state: string;
+  distanceMi: number;
+}
+
+const NEAREST_KNOWN_PLACE_MAX_MI = 150;
+
+/** Nearest gazetteer place to a raw coordinate (a driver's last ping); null
+ *  beyond NEAREST_KNOWN_PLACE_MAX_MI — no guessing past the gazetteer's own
+ *  reach, same rule nearestCity enforces for its own callers. */
+export function nearestKnownPlace(lat: number, lng: number): NearestKnownPlace | null {
+  let best: NearestKnownPlace | null = null;
+  for (const [key, place] of Object.entries(US_CITIES)) {
+    const distanceMi = haversineMi({ lat, lng }, place);
+    if (distanceMi > NEAREST_KNOWN_PLACE_MAX_MI || (best && distanceMi >= best.distanceMi)) continue;
+    const [city, state] = key.split("|");
+    best = { city: titleCase(city), state: state.toUpperCase(), distanceMi };
+  }
+  return best;
 }

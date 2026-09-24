@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import type { DriverPreference } from "@prisma/client";
 import { prisma } from "../db.js";
 import { outsideOrg } from "../middleware/orgScope.js";
 import { validateBody } from "../middleware/validate.js";
@@ -218,5 +219,123 @@ dispatcherDriverSupplyRouter.get(
     }
 
     res.json(await driverHistory(driver.orgId, id, historyLimit(req.query.limit)));
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// GET/PATCH /drivers/:id/preference (AI Dispatch Foundation, Task 9): the
+// lanes/regions/equipment a driver wants (schema's own DriverPreference,
+// added by Task 1 — matching/scoring never enforces it as a hard
+// constraint). Same 404-not-403 cross-tenant shape as every other :id route
+// in this file.
+// ---------------------------------------------------------------------------
+
+const MAX_PREFERENCE_LIST_ITEMS = 20;
+const MAX_PREFERENCE_ITEM_LEN = 60;
+const MAX_HOME_TIME_TARGET_LEN = 40;
+
+// Two-letter region codes only (e.g. "TX") — matches Driver.homeBaseState's
+// own vocabulary; not validated against geocode.ts's STATE_CODES set because
+// a preference is a free-form wish ("avoid the Northeast corridor" states),
+// not a resolved address, and a typo here only narrows matching, it never
+// corrupts a real record the way a bad address would.
+const REGION_RE = /^[A-Za-z]{2}$/;
+// "City, ST > City, ST" — the brief's own lane label shape.
+const LANE_RE = /^[A-Za-z][A-Za-z .'-]*, [A-Za-z]{2} > [A-Za-z][A-Za-z .'-]*, [A-Za-z]{2}$/;
+
+const regionList = () =>
+  z.array(z.string().max(MAX_PREFERENCE_ITEM_LEN).regex(REGION_RE)).max(MAX_PREFERENCE_LIST_ITEMS);
+const laneList = () =>
+  z.array(z.string().max(MAX_PREFERENCE_ITEM_LEN).regex(LANE_RE)).max(MAX_PREFERENCE_LIST_ITEMS);
+
+const patchPreferenceSchema = z
+  .object({
+    maxTripMiles: z.number().int().min(0).nullable().optional(),
+    preferredRegions: regionList().optional(),
+    preferredLanes: laneList().optional(),
+    avoidRegions: regionList().optional(),
+    avoidLanes: laneList().optional(),
+    homeTimeTarget: z.string().max(MAX_HOME_TIME_TARGET_LEN).nullable().optional(),
+    willingToDriveNight: z.boolean().optional(),
+    willingToRelocateMiles: z.number().int().min(0).nullable().optional(),
+    preferredEquipment: z.array(z.string().max(MAX_PREFERENCE_ITEM_LEN)).max(MAX_PREFERENCE_LIST_ITEMS).optional(),
+  })
+  // Same "at least one key present" rule as patchAvailabilitySchema above.
+  .refine((data) => Object.keys(data).length > 0, { message: "at least one field is required" });
+
+type PatchPreferenceBody = z.infer<typeof patchPreferenceSchema>;
+
+export interface DriverPreferenceView {
+  maxTripMiles: number | null;
+  preferredRegions: string[];
+  preferredLanes: string[];
+  avoidRegions: string[];
+  avoidLanes: string[];
+  homeTimeTarget: string | null;
+  willingToDriveNight: boolean;
+  willingToRelocateMiles: number | null;
+  preferredEquipment: string[];
+}
+
+/** The documented defaults for a driver with no DriverPreference row yet —
+ *  never invented per-driver, always this exact shape. */
+const DEFAULT_PREFERENCE: DriverPreferenceView = {
+  maxTripMiles: null,
+  preferredRegions: [],
+  preferredLanes: [],
+  avoidRegions: [],
+  avoidLanes: [],
+  homeTimeTarget: null,
+  willingToDriveNight: true,
+  willingToRelocateMiles: null,
+  preferredEquipment: [],
+};
+
+/** Strips driverId/updatedAt so a found row and DEFAULT_PREFERENCE answer
+ *  with the identical shape — the portal never needs to special-case which
+ *  one it got. */
+function toPreferenceView(row: DriverPreference): DriverPreferenceView {
+  return {
+    maxTripMiles: row.maxTripMiles,
+    preferredRegions: row.preferredRegions,
+    preferredLanes: row.preferredLanes,
+    avoidRegions: row.avoidRegions,
+    avoidLanes: row.avoidLanes,
+    homeTimeTarget: row.homeTimeTarget,
+    willingToDriveNight: row.willingToDriveNight,
+    willingToRelocateMiles: row.willingToRelocateMiles,
+    preferredEquipment: row.preferredEquipment,
+  };
+}
+
+dispatcherDriverSupplyRouter.get(
+  "/drivers/:id/preference",
+  asyncRoute(async (req, res) => {
+    const id = req.params.id as string;
+    const driver = await prisma.driver.findUnique({ where: { id }, select: { orgId: true } });
+    if (!driver || driver.orgId == null || outsideOrg(req, driver.orgId)) {
+      return res.status(404).json({ error: "Driver not found" });
+    }
+    const row = await prisma.driverPreference.findUnique({ where: { driverId: id } });
+    res.json(row ? toPreferenceView(row) : DEFAULT_PREFERENCE);
+  }),
+);
+
+dispatcherDriverSupplyRouter.patch(
+  "/drivers/:id/preference",
+  validateBody(patchPreferenceSchema),
+  asyncRoute(async (req, res) => {
+    const id = req.params.id as string;
+    const driver = await prisma.driver.findUnique({ where: { id }, select: { orgId: true } });
+    if (!driver || driver.orgId == null || outsideOrg(req, driver.orgId)) {
+      return res.status(404).json({ error: "Driver not found" });
+    }
+    const body = req.body as PatchPreferenceBody;
+    const updated = await prisma.driverPreference.upsert({
+      where: { driverId: id },
+      create: { driverId: id, ...body },
+      update: body,
+    });
+    res.json(toPreferenceView(updated));
   }),
 );

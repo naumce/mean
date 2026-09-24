@@ -157,7 +157,11 @@ export const US_CITIES: Record<string, { lat: number; lng: number }> = {
   "spokane|wa": { lat: 47.6588, lng: -117.426 },
 };
 
-function titleCase(s: string): string {
+// Exported so lib/geocode.ts's own nearestKnownPlace (Driver Supply's CURRENT
+// column — city/state reported as separate fields, not this file's combined
+// "City, ST" label) can format a gazetteer key without a second, drifting
+// copy of this rule.
+export function titleCase(s: string): string {
   return s
     .split(" ")
     .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))

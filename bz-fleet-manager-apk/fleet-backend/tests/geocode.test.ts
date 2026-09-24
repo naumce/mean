@@ -2,7 +2,7 @@ import request from "supertest";
 import { app, resetDb } from "./helpers.js";
 import { prisma } from "../src/db.js";
 import { hashPassword } from "../src/lib/password.js";
-import { geocodeAddress, parseCityState } from "../src/lib/geocode.js";
+import { geocodeAddress, nearestKnownPlace, parseCityState } from "../src/lib/geocode.js";
 beforeEach(resetDb);
 
 describe("parseCityState", () => {
@@ -27,6 +27,18 @@ describe("geocodeAddress (gazetteer)", () => {
 
   it("misses politely: unknown town stays null (no provider configured)", async () => {
     expect(await geocodeAddress("Nowhereville, MO")).toBeNull();
+  });
+});
+
+describe("nearestKnownPlace", () => {
+  it("resolves a coordinate to its nearest gazetteer city, city/state split apart", () => {
+    const place = nearestKnownPlace(39.1, -94.58);
+    expect(place).toEqual({ city: "Kansas City", state: "MO", distanceMi: expect.any(Number) });
+    expect(place!.distanceMi).toBeLessThan(5);
+  });
+
+  it("returns null beyond the 150-mi ceiling — no guessing", () => {
+    expect(nearestKnownPlace(0, 0)).toBeNull();
   });
 });
 

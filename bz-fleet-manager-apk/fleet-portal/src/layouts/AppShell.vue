@@ -34,6 +34,10 @@ onUnmounted(() => { releaseSession?.(); releaseSession = null })
 const TOWER_PRIMARY = [
   { label: 'Their Board', to: '/board/broker', icon: 'tower' },
   { label: 'Control Tower', to: '/cockpit', icon: 'tower' },
+  // AI Dispatch Foundation (Task 9). TOWER_PRIMARY only renders for
+  // non-sheet tiers (see primaryNav below) — tower-only by construction,
+  // same as every other entry in this array.
+  { label: 'Driver Supply', to: '/supply', icon: 'fleet' },
   { label: 'Night Shift', to: '/night-shift', icon: 'tower' },
   { label: 'Import', to: '/import', icon: 'import' },
   { label: 'Analytics', to: '/brokers', icon: 'chart' },

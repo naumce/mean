@@ -24,6 +24,7 @@ function shellRoutes() {
         { path: 'cockpit', name: 'cockpit', component: Stub },
         { path: 'board/broker', component: Stub },
         { path: 'board', component: Stub },
+        { path: 'supply', component: Stub },
         { path: 'night-shift', component: Stub },
         { path: 'import', component: Stub },
         { path: 'brokers', component: Stub },
@@ -155,9 +156,19 @@ describe('AppShell nav by plan tier', () => {
   it('tower tier shows the full nav, unchanged, including "More"', async () => {
     const w = await mountShellWithTier('tower')
     const labels = w.findAllComponents(SidebarNavItem).map((c) => c.props('label'))
-    expect(labels.slice(0, 3)).toEqual(['Their Board', 'Control Tower', 'Night Shift'])
+    expect(labels.slice(0, 4)).toEqual(['Their Board', 'Control Tower', 'Driver Supply', 'Night Shift'])
     expect(labels).toContain('Fleet')
     expect(w.find('[data-testid="nav-more-toggle"]').exists()).toBe(true)
+  })
+
+  it('shows "Driver Supply" right after "Control Tower" for tower tier, and not at all for sheet tier', async () => {
+    const tower = await mountShellWithTier('tower')
+    const towerLabels = tower.findAllComponents(SidebarNavItem).map((c) => c.props('label'))
+    expect(towerLabels.indexOf('Driver Supply')).toBe(towerLabels.indexOf('Control Tower') + 1)
+
+    const sheet = await mountShellWithTier('sheet')
+    const sheetLabels = sheet.findAllComponents(SidebarNavItem).map((c) => c.props('label'))
+    expect(sheetLabels).not.toContain('Driver Supply')
   })
 
   it('tower tier highlights the "More" toggle when the current route is one of its items', async () => {

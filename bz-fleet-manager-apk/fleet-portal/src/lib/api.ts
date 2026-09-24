@@ -1,5 +1,13 @@
 import axios, { AxiosHeaders, type InternalAxiosRequestConfig } from 'axios'
 import { REFRESH_STORAGE_KEY, TOKEN_STORAGE_KEY } from './constants'
+import type {
+  DriverAvailabilityView,
+  DriverHistoryRow,
+  DriverMetrics,
+  DriverPreference,
+  PatchAvailabilityBody,
+  PatchPreferenceBody,
+} from '../types/supply'
 
 export const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001/api'
 
@@ -646,5 +654,62 @@ export interface BoardPasteResponse { loads: BoardLoad[]; refusals: BoardRefusal
  *  order and width, which are one person's habits and stay in the browser. */
 export interface BoardFills { row?: Record<string, string>; col?: Record<string, string>; cell?: Record<string, string> }
 export interface BoardViewState { fills: BoardFills; merges: Record<string, string[]> }
+
+// ---------------------------------------------------------------------------
+// Driver Supply (AI Dispatch Foundation, Task 9): named functions (Convention
+// 2 — see this file's own comment above §Cockpit S2b) because the driverSupply
+// store, the map, and the drawer's own sub-panels all need the identical
+// request shapes for these Task 2/4/5 endpoints.
+// ---------------------------------------------------------------------------
+
+/** GET /dispatcher/drivers/availability — every driver in the caller's org,
+ *  one batched call (fleet-backend's availabilityFor already does the single
+ *  findMany internally). */
+export async function fetchDriverAvailability(): Promise<DriverAvailabilityView[]> {
+  const { data } = await api.get<DriverAvailabilityView[]>('/dispatcher/drivers/availability')
+  return data
+}
+
+export async function fetchDriverAvailabilityFor(driverId: string): Promise<DriverAvailabilityView> {
+  const { data } = await api.get<DriverAvailabilityView>(`/dispatcher/drivers/${driverId}/availability`)
+  return data
+}
+
+/** PATCH /dispatcher/drivers/:id/availability — answers the freshly merged
+ *  view, not just the written columns, so the caller never has to refetch to
+ *  see the derived `status`/`availableAt` the write produced. */
+export async function patchDriverAvailability(
+  driverId: string,
+  body: PatchAvailabilityBody,
+): Promise<DriverAvailabilityView> {
+  const { data } = await api.patch<DriverAvailabilityView>(`/dispatcher/drivers/${driverId}/availability`, body)
+  return data
+}
+
+export async function fetchDriverMetrics(driverId: string): Promise<DriverMetrics> {
+  const { data } = await api.get<DriverMetrics>(`/dispatcher/drivers/${driverId}/metrics`)
+  return data
+}
+
+export async function fetchDriverHistory(driverId: string, limit: number): Promise<DriverHistoryRow[]> {
+  const { data } = await api.get<DriverHistoryRow[]>(`/dispatcher/drivers/${driverId}/history`, { params: { limit } })
+  return data
+}
+
+/** GET /dispatcher/drivers/:id/preference — the server answers the
+ *  documented defaults when no DriverPreference row exists yet, so this
+ *  never returns null. */
+export async function fetchDriverPreference(driverId: string): Promise<DriverPreference> {
+  const { data } = await api.get<DriverPreference>(`/dispatcher/drivers/${driverId}/preference`)
+  return data
+}
+
+export async function patchDriverPreference(
+  driverId: string,
+  body: PatchPreferenceBody,
+): Promise<DriverPreference> {
+  const { data } = await api.patch<DriverPreference>(`/dispatcher/drivers/${driverId}/preference`, body)
+  return data
+}
 
 export default api

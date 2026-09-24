@@ -270,7 +270,14 @@ describe("GET /drivers/:id/availability", () => {
     const res = await request(app).get(`/api/dispatcher/drivers/${driver.id}/availability`).set("authorization", auth);
     expect(res.status).toBe(200);
     expect(res.body.available).toEqual({ lat: KC.lat, lng: KC.lng, city: null, state: null });
-    expect(res.body.current).toEqual({ lat: KC.lat, lng: KC.lng, at: pingAt.getTime() });
+    // KC is the gazetteer's own "kansas city|mo" coordinate, so `near` resolves
+    // essentially on top of it (Task 9) — distanceMi is asserted loosely since
+    // it is a real haversine computation, not a fixed constant.
+    expect(res.body.current).toEqual({
+      lat: KC.lat, lng: KC.lng, at: pingAt.getTime(),
+      near: { city: "Kansas City", state: "MO", distanceMi: expect.any(Number) },
+    });
+    expect(res.body.current.near.distanceMi).toBeLessThan(1);
   });
 
   it("a manual OFF_DUTY row wins over what would otherwise be AVAILABLE", async () => {

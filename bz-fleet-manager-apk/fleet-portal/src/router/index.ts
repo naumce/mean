@@ -9,6 +9,7 @@ import CockpitView from '../views/CockpitView.vue'
 import ImportView from '../views/ImportView.vue'
 import DashboardView from '../views/DashboardView.vue'
 import DriversView from '../views/DriversView.vue'
+import DriverSupplyView from '../views/DriverSupplyView.vue'
 import LoginView from '../views/LoginView.vue'
 import SignupView from '../views/SignupView.vue'
 import NightShiftLinkView from '../nightshift/views/NightShiftLinkView.vue'
@@ -75,6 +76,9 @@ export const routes = [
       { path: 'money', name: 'money', component: MoneyView },
       { path: 'fleet', name: 'fleet', component: FleetView },
       { path: 'drivers', name: 'drivers', component: DriversView },
+      // AI Dispatch Foundation (Task 9): Driver Supply — every driver's
+      // status, location, load, HOS, equipment and preferences.
+      { path: 'supply', name: 'driver-supply', component: DriverSupplyView },
       { path: 'vehicles', name: 'vehicles', component: VehiclesView },
       { path: 'trips', name: 'trips', component: TripsView },
       { path: 'trips/:id', name: 'trip-detail', component: TripDetailView, props: true },

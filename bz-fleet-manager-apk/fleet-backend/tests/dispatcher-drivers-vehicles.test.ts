@@ -46,6 +46,25 @@ describe("driver CRUD", () => {
     expect(res.body.email).toBe("single@fleet.com");
   });
 
+  it("GET /drivers includes each driver's hos (Task 9: Driver Supply's HOS column), null when no HosState row", async () => {
+    const auth = await dispatcherAuth();
+    const create = await request(app).post("/api/dispatcher/drivers").set("authorization", auth)
+      .send({ email: "hos@fleet.com", name: "Hos Driver", password: "secret123" });
+    await prisma.hosState.create({
+      data: { driverId: create.body.id, driveRemainingMin: 300, windowRemainingMin: 500, cycleRemainingMin: 2000 },
+    });
+
+    const list = await request(app).get("/api/dispatcher/drivers").set("authorization", auth);
+    const withHos = list.body.find((d: { id: string }) => d.id === create.body.id);
+    expect(withHos.hos.driveRemainingMin).toBe(300);
+
+    const noRow = await request(app).post("/api/dispatcher/drivers").set("authorization", auth)
+      .send({ email: "nohos@fleet.com", name: "No Hos", password: "secret123" });
+    const list2 = await request(app).get("/api/dispatcher/drivers").set("authorization", auth);
+    const withoutHos = list2.body.find((d: { id: string }) => d.id === noRow.body.id);
+    expect(withoutHos.hos).toBeNull();
+  });
+
   it("returns 404 for an unknown driver id", async () => {
     const auth = await dispatcherAuth();
     const res = await request(app).get("/api/dispatcher/drivers/does-not-exist").set("authorization", auth);

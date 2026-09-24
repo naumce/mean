@@ -1,7 +1,7 @@
 import type { Assignment, DriverAvailability, HosState, Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { ACTIVE_STATUSES } from "./activeStatuses.js";
-import { STATE_CODES } from "./geocode.js";
+import { STATE_CODES, nearestKnownPlace, type NearestKnownPlace } from "./geocode.js";
 
 // Driver availability: one shared "where and when will this driver be free"
 // projection, plus the explicit (dispatcher-set) row that can override it.
@@ -173,7 +173,10 @@ export interface DriverAvailabilityView {
   status: AvailabilityStatus;
   availableAt: number;
   available: { lat: number | null; lng: number | null; city: string | null; state: string | null };
-  current: { lat: number; lng: number; at: number } | null;
+  /** `near`: the nearest gazetteer place to this ping (Task 9) — null when
+   *  none is within geocode.ts's nearestKnownPlace 150-mi ceiling. Driver
+   *  Supply's CURRENT column reads it, never the raw lat/lng, for display. */
+  current: { lat: number; lng: number; at: number; near: NearestKnownPlace | null } | null;
   currentAssignment: { loadId: string; loadRef: string; deliveryEtaMs: number; deliveryCity: string | null } | null;
   source: string;
 }
@@ -232,7 +235,12 @@ function toView(driver: DriverForAvailability, nowMs: number): DriverAvailabilit
 
   const currentPing =
     driver.lastLat != null && driver.lastLng != null && driver.lastLocationAt != null
-      ? { lat: driver.lastLat, lng: driver.lastLng, at: driver.lastLocationAt.getTime() }
+      ? {
+          lat: driver.lastLat,
+          lng: driver.lastLng,
+          at: driver.lastLocationAt.getTime(),
+          near: nearestKnownPlace(driver.lastLat, driver.lastLng),
+        }
       : null;
 
   const currentAssignment = current

@@ -13,7 +13,15 @@ export interface MapShop {
   lng: number | null
 }
 
-const props = defineProps<{ locations: DriverLocation[]; shops?: MapShop[] }>()
+const props = defineProps<{
+  locations: DriverLocation[]
+  shops?: MapShop[]
+  /** Per-marker colour override (Driver Supply: colour by availability
+   *  status). Returning null for a location keeps today's freshness colour —
+   *  the prop is additive and every existing caller that omits it draws
+   *  exactly as before. */
+  markerColor?: (location: DriverLocation) => string | null
+}>()
 
 const FRESH_MS = 15 * 60_000
 const HEIGHT = 380
@@ -66,9 +74,10 @@ function draw(): void {
     if (!inBounds(loc.latitude, loc.longitude)) continue
     const p = project(loc.latitude, loc.longitude, w, h)
     const fresh = now - new Date(loc.createdAt).getTime() < FRESH_MS
+    const customColor = props.markerColor?.(loc) ?? null
     ctx.beginPath()
     ctx.arc(p.x, p.y, 5, 0, Math.PI * 2)
-    ctx.fillStyle = fresh ? '#10b981' : '#9ca3af'
+    ctx.fillStyle = customColor ?? (fresh ? '#10b981' : '#9ca3af')
     ctx.fill()
     ctx.strokeStyle = '#ffffff'
     ctx.lineWidth = 1.5
