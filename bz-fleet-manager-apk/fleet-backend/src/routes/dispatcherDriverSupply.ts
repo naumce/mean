@@ -5,6 +5,8 @@ import { outsideOrg } from "../middleware/orgScope.js";
 import { validateBody } from "../middleware/validate.js";
 import { asyncRoute } from "../lib/asyncRoute.js";
 import { availabilityFor } from "../lib/driverAvailability.js";
+import { driverMetrics, laneOfAssignmentStops } from "../lib/driverMetrics.js";
+import { deliveryWindowEndOf, isLateAssignment, lateMinutes } from "../lib/onTime.js";
 
 // Driver Supply (AI Dispatch Foundation, Task 2): the explicit-availability
 // read/write API on top of lib/driverAvailability.ts's shared projection.
@@ -165,5 +167,100 @@ dispatcherDriverSupplyRouter.patch(
     const [view] = await availabilityFor(driver.orgId, [id]);
     if (!view) return res.status(404).json({ error: "Driver not found" });
     res.json(view);
+  }),
+);
+
+// GET /drivers/:id/metrics — evidence-derived driver metrics (AI Dispatch
+// Foundation, Task 4): every number replays real rows (completed
+// assignments, scanDetention's claims, the Night Shift agent's own event
+// trail) — see lib/driverMetrics.ts's own header. Same 404-not-403
+// cross-tenant shape as every other :id route in this file.
+dispatcherDriverSupplyRouter.get(
+  "/drivers/:id/metrics",
+  asyncRoute(async (req, res) => {
+    const id = req.params.id as string;
+    const driver = await prisma.driver.findUnique({ where: { id }, select: { orgId: true } });
+    if (!driver || driver.orgId == null || outsideOrg(req, driver.orgId)) {
+      return res.status(404).json({ error: "Driver not found" });
+    }
+    res.json(await driverMetrics(driver.orgId, id));
+  }),
+);
+
+const DEFAULT_HISTORY_LIMIT = 50;
+const MIN_HISTORY_LIMIT = 1;
+const MAX_HISTORY_LIMIT = 200;
+
+/** `?limit=` clamped to [MIN_HISTORY_LIMIT, MAX_HISTORY_LIMIT], defaulting to
+ *  DEFAULT_HISTORY_LIMIT for anything absent or unparsable. Unlike
+ *  dispatcherDetention.ts's `sinceHours` (a 400 on out-of-range, because a
+ *  wide window means an expensive per-driver ping scan), a history PAGE is
+ *  cheap either way — a caller who asks for too many/too few rows gets the
+ *  nearest valid page instead of an error. */
+function historyLimit(raw: unknown): number {
+  const parsed = typeof raw === "string" ? Number.parseInt(raw, 10) : NaN;
+  if (!Number.isFinite(parsed)) return DEFAULT_HISTORY_LIMIT;
+  return Math.min(MAX_HISTORY_LIMIT, Math.max(MIN_HISTORY_LIMIT, parsed));
+}
+
+// GET /drivers/:id/history — this driver's completed assignments, newest
+// (most recently completed) first. late/lateMinutes reuse onTime.ts exactly
+// as driverMetrics.ts does, and originCity/destCity/laneKey reuse
+// driverMetrics.ts's own laneOfAssignmentStops — three call sites, one rule.
+dispatcherDriverSupplyRouter.get(
+  "/drivers/:id/history",
+  asyncRoute(async (req, res) => {
+    const id = req.params.id as string;
+    const driver = await prisma.driver.findUnique({ where: { id }, select: { orgId: true } });
+    if (!driver || driver.orgId == null || outsideOrg(req, driver.orgId)) {
+      return res.status(404).json({ error: "Driver not found" });
+    }
+
+    const assignments = await prisma.assignment.findMany({
+      where: { orgId: driver.orgId, driverId: id, status: "completed" },
+      orderBy: { completedAt: "desc" },
+      take: historyLimit(req.query.limit),
+      select: {
+        id: true,
+        loadId: true,
+        plannedStart: true,
+        plannedEnd: true,
+        completedAt: true,
+        load: {
+          select: {
+            externalId: true,
+            customerId: true,
+            customer: { select: { name: true } },
+            stops: {
+              orderBy: { sequence: "asc" },
+              select: { type: true, address: true, lat: true, lng: true, appointment: { select: { windowEnd: true } } },
+            },
+          },
+        },
+      },
+    });
+
+    res.json(
+      assignments.map((a) => {
+        const windowEnd = deliveryWindowEndOf(a.load.stops);
+        const lane = laneOfAssignmentStops(a.load.stops);
+        return {
+          assignmentId: a.id,
+          loadId: a.loadId,
+          loadRef: a.load.externalId ?? a.loadId,
+          customerName: a.load.customer?.name ?? null,
+          customerId: a.load.customerId,
+          originCity: lane?.originCity ?? null,
+          destCity: lane?.destCity ?? null,
+          laneKey: lane?.key ?? null,
+          plannedStart: a.plannedStart,
+          plannedEnd: a.plannedEnd,
+          completedAt: a.completedAt,
+          deliveryWindowEnd: windowEnd,
+          late: isLateAssignment(a.completedAt, windowEnd),
+          lateMinutes: lateMinutes(a.completedAt, windowEnd),
+        };
+      }),
+    );
   }),
 );

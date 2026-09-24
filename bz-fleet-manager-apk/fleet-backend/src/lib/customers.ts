@@ -2,7 +2,7 @@ import { prisma } from "../db.js";
 import { laneKey } from "./lanes.js";
 import { cityStateFromAddress } from "./driverAvailability.js";
 import { scanDetention } from "./detentionScan.js";
-import { isLateAssignment } from "./onTime.js";
+import { deliveryWindowEndOf, isLateAssignment } from "./onTime.js";
 
 // Customer service (AI Dispatch Foundation, Task 3): the read side of the
 // real Customer entity loadWriter.ts's deriveCustomer links loads to.
@@ -39,15 +39,6 @@ interface StopForHistory {
   lat: number | null;
   lng: number | null;
   appointment: { windowEnd: Date } | null;
-}
-
-/** The load's LAST stop typed "delivery", or — no stop is — its last stop:
- *  the exact rule onTime.ts's own doc comment names, applied here once so
- *  every call to isLateAssignment below agrees with it. */
-function deliveryWindowEndOf(stops: StopForHistory[]): Date | null {
-  const delivery = [...stops].reverse().find((s) => s.type === "delivery");
-  const stop = delivery ?? stops[stops.length - 1] ?? null;
-  return stop?.appointment?.windowEnd ?? null;
 }
 
 /** This load's lane: its first stop to its last stop, BY POSITION
