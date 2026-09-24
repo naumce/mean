@@ -12,6 +12,7 @@ import { vehicleRouter } from "./routes/vehicle.js";
 import { navigationRouter } from "./routes/navigation.js";
 import { dispatcherAuthRouter, dispatcherMeRouter } from "./routes/dispatcherAuth.js";
 import { dispatcherDriversRouter } from "./routes/dispatcherDrivers.js";
+import { dispatcherDriverSupplyRouter } from "./routes/dispatcherDriverSupply.js";
 import { dispatcherCarriersRouter } from "./routes/dispatcherCarriers.js";
 import { dispatcherCarrierStatementsRouter } from "./routes/dispatcherCarrierStatements.js";
 import { dispatcherRestStopsRouter } from "./routes/dispatcherRestStops.js";
@@ -180,6 +181,12 @@ export function createApp() {
   // (routes/dispatcherAuth.ts) for why this is a separate router rather than
   // a second mount of dispatcherAuthRouter (which must stay public, above).
   app.use("/api/dispatcher", dispatcherMeRouter);
+  // Driver Supply (AI Dispatch Foundation, Task 2) BEFORE dispatcherDriversRouter:
+  // its `GET /drivers/availability` is a static two-segment route that
+  // dispatcherDriversRouter's `GET /drivers/:id` would otherwise swallow
+  // (":id" = "availability") — see dispatcherDriverSupply.ts's own mount-order
+  // comment for the full reasoning.
+  app.use("/api/dispatcher", dispatcherDriverSupplyRouter);
   app.use("/api/dispatcher", dispatcherDriversRouter);
   app.use("/api/dispatcher", dispatcherCarriersRouter);
   app.use("/api/dispatcher", dispatcherCarrierStatementsRouter);

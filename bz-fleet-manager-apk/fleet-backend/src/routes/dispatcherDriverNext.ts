@@ -11,6 +11,7 @@ import {
 import type { TractorInput, TrailerInput } from "../domain/dispatch/types.js";
 import { ACTIVE_STATUSES } from "../lib/activeStatuses.js";
 import { asyncRoute } from "../lib/asyncRoute.js";
+import { lastGeocodedDeliveryStop, projectAvailability } from "../lib/driverAvailability.js";
 
 // Driver detail + "what's next" (Control Tower screen 6): the suggest engine
 // inverted — rank the org's OPEN loads for one driver. Planning-aware: if the
@@ -45,13 +46,18 @@ dispatcherDriverNextRouter.get("/drivers/:id/next", asyncRoute(async (req, res) 
   }
 
   const current = driver.assignments[0] ?? null;
-  // Future position: the last drop of the current load beats the last ping.
-  const lastDrop = current
-    ? [...current.load.stops].reverse().find((s) => s.type === "delivery" && s.lat != null && s.lng != null)
-    : null;
-  const originLat = lastDrop?.lat ?? driver.lastLat;
-  const originLng = lastDrop?.lng ?? driver.lastLng;
-  const availableAt = current ? current.plannedEnd.getTime() : Date.now();
+  // Future position: the last drop of the current load beats the last ping
+  // — shared with dispatcherDriverSupply.ts via lib/driverAvailability.ts's
+  // projectAvailability(). `lastDrop` itself is kept here only because this
+  // route's response also shows the stop's address as "destination" below;
+  // projectAvailability's return value deliberately carries lat/lng/city/
+  // state distilled from it, not the raw stop, so both call the same
+  // lastGeocodedDeliveryStop() helper rather than a second copy of the rule.
+  const lastDrop = current ? lastGeocodedDeliveryStop(current.load.stops) : null;
+  const projected = projectAvailability(driver, current, Date.now());
+  const originLat = projected.lat;
+  const originLng = projected.lng;
+  const availableAt = projected.at;
 
   const openLoads = await prisma.load.findMany({
     where: { orgId: driver.orgId, status: "open" },

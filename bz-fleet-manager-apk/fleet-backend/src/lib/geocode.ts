@@ -14,7 +14,11 @@ export interface GeocodeHit {
   source: "gazetteer" | "provider";
 }
 
-const STATE_CODES = new Set([
+// Exported so lib/driverAvailability.ts's own parseCityState (a differently
+// -cased, field-wise-nullable variant for a human-facing view — see its own
+// doc comment) can reuse the same state-token vocabulary instead of a second
+// hand-copied list drifting out of sync with this one.
+export const STATE_CODES = new Set([
   "al","ak","az","ar","ca","co","ct","de","fl","ga","hi","id","il","in","ia","ks","ky","la","me","md",
   "ma","mi","mn","ms","mo","mt","ne","nv","nh","nj","nm","ny","nc","nd","oh","ok","or","pa","ri","sc",
   "sd","tn","tx","ut","vt","va","wa","wv","wi","wy","dc",
