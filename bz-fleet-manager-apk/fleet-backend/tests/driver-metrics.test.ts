@@ -5,6 +5,7 @@ import { signDispatcherAccess } from "../src/lib/tokens.js";
 import { driverMetrics, driverMetricsBatch } from "../src/lib/driverMetrics.js";
 import { laneKey } from "../src/lib/lanes.js";
 import { responseMetricsFor } from "../src/lib/driverResponseMetrics.js";
+import { candidateContextSourcesForDriver } from "../src/lib/candidateContext.js";
 
 // AI Dispatch Foundation, Task 4 — driverMetrics/driverMetricsBatch
 // (lib/driverMetrics.ts) and the two routes built on top of them
@@ -216,6 +217,28 @@ describe("driverMetrics", () => {
     expect(metrics.laneExperience[0]).toMatchObject({ runs: 4, originCity: "Kansas City", destCity: "Dallas" });
     expect(metrics.laneExperience[0]?.laneKey).toBe(laneKey(KC, DALLAS));
     expect(metrics.laneExperience[1]).toMatchObject({ runs: 2, originCity: "Tulsa", destCity: "Amarillo" });
+  });
+
+  it("fix round 1: includeDetention:false skips the scan — averageDetentionMinutes is null even though this fixture has a real 60-minute claim", async () => {
+    const { org, driver } = await seedFixture();
+
+    // Same fixture as the test above (the one genuine detention claim, 60
+    // billable minutes) — driverMetrics() still reports it, unaffected...
+    expect((await driverMetrics(org.id, driver.id, NOW_MS)).averageDetentionMinutes).toBe(60);
+
+    // ...but the opt-out reports null, not 0 — the scan genuinely never ran,
+    // it isn't that it ran and found nothing.
+    const withoutDetention = await driverMetricsBatch(org.id, [driver.id], NOW_MS, { includeDetention: false });
+    expect(withoutDetention.get(driver.id)?.averageDetentionMinutes).toBeNull();
+    // Every other field is untouched by the option.
+    expect(withoutDetention.get(driver.id)?.onTimeRate).toBeCloseTo(0.6, 10);
+    expect(withoutDetention.get(driver.id)?.completedLoads).toBe(6);
+
+    // The actual context path (candidateContext.ts) drives this through
+    // candidateContextSourcesForDriver — proves the wiring, not just that
+    // the option works when passed by hand above.
+    const sources = await candidateContextSourcesForDriver(org.id, driver.id, NOW_MS);
+    expect(sources.metrics.get(driver.id)?.averageDetentionMinutes).toBeNull();
   });
 
   it("counts a trip's response evidence even while its assignment is still active, not completed", async () => {

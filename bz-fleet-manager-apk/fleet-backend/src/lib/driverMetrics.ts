@@ -207,26 +207,44 @@ function averageDetentionMinutesFor(driverId: string, detentions: StopDetention[
 // Public API
 // ---------------------------------------------------------------------------
 
+export interface DriverMetricsOptions {
+  /** `scanDetention` is a 365-day, ORG-WIDE scan that also reads every
+   *  distinct driver's DriverLocation pings (detentionScan.ts) — the
+   *  heaviest single piece of this function's batch. `CandidateContext`
+   *  (Task 6, candidateContext.ts) never surfaces `averageDetentionMinutes`
+   *  at all, so every `/suggest`/`/drivers/:id/next` call was paying for
+   *  that scan to compute a number nothing reads. `false` skips the scan
+   *  entirely and every driver's `averageDetentionMinutes` comes back
+   *  `null` (not "0" — the scan genuinely never ran, so "no evidence" would
+   *  be a lie; `null` already means exactly that elsewhere in this file).
+   *  Defaults to `true`: `driverMetrics()`, every existing route, and every
+   *  existing test keep asking for (and getting) the real figure — only a
+   *  caller that explicitly does not need it opts out. */
+  includeDetention?: boolean;
+}
+
 /**
  * Metrics for every id in `driverIds`, batched: ONE `assignment.findMany`
  * covering every requested driver, ONE `agentTrip.findMany` covering every
- * load those assignments touch, and ONE `scanDetention` call — never one of
- * these per driver, so the query count stays fixed no matter how long
- * `driverIds` is (the candidate-ranking path this exists for, Task 6, can
- * call this with a whole org's worth of drivers). A driver with zero
- * completed assignments still gets an entry: every rate null, every count
- * zero — "no evidence" is itself a fact this function reports, not an
- * omission.
+ * load those assignments touch, and (unless `opts.includeDetention` is
+ * `false`) ONE `scanDetention` call — never one of these per driver, so the
+ * query count stays fixed no matter how long `driverIds` is (the
+ * candidate-ranking path this exists for, Task 6, can call this with a
+ * whole org's worth of drivers). A driver with zero completed assignments
+ * still gets an entry: every rate null, every count zero — "no evidence" is
+ * itself a fact this function reports, not an omission.
  */
 export async function driverMetricsBatch(
   orgId: string,
   driverIds: string[],
   nowMs: number = Date.now(),
+  opts: DriverMetricsOptions = {},
 ): Promise<Map<string, DriverMetrics>> {
   const result = new Map<string, DriverMetrics>();
   const uniqueIds = [...new Set(driverIds)];
   if (uniqueIds.length === 0) return result;
 
+  const includeDetention = opts.includeDetention ?? true;
   const asOf = new Date(nowMs);
   const detentionSinceMs = nowMs - DETENTION_LOOKBACK_DAYS * MS_PER_DAY;
 
@@ -239,6 +257,9 @@ export async function driverMetricsBatch(
   // experience, night loads, loadsLast30Days) filter this same result down
   // to `status === "completed"` in memory instead, so there is still exactly
   // ONE assignments query regardless of how many driverIds are asked for.
+  // `detentions` stays `[]` when the scan is skipped, which is enough on its
+  // own to make `averageDetentionMinutesFor` return `null` for everyone
+  // below — no second branch needed to special-case the opt-out.
   const [assignments, org, detentions] = await Promise.all([
     prisma.assignment.findMany({
       where: { orgId, driverId: { in: uniqueIds } },
@@ -259,7 +280,7 @@ export async function driverMetricsBatch(
       },
     }),
     prisma.org.findUnique({ where: { id: orgId }, select: { timezone: true } }),
-    scanDetention(orgId, detentionSinceMs),
+    includeDetention ? scanDetention(orgId, detentionSinceMs) : Promise.resolve<StopDetention[]>([]),
   ]);
 
   const timezone = org?.timezone ?? DEFAULT_TIMEZONE;

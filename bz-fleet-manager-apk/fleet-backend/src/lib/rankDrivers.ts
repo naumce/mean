@@ -6,6 +6,12 @@ import type { LoadInput, TractorInput, TrailerInput } from "../domain/dispatch/t
 import { laneFamiliarity, laneKeyOfLoad } from "./lanes.js";
 import { rateConfigsForDrivers } from "./rateConfig.js";
 import { ACTIVE_STATUSES } from "./activeStatuses.js";
+import {
+  buildCandidateContext,
+  candidateContextSources,
+  type CandidateContext,
+  type CandidateContextInput,
+} from "./candidateContext.js";
 
 // Shared driver-ranking core: the ⚡Suggest panel and the commit-time
 // empty-miles-saved metric both need "rank every driver in the org for this
@@ -13,7 +19,15 @@ import { ACTIVE_STATUSES } from "./activeStatuses.js";
 // both callers score identically.
 
 export interface OrgRanking {
-  ranked: (SuggestRow & { driverName: string | null; warnings: string[]; hosKnown: boolean })[];
+  ranked: (SuggestRow & {
+    driverName: string | null;
+    warnings: string[];
+    hosKnown: boolean;
+    /** Availability/HOS/lane/metrics/preferences/qualifications for a human
+     *  or a future AI reader — present only when the caller asked for it via
+     *  `contextInput` (Task 6). Never read by feasibility/score above. */
+    context?: CandidateContext;
+  })[];
   unmappable: { driverId: string; driverName: string | null; reason: string }[];
 }
 
@@ -29,6 +43,12 @@ export async function rankOrgDrivers(
    *  empty-miles-saved median is computed against a fiction. A commit passes
    *  nothing: there is no row yet to exclude. */
   excludeAssignmentId?: string,
+  /** When given, every ranked row (feasible AND infeasible alike) also gets
+   *  a `context` — one extra batch of queries total, run once for every
+   *  candidate id, never per-driver (Task 6). The two commit/replan
+   *  empty-miles-saved callers (dispatcherAssignments.ts) omit this
+   *  entirely: they have never needed it and must not pay for it. */
+  contextInput?: CandidateContextInput,
 ): Promise<OrgRanking> {
   const drivers = await prisma.driver.findMany({
     where: { orgId },
@@ -77,7 +97,11 @@ export async function rankOrgDrivers(
 
   // Lane familiarity from completed history feeds the scorer's lane weight —
   // a driver who has actually run this lane edges out an otherwise-equal one.
-  const familiarity = await laneFamiliarity(orgId, laneKeyOfLoad(loadInput));
+  // Hoisted into a named const: Task 6's context batch below needs the exact
+  // same lane key (to look up laneRuns), so it must never be a second,
+  // possibly-drifting computation.
+  const laneKeyForLoad = laneKeyOfLoad(loadInput);
+  const familiarity = await laneFamiliarity(orgId, laneKeyForLoad);
 
   // Per-candidate cost model: each driver is priced at THEIR OWN carrier's
   // rate, falling back field-by-field to the org and then planning defaults
@@ -90,7 +114,7 @@ export async function rankOrgDrivers(
   // shared default — nothing is lost for that case.
   const rateByDriver = await rateConfigsForDrivers(drivers.map((d) => d.id));
 
-  const ranked = suggest(loadInput, candidates, {
+  const rankedBase = suggest(loadInput, candidates, {
     lanePerfScore: (driverId) => familiarity.get(driverId) ?? 0,
     rate: (driverId) => rateByDriver.get(driverId) ?? DEFAULT_RATE_CONFIG,
   }).map((row) => ({
@@ -103,7 +127,29 @@ export async function rankOrgDrivers(
       : row.warnings,
   }));
 
+  const ranked = contextInput
+    ? await attachContext(orgId, contextInput, laneKeyForLoad, rankedBase)
+    : rankedBase;
+
   return { ranked, unmappable };
+}
+
+/** Batch-builds candidate context sources ONCE for every ranked row's driver
+ *  id (feasible and infeasible alike — a blocked driver is never hidden, and
+ *  neither is their context), then attaches `context` to each row. Split out
+ *  of rankOrgDrivers so that function's own control flow stays readable. */
+async function attachContext(
+  orgId: string,
+  contextInput: CandidateContextInput,
+  laneKeyForLoad: string | null,
+  rows: OrgRanking["ranked"],
+): Promise<OrgRanking["ranked"]> {
+  const nowMs = contextInput.nowMs ?? Date.now();
+  const sources = await candidateContextSources(orgId, rows.map((r) => r.driverId), laneKeyForLoad, nowMs);
+  return rows.map((row) => ({
+    ...row,
+    context: buildCandidateContext(sources, contextInput, { driverId: row.driverId, deadheadMi: row.deadheadMi }),
+  }));
 }
 
 /** Median deadhead of the feasible alternatives minus the chosen deadhead,

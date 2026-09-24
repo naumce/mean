@@ -2,6 +2,7 @@ import request from "supertest";
 import { app, resetDb } from "./helpers.js";
 import { prisma } from "../src/db.js";
 import { signDispatcherAccess } from "../src/lib/tokens.js";
+import { laneKey, laneRunCounts } from "../src/lib/lanes.js";
 
 beforeEach(resetDb);
 
@@ -114,4 +115,41 @@ it("includes a pool-gap load as infeasible with the reason, and 404s cross-org",
   const cross = await request(app).get(`/api/dispatcher/drivers/${driver.id}/next`)
     .set("authorization", `Bearer ${signDispatcherAccess(foreign.id)}`);
   expect(cross.status).toBe(404);
+});
+
+it("Task 6: every nextLoads row carries context, with lane.key/laneRuns matching laneRunCounts", async () => {
+  const { org, auth, driver, mkLoad } = await seed();
+  await mkLoad("L-NEAR", KC, OMAHA);
+
+  // A completed run of this driver's own on the SAME KC->OMAHA lane —
+  // laneRunCounts(org.id, driver.id) must report it, and context.laneRuns on
+  // the matching open load's row must be built from that exact number (Task
+  // 4's laneRunCounts, not a second computation).
+  const histLoad = await mkLoad("L-HIST", KC, OMAHA);
+  await prisma.assignment.create({
+    data: {
+      orgId: org.id, loadId: histLoad.id, driverId: driver.id, status: "completed",
+      plannedStart: new Date("2026-01-01T08:00:00.000Z"), plannedEnd: new Date("2026-01-01T20:00:00.000Z"),
+      completedAt: new Date("2026-01-01T20:00:00.000Z"),
+    },
+  });
+
+  const res = await request(app).get(`/api/dispatcher/drivers/${driver.id}/next`).set("authorization", auth);
+  expect(res.status).toBe(200);
+
+  const rows = res.body.nextLoads as Array<{
+    reference: string;
+    context: { lane: { key: string | null; label: string | null }; laneRuns: number };
+  }>;
+  expect(rows.length).toBeGreaterThan(0);
+  for (const row of rows) expect(row.context).toBeTruthy();
+
+  const key = laneKey(KC, OMAHA);
+  const runs = await laneRunCounts(org.id, driver.id);
+  const expectedRuns = runs.get(key)?.runs ?? 0;
+  expect(expectedRuns).toBeGreaterThan(0);
+
+  const near = rows.find((r) => r.reference === "L-NEAR")!;
+  expect(near.context.lane.key).toBe(key);
+  expect(near.context.laneRuns).toBe(expectedRuns);
 });

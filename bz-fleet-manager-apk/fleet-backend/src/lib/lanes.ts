@@ -29,12 +29,15 @@ export function laneKeyOfLoad(load: LoadInput): string | null {
   return laneKey(pickup.location, delivery.location);
 }
 
-/** How familiar each org driver is with this lane: completed runs scaled to
- *  0..1 (saturates at FAMILIARITY_SATURATION_RUNS). Empty history = all 0 —
- *  the scorer's lane weight simply stays dormant, as designed. */
-export async function laneFamiliarity(orgId: string, key: string | null): Promise<Map<string, number>> {
-  const scores = new Map<string, number>();
-  if (!key) return scores;
+/** Every org driver's completed-run COUNT on lane `key` — the raw numerator
+ *  laneFamiliarity below saturates into its 0..1 score, exposed on its own
+ *  for a candidate-context "you've run this lane N times" figure (AI
+ *  Dispatch Foundation, Task 6). `null` key (a load with no resolvable
+ *  pickup/delivery) returns an empty Map, exactly like laneFamiliarity's own
+ *  early-out did before this was split out of it. */
+export async function laneRunsByDriver(orgId: string, key: string | null): Promise<Map<string, number>> {
+  const runs = new Map<string, number>();
+  if (!key) return runs;
 
   const completed = await prisma.assignment.findMany({
     where: { orgId, status: "completed" },
@@ -48,7 +51,6 @@ export async function laneFamiliarity(orgId: string, key: string | null): Promis
     },
   });
 
-  const runs = new Map<string, number>();
   for (const a of completed) {
     const pickup = a.load.stops.find((s) => s.type === "pickup");
     const delivery = [...a.load.stops].reverse().find((s) => s.type === "delivery");
@@ -57,7 +59,17 @@ export async function laneFamiliarity(orgId: string, key: string | null): Promis
     if (k !== key) continue;
     runs.set(a.driverId, (runs.get(a.driverId) ?? 0) + 1);
   }
+  return runs;
+}
 
+/** How familiar each org driver is with this lane: completed runs scaled to
+ *  0..1 (saturates at FAMILIARITY_SATURATION_RUNS). Empty history = all 0 —
+ *  the scorer's lane weight simply stays dormant, as designed. Runs =
+ *  laneRunsByDriver's own query, unchanged (Task 6 split the counting out of
+ *  this function; the saturation math below is identical to before). */
+export async function laneFamiliarity(orgId: string, key: string | null): Promise<Map<string, number>> {
+  const runs = await laneRunsByDriver(orgId, key);
+  const scores = new Map<string, number>();
   for (const [driverId, count] of runs) {
     scores.set(driverId, Math.min(1, count / FAMILIARITY_SATURATION_RUNS));
   }

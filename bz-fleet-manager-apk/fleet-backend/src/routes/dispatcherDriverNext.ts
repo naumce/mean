@@ -12,6 +12,11 @@ import type { TractorInput, TrailerInput } from "../domain/dispatch/types.js";
 import { ACTIVE_STATUSES } from "../lib/activeStatuses.js";
 import { asyncRoute } from "../lib/asyncRoute.js";
 import { lastGeocodedDeliveryStop, projectAvailability } from "../lib/driverAvailability.js";
+import {
+  buildCandidateContext,
+  candidateContextSourcesForDriver,
+  type CandidateContextInput,
+} from "../lib/candidateContext.js";
 
 // Driver detail + "what's next" (Control Tower screen 6): the suggest engine
 // inverted — rank the org's OPEN loads for one driver. Planning-aware: if the
@@ -20,6 +25,19 @@ import { lastGeocodedDeliveryStop, projectAvailability } from "../lib/driverAvai
 // reflects the committed plan (decremented at commit). Mounted under
 // dispatcherRouter with attachOrgScope.
 export const dispatcherDriverNextRouter = Router();
+
+/** The minimal shape buildCandidateContext needs from one open load — Task
+ *  6's per-row enrichment never touches feasibility/score, so it is built
+ *  from the same `load` already fetched below, independent of `suggest()`. */
+function contextInputFor(load: {
+  requiredEquip: string;
+  stops: { type: string; address: string; lat: number | null; lng: number | null }[];
+}): CandidateContextInput {
+  return {
+    requiredEquip: load.requiredEquip,
+    stops: load.stops.map((s) => ({ type: s.type, address: s.address, lat: s.lat, lng: s.lng })),
+  };
+}
 
 dispatcherDriverNextRouter.get("/drivers/:id/next", asyncRoute(async (req, res) => {
   const driver = await prisma.driver.findUnique({
@@ -85,41 +103,55 @@ dispatcherDriverNextRouter.get("/drivers/:id/next", asyncRoute(async (req, res) 
   const hosKnown = driver.hos != null;
   const nextLoads: unknown[] = [];
 
-  for (const load of openLoads) {
-    try {
-      const equipment = await equipmentFor(load.requiredEquip);
-      if (!equipment) {
+  // Skip the context-sources batch entirely when there
+  // are no open loads — no sense paying for it on a response that is going
+  // to show zero `nextLoads` rows either way. When there IS at least one
+  // load, one batch is built here and reused for every iteration below
+  // (buildCandidateContext is then a pure per-load call, so N open loads
+  // cost the same handful of queries as one — candidateContext.ts's "one
+  // driver, many loads" shape).
+  if (openLoads.length > 0) {
+    const contextSources = await candidateContextSourcesForDriver(driver.orgId, driver.id, Date.now());
+
+    for (const load of openLoads) {
+      try {
+        const equipment = await equipmentFor(load.requiredEquip);
+        if (!equipment) {
+          nextLoads.push({
+            loadId: load.id, reference: load.externalId ?? load.id, requiredEquip: load.requiredEquip,
+            origin: load.stops[0]?.address ?? "", destination: load.stops[load.stops.length - 1]?.address ?? "",
+            revenueCents: load.revenueCents + load.fscCents,
+            feasible: false, score: null, deadheadMi: 0, marginCents: 0, marginPct: 0, etaMs: 0,
+            blockedReason: `no available ${load.requiredEquip} in the pool`, warnings: [],
+            context: buildCandidateContext(contextSources, contextInputFor(load), { driverId: driver.id, deadheadMi: 0 }),
+          });
+          continue;
+        }
+        const mapped = toDriverInput(driverRow, { availableAt });
+        const [row] = suggest(toLoadInput(load), [{
+          driverId: driver.id, driver: mapped.input, tractor: equipment.tractor, trailer: equipment.trailer,
+        }]);
+        nextLoads.push({
+          loadId: load.id, reference: load.externalId ?? load.id, requiredEquip: load.requiredEquip,
+          origin: load.stops[0]?.address ?? "", destination: load.stops[load.stops.length - 1]?.address ?? "",
+          revenueCents: load.revenueCents + load.fscCents,
+          tractorId: equipment.tractorId, trailerId: equipment.trailerId,
+          feasible: row.feasible, score: row.score, deadheadMi: row.deadheadMi,
+          marginCents: row.marginCents, marginPct: row.marginPct, etaMs: row.etaMs,
+          blockedReason: row.blockedReason,
+          warnings: mapped.hosKnown ? row.warnings : [...row.warnings, "HOS not imported; assumes full hours"],
+          context: buildCandidateContext(contextSources, contextInputFor(load), { driverId: driver.id, deadheadMi: row.deadheadMi }),
+        });
+      } catch (err) {
         nextLoads.push({
           loadId: load.id, reference: load.externalId ?? load.id, requiredEquip: load.requiredEquip,
           origin: load.stops[0]?.address ?? "", destination: load.stops[load.stops.length - 1]?.address ?? "",
           revenueCents: load.revenueCents + load.fscCents,
           feasible: false, score: null, deadheadMi: 0, marginCents: 0, marginPct: 0, etaMs: 0,
-          blockedReason: `no available ${load.requiredEquip} in the pool`, warnings: [],
+          blockedReason: err instanceof Error ? err.message : "not evaluable", warnings: [],
+          context: buildCandidateContext(contextSources, contextInputFor(load), { driverId: driver.id, deadheadMi: 0 }),
         });
-        continue;
       }
-      const mapped = toDriverInput(driverRow, { availableAt });
-      const [row] = suggest(toLoadInput(load), [{
-        driverId: driver.id, driver: mapped.input, tractor: equipment.tractor, trailer: equipment.trailer,
-      }]);
-      nextLoads.push({
-        loadId: load.id, reference: load.externalId ?? load.id, requiredEquip: load.requiredEquip,
-        origin: load.stops[0]?.address ?? "", destination: load.stops[load.stops.length - 1]?.address ?? "",
-        revenueCents: load.revenueCents + load.fscCents,
-        tractorId: equipment.tractorId, trailerId: equipment.trailerId,
-        feasible: row.feasible, score: row.score, deadheadMi: row.deadheadMi,
-        marginCents: row.marginCents, marginPct: row.marginPct, etaMs: row.etaMs,
-        blockedReason: row.blockedReason,
-        warnings: mapped.hosKnown ? row.warnings : [...row.warnings, "HOS not imported; assumes full hours"],
-      });
-    } catch (err) {
-      nextLoads.push({
-        loadId: load.id, reference: load.externalId ?? load.id, requiredEquip: load.requiredEquip,
-        origin: load.stops[0]?.address ?? "", destination: load.stops[load.stops.length - 1]?.address ?? "",
-        revenueCents: load.revenueCents + load.fscCents,
-        feasible: false, score: null, deadheadMi: 0, marginCents: 0, marginPct: 0, etaMs: 0,
-        blockedReason: err instanceof Error ? err.message : "not evaluable", warnings: [],
-      });
     }
   }
 

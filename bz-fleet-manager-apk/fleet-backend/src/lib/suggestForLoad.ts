@@ -1,6 +1,7 @@
 import { prisma } from "../db.js";
 import { rankOrgDrivers, type OrgRanking } from "./rankDrivers.js";
 import { toLoadInput, toTractorInput, toTrailerInput } from "../domain/dispatch/mapper.js";
+import type { CandidateContext, CandidateContextInput } from "./candidateContext.js";
 
 // Extracted from dispatcherSuggest.ts (AI Dispatch Foundation, Task 5): the
 // ⚡Suggest panel's whole pipeline (load -> toLoadInput -> a representative
@@ -25,6 +26,12 @@ export interface SuggestCandidateRow {
   blockedReason?: string;
   warnings: string[];
   hosKnown?: boolean;
+  /** Availability/HOS/lane/metrics/preferences/qualifications — attached by
+   *  rankOrgDrivers when this pipeline passes it a `contextInput` (Task 6).
+   *  Absent on the `unmappable` rows below: a driver who never became a
+   *  Candidate at all (no known position) has nothing to build context from
+   *  either. */
+  context?: CandidateContext;
 }
 
 export interface SuggestResult {
@@ -73,6 +80,17 @@ export async function suggestForLoad(
 
   const loadInput = toLoadInput(load);
 
+  // Context enrichment (Task 6): the same stops, in the flatter shape
+  // buildCandidateContext needs (address text for lane labels/city parsing,
+  // alongside the lat/lng toLoadInput already turned into GeoPoints above) —
+  // never fed back into the engine, only attached to rows after suggest()
+  // has already run.
+  const contextInput: CandidateContextInput = {
+    requiredEquip: load.requiredEquip,
+    stops: load.stops.map((s) => ({ type: s.type, address: s.address, lat: s.lat, lng: s.lng })),
+    nowMs,
+  };
+
   // Representative available equipment from the org pool.
   const [tractor, trailer] = await Promise.all([
     prisma.tractor.findFirst({ where: { orgId: load.orgId, status: "active" } }),
@@ -101,7 +119,9 @@ export async function suggestForLoad(
     };
   }
 
-  const ranking = await rankOrgDrivers(load.orgId, loadInput, toTractorInput(tractor), toTrailerInput(trailer), nowMs);
+  const ranking = await rankOrgDrivers(
+    load.orgId, loadInput, toTractorInput(tractor), toTrailerInput(trailer), nowMs, undefined, contextInput,
+  );
 
   return {
     loadId: load.id,
