@@ -354,10 +354,12 @@ describe("seed-world (AI Dispatch Foundation, Task 7)", () => {
 
     const lastPing = await prisma.driverLocation.findFirstOrThrow({ where: { driverId: assignment.driverId }, orderBy: { createdAt: "desc" } });
     const gapMi = haversineMi(expectedPoint, { lat: lastPing.latitude, lng: lastPing.longitude });
-    // The brief says 90 min behind plan — a band, not a floor, so a drift in
-    // either direction fails.
-    expect(driveMinutes(gapMi)).toBeGreaterThanOrEqual(75);
-    expect(driveMinutes(gapMi)).toBeLessThanOrEqual(105);
+    // The seed places the ping 90 plan-minutes behind along the ROAD (loadedMi
+    // = great-circle × 1.2); this measures the straight-line gap, so the
+    // expected reading is ≈ 90 / 1.2 = 75 min. A band, not a floor, so a drift
+    // in either direction fails.
+    expect(driveMinutes(gapMi)).toBeGreaterThanOrEqual(65);
+    expect(driveMinutes(gapMi)).toBeLessThanOrEqual(95);
     await expectOnLoad(org.id, assignment.driverId);
   });
 
