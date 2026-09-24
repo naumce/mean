@@ -1,13 +1,43 @@
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { reactive, nextTick } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuthStore } from '../stores/auth'
 import { useDriverSupplyStore } from '../stores/driverSupply'
+import { useSimStore } from '../stores/sim'
 import DriverSupplyView from './DriverSupplyView.vue'
 import type { SupplyDriver } from '../types/supply'
 
 vi.mock('../stores/driverSupply', () => ({ useDriverSupplyStore: vi.fn() }))
 const mockedUseDriverSupplyStore = vi.mocked(useDriverSupplyStore)
+
+// SimControls.vue (mounted at
+// the top of this view) calls the real sim store's probe() on mount, which
+// would otherwise issue a genuine, unmocked axios request every time this
+// file's specs mount the view. Module-mocked, same as driverSupply above —
+// `available: false` by default so SimControls itself also renders nothing.
+vi.mock('../stores/sim', () => ({ useSimStore: vi.fn() }))
+const mockedUseSimStore = vi.mocked(useSimStore)
+
+// reactive(), not a plain object: the "a sim tick reloads driver supply"
+// test below mutates `lastTickAt` AFTER mount and needs DriverSupplyView's
+// own `watch(() => sim.lastTickAt, ...)` to actually observe that change.
+function createSimStoreStub(overrides: Record<string, unknown> = {}) {
+  return reactive({
+    available: false,
+    state: null,
+    busy: false,
+    error: null,
+    lastTickAt: null as number | null,
+    probe: vi.fn(),
+    tick: vi.fn(),
+    start: vi.fn(),
+    stop: vi.fn(),
+    reset: vi.fn(),
+    setDriverMode: vi.fn(),
+    ...overrides,
+  })
+}
 
 const onLoadDriver: SupplyDriver = {
   id: 'd1', name: 'Alice', firstName: 'Alice', lastName: 'A', phone: '555-0100',
@@ -63,6 +93,8 @@ describe('DriverSupplyView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     mockedUseDriverSupplyStore.mockReset()
+    mockedUseSimStore.mockReset()
+    mockedUseSimStore.mockReturnValue(createSimStoreStub() as unknown as ReturnType<typeof useSimStore>)
     const auth = useAuthStore()
     auth.setSession({
       token: 't',
@@ -84,6 +116,21 @@ describe('DriverSupplyView', () => {
     wrapper.unmount()
     expect(store.stopPolling).toHaveBeenCalled()
     expect(store.disconnectRealtime).toHaveBeenCalled()
+  })
+
+  it('reloads driver supply data when a sim tick lands (sim.lastTickAt changes)', async () => {
+    const store = createDriverSupplyStoreStub()
+    mockedUseDriverSupplyStore.mockReturnValue(store as unknown as ReturnType<typeof useDriverSupplyStore>)
+    const simStub = createSimStoreStub()
+    mockedUseSimStore.mockReturnValue(simStub as unknown as ReturnType<typeof useSimStore>)
+
+    mount(DriverSupplyView)
+    store.load.mockClear() // drop the onMounted() call — isolate the watcher's own call
+
+    simStub.lastTickAt = Date.now()
+    await nextTick()
+
+    expect(store.load).toHaveBeenCalledTimes(1)
   })
 
   it('renders the ten columns for a two-driver fixture: ON_LOAD with a current load, AVAILABLE with no ping', () => {

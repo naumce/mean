@@ -55,6 +55,22 @@ function cityOf(address: string | undefined): string {
   return address?.split(",")[0]?.trim() ?? "";
 }
 
+/** AI Dispatch Foundation (Task 7/10): seed-world's scenarioActive/Open.mjs
+ *  write `Load.extras = { scenario: { code, title, hint } }` for the 14
+ *  named demo scenarios; every other load has no `extras` at all. `extras`
+ *  is untyped JSON at the schema level, so this narrows it defensively
+ *  rather than casting — a malformed or foreign shape renders as "no
+ *  scenario" for the Suggest panel header, never a 500. */
+interface ScenarioHint { code: string; title: string; hint: string }
+function scenarioHintOf(extras: unknown): ScenarioHint | null {
+  if (!extras || typeof extras !== "object") return null;
+  const scenario = (extras as Record<string, unknown>).scenario;
+  if (!scenario || typeof scenario !== "object") return null;
+  const { code, title, hint } = scenario as Record<string, unknown>;
+  if (typeof code !== "string" || typeof title !== "string" || typeof hint !== "string") return null;
+  return { code, title, hint };
+}
+
 dispatcherLoadboardRouter.get("/loadboard", asyncRoute(async (req, res) => {
   const parsed = querySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: "from and to (ISO datetimes) are required" });
@@ -334,6 +350,7 @@ dispatcherLoadboardRouter.get("/loadboard", asyncRoute(async (req, res) => {
       // AgentUpdate" concept dispatcherBrokerBoard.ts's boardRows() already
       // projects under this same field name.
       const nonAttention = l.agentUpdates.filter((a) => a.kind !== "attention");
+      const scenario = scenarioHintOf(l.extras);
       return {
         id: l.id,
         // A load with no ref of its own (a blank row started on Their Board)
@@ -371,6 +388,10 @@ dispatcherLoadboardRouter.get("/loadboard", asyncRoute(async (req, res) => {
         agentLine: nonAttention.length ? nonAttention[nonAttention.length - 1]!.text : null,
         agentEnabled: l.agentEnabled, agentPolicyId: l.agentPolicyId, agentPill: l.agentPill,
         deliveryWindowEnd: delivery?.appointment?.windowEnd ?? null,
+        // AI Dispatch Foundation (Task 10): the Suggest panel's scenario
+        // header. `null` for the ~200 non-scenario loads, same as every
+        // other optional projection in this object.
+        extras: scenario ? { scenario } : null,
         stops: l.stops.map((s) => ({
           sequence: s.sequence,
           type: s.type,

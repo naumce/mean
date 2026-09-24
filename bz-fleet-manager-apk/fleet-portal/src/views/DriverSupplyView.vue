@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted } from 'vue'
+import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import DriverDrawer from '../components/supply/DriverDrawer.vue'
 import DriverSupplyRow from '../components/supply/DriverSupplyRow.vue'
 import FleetMap from '../components/tracking/FleetMap.vue'
+import SimControls from '../components/sim/SimControls.vue'
 import { statusLabel, statusMarkerColor } from '../lib/supplyFormat'
 import { useAuthStore } from '../stores/auth'
 import { useDriverSupplyStore } from '../stores/driverSupply'
+import { useSimStore } from '../stores/sim'
 import type { DriverLocation } from '../types/dispatcher'
 import type { AvailabilityStatus } from '../types/supply'
 
@@ -16,6 +18,16 @@ import type { AvailabilityStatus } from '../types/supply'
 // driven entirely by the store's selectedDriverId, see DriverDrawer.vue).
 const store = useDriverSupplyStore()
 const auth = useAuthStore()
+const sim = useSimStore()
+
+// Task 10: a sim tick moves trucks/loads server-side without this view's own
+// 30s poll knowing to hurry up — reload the moment one lands.
+watch(
+  () => sim.lastTickAt,
+  () => {
+    void store.load()
+  },
+)
 
 const tz = computed(() => auth.org?.timezone ?? 'America/Chicago')
 
@@ -70,6 +82,8 @@ onBeforeUnmount(() => {
     </div>
 
     <p v-if="store.error" class="text-sm text-red-600" role="alert">{{ store.error }}</p>
+
+    <SimControls />
 
     <FleetMap :locations="store.mapLocations" :marker-color="markerColor" />
 

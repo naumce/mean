@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { equipIcon } from '../../lib/cockpit/equipment'
+import SimControls from '../sim/SimControls.vue'
 import { useCarriersStore } from '../../stores/carriers'
 import { useCockpitStore, type BrickFilter } from '../../stores/cockpit'
 import { useFleetStore } from '../../stores/fleet'
@@ -65,5 +66,6 @@ const chipCls = (k: BrickFilter): string =>
         {{ c.label }}<span v-if="c.key === 'conflict' && conflictCount" class="ml-1 text-red-300">({{ conflictCount }})</span>
       </button>
     </div>
+    <SimControls />
   </section>
 </template>

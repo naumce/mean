@@ -1,7 +1,9 @@
 import { mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import DriverDrawer from './DriverDrawer.vue'
 import { useDriverSupplyStore } from '../../stores/driverSupply'
+import { useSimStore } from '../../stores/sim'
 import type { SupplyDriver } from '../../types/supply'
 
 vi.mock('../../stores/driverSupply', () => ({ useDriverSupplyStore: vi.fn() }))
@@ -54,6 +56,10 @@ function createStoreStub(overrides: Record<string, unknown> = {}) {
 
 describe('DriverDrawer', () => {
   beforeEach(() => {
+    // DriverDrawer now also reads the (real, unmocked) sim store directly —
+    // Task 10's Simulation section — so a Pinia instance must be active even
+    // though useDriverSupplyStore itself stays module-mocked below.
+    setActivePinia(createPinia())
     mockedUseDriverSupplyStore.mockReset()
     Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
   })
@@ -132,5 +138,21 @@ describe('DriverDrawer', () => {
 
     expect(wrapper.find('[data-testid="driver-link-hint"]').text()).toContain('No availability record yet')
     expect(wrapper.find('[data-testid="driver-link-input"]').exists()).toBe(false)
+  })
+
+  it('shows the Simulation section only once the sim store is available, reading the current mode', async () => {
+    const store = createStoreStub()
+    mockedUseDriverSupplyStore.mockReturnValue(store as unknown as ReturnType<typeof useDriverSupplyStore>)
+    const wrapper = mount(DriverDrawer)
+    expect(wrapper.find('[data-testid="sim-drawer-section"]').exists()).toBe(false)
+
+    useSimStore().$patch({
+      available: true,
+      state: { running: false, speed: 1, simMinutesAdvanced: 0, simNowMs: Date.now(), lastTickAt: null, drivers: [{ driverId: 'd1', mode: 'offroute', modeUntil: null, offsetLat: 0.1, offsetLng: 0, updatedAt: new Date().toISOString() }] },
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('[data-testid="sim-drawer-section"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="sim-current-mode"]').text()).toBe('Current mode: offroute')
   })
 })

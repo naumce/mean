@@ -6,6 +6,7 @@ import { useCarriersStore } from '../../stores/carriers'
 import { useCockpitStore } from '../../stores/cockpit'
 import { useFleetStore } from '../../stores/fleet'
 import { useLoadboardStore } from '../../stores/loadboard'
+import { useSimStore } from '../../stores/sim'
 import CockpitHeader from './CockpitHeader.vue'
 import CockpitToolbar from './CockpitToolbar.vue'
 import YardChips from './YardChips.vue'
@@ -16,6 +17,13 @@ const carrierFor = (id: string, name: string): Carrier => ({
 })
 
 vi.mock('../../lib/api', () => ({ api: { get: vi.fn(), post: vi.fn(), delete: vi.fn() }, API_BASE_URL: 'http://localhost:3001/api' }))
+// CockpitToolbar.vue now
+// renders SimControls.vue, which calls the real sim store's probe() on
+// mount — this file's `api.get` mock above has no default resolved value,
+// so an unmocked sim store would hit a real destructure-of-undefined here.
+// Module-mocked so mounting CockpitToolbar below stays hermetic.
+vi.mock('../../stores/sim', () => ({ useSimStore: vi.fn() }))
+const mockedUseSimStore = vi.mocked(useSimStore)
 const NOW = Date.UTC(2026, 7, 28, 19, 32)
 
 describe('CockpitHeader', () => {
@@ -62,6 +70,11 @@ describe('CockpitHeader', () => {
 describe('CockpitToolbar', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    mockedUseSimStore.mockReset()
+    mockedUseSimStore.mockReturnValue({
+      available: false, state: null, busy: false, error: null, lastTickAt: null,
+      probe: vi.fn(), tick: vi.fn(), start: vi.fn(), stop: vi.fn(), reset: vi.fn(), setDriverMode: vi.fn(),
+    } as unknown as ReturnType<typeof useSimStore>)
     useLoadboardStore().loads = [
       { id: 'l1', reference: 'L-1', status: 'open', requiredEquip: 'Reefer', hazmatClass: null, revenueCents: 1, stopCount: 2, origin: 'A', destination: 'B', assignment: null },
       { id: 'l2', reference: 'L-2', status: 'open', requiredEquip: 'DryVan', hazmatClass: '8', revenueCents: 1, stopCount: 2, origin: 'A', destination: 'B', assignment: null },

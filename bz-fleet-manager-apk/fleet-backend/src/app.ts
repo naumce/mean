@@ -30,6 +30,7 @@ import { dispatcherSuggestRouter } from "./routes/dispatcherSuggest.js";
 import { dispatcherLoadboardRouter } from "./routes/dispatcherLoadboard.js";
 import { dispatcherNightShiftRouter } from "./routes/dispatcherNightShift.js";
 import { nightShiftLinkRouter } from "./routes/nightShiftLink.js";
+import { driverPageApiRouter, driverPageRouter } from "./routes/driverAvailabilityPage.js";
 import { dispatcherSheetRouter, sheetOauthCallback } from "./routes/dispatcherSheet.js";
 import { dispatcherAlertsRouter } from "./routes/dispatcherAlerts.js";
 import { dispatcherImportRouter } from "./routes/dispatcherImport.js";
@@ -132,6 +133,13 @@ export function createApp() {
   // tests/dispatcher-mount-order.test.ts's structural check would otherwise
   // require this public, tokenless router to sit after the auth gate too.
   app.use("/api/n", nightShiftLinkRouter);
+  // AI Dispatch Foundation (Task 10): the driver-facing availability page's
+  // JSON API — authenticated by DriverAvailability.shareToken in the path,
+  // not a bearer, same reasoning as nightShiftLinkRouter just above. Its own
+  // "/api/driver-page" prefix never overlaps "/api/dispatcher/...", so it
+  // carries no mount-order risk for tests/dispatcher-mount-order.test.ts
+  // either way — mounted here, alongside the other public mounts, on principle.
+  app.use("/api/driver-page", driverPageApiRouter);
   // ONE structural gate for the whole /api/dispatcher surface.
   //
   // Every feature router below used to repeat
@@ -248,6 +256,11 @@ export function createApp() {
   app.use("/api/driver", safetyRouter);
   app.use("/api", vehicleRouter);
   app.use("/api/navigation", navigationRouter);
+  // AI Dispatch Foundation (Task 10): GET /driver/:shareToken, the driver-
+  // facing availability page's HTML. BEFORE mountHosting(app) — its SPA
+  // fallback (portalStatic) would otherwise serve index.html for this path
+  // whenever PORTAL_DIST is set, swallowing the real page.
+  app.use(driverPageRouter);
   // Single-container hosting (Render): portal static files + the worker's
   // public paths. No-op unless PORTAL_DIST / WORKER_URL are set.
   mountHosting(app);

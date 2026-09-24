@@ -712,4 +712,85 @@ export async function patchDriverPreference(
   return data
 }
 
+// ---------------------------------------------------------------------------
+// Simulation controls (AI Dispatch Foundation, Task 8 backend / Task 10 UI):
+// the demo world's clock. Named functions (Convention 2) because stores/sim.ts,
+// SimControls.vue, and DriverDrawer.vue's Simulation section all need the
+// identical request shapes. Every /sim/* endpoint is ABSENT (404) unless the
+// server runs with DEMO_MODE (dispatcherSim.ts) — same "no separate flag,
+// the 404 itself is the answer" rule as fetchDemoShiftPlan above.
+// ---------------------------------------------------------------------------
+
+export type SimDriverMode = 'auto' | 'stopped' | 'dark' | 'offroute' | 'idle'
+
+/** Mirrors fleet-backend's SimDriverState row field-for-field (dates are
+ *  strings on the wire, same convention as every other wire-twin type). */
+export interface SimDriverStateRow {
+  driverId: string
+  mode: SimDriverMode
+  modeUntil: string | null
+  offsetLat: number
+  offsetLng: number
+  updatedAt: string
+}
+
+/** GET /dispatcher/sim/state's shape. `running`/`speed` come from the live
+ *  in-process runner (dispatcherSim.ts's own doc comment) — never trust them
+ *  as a durable fact between probes. */
+export interface SimState {
+  running: boolean
+  speed: number
+  simMinutesAdvanced: number
+  simNowMs: number
+  lastTickAt: string | null
+  drivers: SimDriverStateRow[]
+}
+
+export interface SimTickResult {
+  simNowMs: number
+  pings: number
+  started: number
+  completed: number
+  skipped: number
+}
+
+export interface SimDriverModeBody {
+  mode: SimDriverMode
+  minutes?: number
+  offsetMi?: number
+}
+
+export async function fetchSimState(): Promise<SimState> {
+  const { data } = await api.get<SimState>('/dispatcher/sim/state')
+  return data
+}
+
+export async function postSimTick(minutes: number): Promise<SimTickResult> {
+  const { data } = await api.post<SimTickResult>('/dispatcher/sim/tick', { minutes })
+  return data
+}
+
+export async function postSimStart(speed: number): Promise<{ running: boolean; speed: number }> {
+  const { data } = await api.post<{ running: boolean; speed: number }>('/dispatcher/sim/start', { speed })
+  return data
+}
+
+export async function postSimStop(): Promise<{ running: boolean }> {
+  const { data } = await api.post<{ running: boolean }>('/dispatcher/sim/stop')
+  return data
+}
+
+/** 202 accepted — the reseed runs as a detached child process server-side
+ *  with no completion signal on this response; the caller (stores/sim.ts)
+ *  polls probe() afterward to notice when it's actually done. */
+export async function postSimReset(): Promise<{ started: boolean }> {
+  const { data } = await api.post<{ started: boolean }>('/dispatcher/sim/reset')
+  return data
+}
+
+export async function postSimDriverMode(driverId: string, body: SimDriverModeBody): Promise<SimDriverStateRow> {
+  const { data } = await api.post<SimDriverStateRow>(`/dispatcher/sim/drivers/${driverId}/mode`, body)
+  return data
+}
+
 export default api

@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useDriverSupplyStore } from '../../stores/driverSupply'
+import { useSimStore } from '../../stores/sim'
 import { driverLanguages, STATUS_CHIP_CLASS, statusLabel } from '../../lib/supplyFormat'
 import DriverAvailabilityControls from './DriverAvailabilityControls.vue'
 import DriverEvidencePanel from './DriverEvidencePanel.vue'
 import DriverHistoryList from './DriverHistoryList.vue'
 import DriverPreferencesForm from './DriverPreferencesForm.vue'
+import DriverSimulationControls from './DriverSimulationControls.vue'
 
 // Driver Supply's detail drawer — mirrors components/agent/AgentDrawer.vue's
 // open/close contract (§6 of the portal inspection): always mounted by the
@@ -16,6 +18,7 @@ import DriverPreferencesForm from './DriverPreferencesForm.vue'
 // one view — reading it directly avoids prop-drilling the id and the
 // selected row through the view for no benefit.
 const store = useDriverSupplyStore()
+const sim = useSimStore()
 
 const open = computed(() => store.selectedDriverId !== null)
 const driver = computed(() => store.drivers.find((d) => d.driverId === store.selectedDriverId) ?? null)
@@ -78,6 +81,7 @@ async function copyLink(): Promise<void> {
     <p v-else-if="store.drawer.loading" class="mx-4 mt-3 text-xs text-ink-3">Loading…</p>
 
     <DriverAvailabilityControls :driver="driver" />
+    <DriverSimulationControls v-if="sim.available" :driver-id="driver.driverId" />
     <DriverEvidencePanel :metrics="store.drawer.metrics" />
     <DriverPreferencesForm :driver-id="driver.driverId" :preference="store.drawer.preference" />
     <DriverHistoryList :history="store.drawer.history" />

@@ -4,6 +4,7 @@ import { extractApiErrorMessage } from '../lib/errors'
 import type { BoardConfig } from '../lib/board/geometry'
 import { OPEN, subscribe } from '../lib/realtime'
 import { useCarriersStore } from './carriers'
+import type { DriverAvailabilityView } from '../types/supply'
 
 // The Control Tower board store: driver lanes + the org's loads, plus the
 // suggest/assign flow against the dispatch engine. Mirrors stores/board.ts
@@ -201,6 +202,19 @@ export interface BoardLoad {
   agentPolicyId?: string | null
   agentPill?: string
   agentLine?: string | null
+  /** AI Dispatch Foundation (Task 7/10): seed-world's 14 named demo
+   *  scenarios write `Load.extras.scenario`; every other load has no
+   *  `extras` at all. dispatcherLoadboard.ts's own scenarioHintOf() already
+   *  narrows the raw JSON server-side, so this is never a bare unknown here. */
+  extras?: { scenario?: ScenarioHint } | null
+}
+
+/** dispatcherLoadboard.ts's ScenarioHint — the Suggest panel header's
+ *  "Scenario {code}: {title}" line plus its tooltip/subline `hint`. */
+export interface ScenarioHint {
+  code: string
+  title: string
+  hint: string
 }
 
 export interface AssignConflict {
@@ -238,6 +252,66 @@ export interface AssignPreview {
   economics: AssignEconomics
 }
 
+// AI Dispatch Foundation (Task 6/10): mirrors fleet-backend's
+// lib/candidateContext.ts `CandidateContext` field-for-field — this IS that
+// object, JSON round-tripped as `SuggestRow.context` — EXCEPT where JSON
+// itself changes the shape: `availability.locationSharingUpdatedAt` is a
+// `Date` server-side and a string here, same as every other wire-twin type
+// in this file. Reuses `DriverAvailabilityView` (types/supply.ts) rather
+// than redeclaring it a second time, since that type already mirrors
+// lib/driverAvailability.ts's DriverAvailabilityView the identical way.
+//
+// Context is attached to a row AFTER suggest() has already ranked/scored
+// it — nothing here ever changes a row's order, score, or feasible/
+// infeasible styling. It is information only, same rule as the backend's
+// own header comment.
+export interface CandidateHosRemaining {
+  driveMin: number | null
+  windowMin: number | null
+  known: boolean
+}
+
+export interface CandidateLane {
+  key: string | null
+  label: string | null
+}
+
+export interface CandidateHomeTime {
+  homeBaseCity: string | null
+  homeBaseState: string | null
+  deliveryToHomeMi: number | null
+  withinRelocate: boolean | null
+}
+
+export interface CandidatePreferences {
+  maxTripMiles: number | null
+  willingToDriveNight: boolean
+  preferredEquipment: string[]
+  matchesEquipmentPref: boolean
+  laneAvoided: boolean
+  regionAvoided: boolean
+}
+
+export interface CandidateQualifications {
+  equipmentTypes: string[]
+  endorsements: string[]
+  hazmatEndorsed: boolean
+}
+
+export interface CandidateContext {
+  availability: DriverAvailabilityView
+  estimatedArrivalAtPickupMs: number | null
+  hosRemaining: CandidateHosRemaining
+  lane: CandidateLane
+  laneRuns: number
+  onTimeRate: number | null
+  responseRate: number | null
+  noResponseIncidents: number
+  homeTime: CandidateHomeTime
+  preferences: CandidatePreferences | null
+  qualifications: CandidateQualifications
+}
+
 export interface SuggestRow {
   driverId: string
   driverName: string | null
@@ -250,6 +324,9 @@ export interface SuggestRow {
   marginPct: number
   blockedReason?: string
   warnings: string[]
+  /** Absent on an `unmappable` row (a driver who never became a Candidate at
+   *  all) — see the backend interface's own doc comment. */
+  context?: CandidateContext
 }
 
 export interface SuggestResult {

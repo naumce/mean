@@ -10,6 +10,7 @@ import { useCockpitStore } from '../stores/cockpit'
 import { useLoadboardStore } from '../stores/loadboard'
 import { useCarriersStore } from '../stores/carriers'
 import { useLocksStore } from '../stores/locks'
+import { useSimStore } from '../stores/sim'
 import { useTrackingStore } from '../stores/tracking'
 import CockpitView from './CockpitView.vue'
 
@@ -33,6 +34,13 @@ vi.mock('../lib/api', () => ({
   fetchLoadLocks: vi.fn(),
 }))
 vi.mock('../lib/download', () => ({ triggerDownload: vi.fn() }))
+// CockpitToolbar.vue (mounted
+// whenever ck.view === 'board', this file's default) now renders
+// SimControls.vue, which calls the real sim store's probe() on mount. Module-
+// mocked, same as lib/api/lib/download above, so this view's specs stay
+// decoupled from the Simulation feature's own store instead of relying on
+// the generic api.get catch-all below to happen to answer it safely.
+vi.mock('../stores/sim', () => ({ useSimStore: vi.fn() }))
 const mockedAcquireLock = vi.mocked(acquireLock)
 const mockedPlanAssignment = vi.mocked(planAssignment)
 const mockedCreateAssignment = vi.mocked(createAssignment)
@@ -40,6 +48,7 @@ const mockedAcquireLoadLock = vi.mocked(acquireLoadLock)
 const mockedReleaseLoadLock = vi.mocked(releaseLoadLock)
 const mockedHeartbeatLoadLock = vi.mocked(heartbeatLoadLock)
 const mockedFetchLoadLocks = vi.mocked(fetchLoadLocks)
+const mockedUseSimStore = vi.mocked(useSimStore)
 const lockFor = (laneId: string, over: Partial<Lock> = {}): Lock => ({
   laneId, orgId: 'org-1', dispatcherId: 'disp-1', name: 'Dana Dispatcher', since: 1000, expiresAt: 91000, ...over,
 })
@@ -97,6 +106,11 @@ describe('CockpitView', () => {
     mockedReleaseLoadLock.mockResolvedValue(undefined)
     mockedFetchLoadLocks.mockReset()
     mockedFetchLoadLocks.mockResolvedValue({ locks: [] })
+    mockedUseSimStore.mockReset()
+    mockedUseSimStore.mockReturnValue({
+      available: false, state: null, busy: false, error: null, lastTickAt: null,
+      probe: vi.fn(), tick: vi.fn(), start: vi.fn(), stop: vi.fn(), reset: vi.fn(), setDriverMode: vi.fn(),
+    } as unknown as ReturnType<typeof useSimStore>)
     class FakeWs { onmessage: unknown = null; onclose: unknown = null; close() {} }
     vi.stubGlobal('WebSocket', FakeWs)
   })

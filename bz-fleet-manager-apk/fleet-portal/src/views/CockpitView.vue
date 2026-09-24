@@ -259,6 +259,8 @@ function clearCockpitScopedState(): void {
     :revenue-cents="suggestLoad?.revenueCents ?? 0"
     :loading="lb.suggestLoading"
     :dispatching="suggestDispatching"
+    :scenario="suggestLoad?.extras?.scenario ?? null"
+    :tz="ck.tz"
     @dispatch="dispatchSuggested"
     @close="suggestLoadId = null"
   />

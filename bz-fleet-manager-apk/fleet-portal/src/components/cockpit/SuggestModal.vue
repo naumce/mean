@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { formatMiles, formatPct, formatUsd } from '../../lib/money'
-import type { SuggestResult, SuggestRow } from '../../stores/loadboard'
+import CandidateContextCell from './CandidateContextCell.vue'
+import type { ScenarioHint, SuggestResult, SuggestRow } from '../../stores/loadboard'
 
 // ⚡Suggest, in the cockpit: "who should take this load, and why."
 //
@@ -16,14 +17,22 @@ import type { SuggestResult, SuggestRow } from '../../stores/loadboard'
 // showing its work. A dispatcher who disagrees can see exactly what the engine
 // thought and override it.
 
-const props = defineProps<{
-  result: SuggestResult | null
-  loadReference: string
-  lane: string
-  revenueCents: number
-  loading: boolean
-  dispatching: string | null
-}>()
+const props = withDefaults(
+  defineProps<{
+    result: SuggestResult | null
+    loadReference: string
+    lane: string
+    revenueCents: number
+    loading: boolean
+    dispatching: string | null
+    /** Task 7's Load.extras.scenario, when this load is one of the 14 named
+     *  demo scenarios — null for every ordinary load. Information only, same
+     *  as a row's `context` below: it never changes ranking or styling. */
+    scenario?: ScenarioHint | null
+    tz?: string
+  }>(),
+  { scenario: null, tz: 'America/Chicago' },
+)
 const emit = defineEmits<{
   (e: 'dispatch', payload: { driverId: string; tractorId: string; trailerId: string }): void
   (e: 'close'): void
@@ -56,6 +65,11 @@ function dispatch(row: SuggestRow): void {
             {{ formatUsd(revenueCents) }} · {{ result?.requiredEquip ?? '—' }}
             <template v-if="result?.tractorId"> · pool picked tractor + trailer</template>
           </div>
+          <!-- Task 7/10: the demo scenario this load was seeded from, purely
+               informational — the hint is the "why", never a ranking input. -->
+          <div v-if="scenario" class="mt-1 font-mono text-[10px] font-bold text-amber-500" :title="scenario.hint" data-testid="suggest-scenario">
+            Scenario {{ scenario.code }}: {{ scenario.title }}
+          </div>
         </div>
         <button class="rounded px-2 text-ink-3 hover:text-ink" aria-label="Close" data-testid="suggest-close" @click="emit('close')">✕</button>
       </div>
@@ -84,14 +98,19 @@ function dispatch(row: SuggestRow): void {
           <tbody>
             <tr v-for="(row, i) in feasible" :key="row.driverId" class="border-t border-line" :data-suggest-row="row.driverId">
               <td class="py-2 pr-2 font-mono text-ink-3">{{ i + 1 }}</td>
-              <td class="py-2 pr-2 font-bold text-ink">
-                {{ row.driverName ?? row.driverId }}
-                <span
-                  v-if="row.warnings.length"
-                  class="ml-1 text-amber-500"
-                  :title="row.warnings.join('; ')"
-                  data-testid="suggest-warning"
-                >⚠</span>
+              <td class="py-2 pr-2">
+                <div class="font-bold text-ink">
+                  {{ row.driverName ?? row.driverId }}
+                  <span
+                    v-if="row.warnings.length"
+                    class="ml-1 text-amber-500"
+                    :title="row.warnings.join('; ')"
+                    data-testid="suggest-warning"
+                  >⚠</span>
+                </div>
+                <!-- Task 6/10: context is information only — it never
+                     changes this row's order, score, or feasible styling. -->
+                <CandidateContextCell v-if="row.context" :context="row.context" :tz="tz" />
               </td>
               <td class="py-2 pr-2">
                 <div class="flex items-center gap-2">
@@ -134,11 +153,18 @@ function dispatch(row: SuggestRow): void {
           <div
             v-for="row in blocked"
             :key="row.driverId"
-            class="flex items-baseline justify-between gap-3 py-1 opacity-70"
+            class="flex items-start justify-between gap-3 py-1 opacity-70"
             :data-suggest-blocked-row="row.driverId"
           >
-            <span class="font-bold text-ink-2">{{ row.driverName ?? row.driverId }}</span>
-            <span class="text-right font-mono text-[10px] text-red-500" data-testid="suggest-blocked-reason">
+            <div class="min-w-0">
+              <span class="font-bold text-ink-2">{{ row.driverName ?? row.driverId }}</span>
+              <!-- rankOrgDrivers computes context for every
+                   candidate, blocked ones included, precisely so a
+                   dispatcher can see what a blocked driver would have
+                   brought — same component, same props as a feasible row. -->
+              <CandidateContextCell v-if="row.context" :context="row.context" :tz="tz" />
+            </div>
+            <span class="shrink-0 text-right font-mono text-[10px] text-red-500" data-testid="suggest-blocked-reason">
               ✗ {{ row.blockedReason ?? 'blocked' }}
             </span>
           </div>
