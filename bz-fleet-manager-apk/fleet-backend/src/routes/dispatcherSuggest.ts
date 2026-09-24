@@ -1,18 +1,14 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { outsideOrg } from "../middleware/orgScope.js";
-import { rankOrgDrivers } from "../lib/rankDrivers.js";
-import { toLoadInput, toTractorInput, toTrailerInput } from "../domain/dispatch/mapper.js";
+import { suggestForLoad } from "../lib/suggestForLoad.js";
 import { asyncRoute } from "../lib/asyncRoute.js";
 
-// The ⚡Suggest panel (Control Tower §4E). Given a load, rank the org's drivers
-// by feasibility + economics. Equipment auto-pick: since drivers aren't linked
-// to specific power units in the schema, we pick one representative available
-// tractor and one available trailer of the load's required type from the org
-// pool, and score every driver against that pairing. The UI uses the returned
-// tractorId/trailerId to pre-fill the commit. Mounted under dispatcherRouter —
-// auth + role already enforced.
+// The ⚡Suggest panel (Control Tower §4E). Thin wrapper (AI Dispatch
+// Foundation, Task 5): the whole load -> ranked-driver pipeline now lives in
+// lib/suggestForLoad.ts, shared with dispatchTools/dispatch.ts's
+// findFeasibleDrivers/getDispatchCandidateDetails — this route only resolves
+// query params + the caller's org, then maps the result to a status code.
 export const dispatcherSuggestRouter = Router();
 
 const querySchema = z.object({ loadId: z.string().min(1) });
@@ -21,63 +17,20 @@ dispatcherSuggestRouter.get("/suggest", asyncRoute(async (req, res) => {
   const parsed = querySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: "loadId is required" });
 
-  const load = await prisma.load.findUnique({
-    where: { id: parsed.data.loadId },
-    include: { stops: { include: { appointment: true }, orderBy: { sequence: "asc" } } },
-  });
-  // Cross-tenant ids read as "not found" — never reveal another org's data.
-  if (!load || outsideOrg(req, load.orgId)) return res.status(404).json({ error: "Load not found" });
+  // suggestForLoad takes a concrete orgId and 404s a mismatch; an unscoped
+  // (legacy/dev) dispatcher has no orgId of their own to pass, so they get
+  // the same "sees everything" bypass every other route in this family gives
+  // them — resolved here by trusting the LOAD's own org instead. A scoped
+  // dispatcher's own orgId is passed as-is; suggestForLoad 404s it the normal
+  // way (via its own null return) when the load belongs to someone else.
+  let orgId = req.orgScope;
+  if (orgId == null) {
+    const load = await prisma.load.findUnique({ where: { id: parsed.data.loadId }, select: { orgId: true } });
+    if (!load) return res.status(404).json({ error: "Load not found" });
+    orgId = load.orgId;
+  }
 
-  const loadInput = toLoadInput(load);
-
-  // Representative available equipment from the org pool.
-  const [tractor, trailer] = await Promise.all([
-    prisma.tractor.findFirst({ where: { orgId: load.orgId, status: "active" } }),
-    prisma.trailer.findFirst({
-      where: { orgId: load.orgId, type: load.requiredEquip, status: { in: ["active", "idle"] } },
-    }),
-  ]);
-  if (!tractor) return res.json({ loadId: load.id, requiredEquip: load.requiredEquip, tractorId: null, trailerId: null, candidates: [], note: "No available tractor in the pool" });
-  if (!trailer) return res.json({ loadId: load.id, requiredEquip: load.requiredEquip, tractorId: null, trailerId: null, candidates: [], note: `No available ${load.requiredEquip} trailer in the pool` });
-
-  // Ranking core shared with the commit-time empty-miles-saved metric.
-  // rankOrgDrivers now resolves EACH candidate's own cost model INSIDE the
-  // ranking (carrier, falling back field-by-field to the org — the same
-  // rateConfig.ts resolution the commit path uses, batched via
-  // rateConfigsForDrivers), not one shared RateConfig applied to every row
-  // (T1 Task 3b, closing the divergence flagged after Task 3 / T1 Ruling 4).
-  // So this panel's marginCents for a given driver now matches what
-  // committing to that driver actually prices, and the ranking order itself
-  // reflects each candidate's real carrier economics rather than treating a
-  // driver on an expensive carrier as if they cost the org's own rate.
-  const ranking = await rankOrgDrivers(
-    load.orgId,
-    loadInput,
-    toTractorInput(tractor),
-    toTrailerInput(trailer),
-    Date.now(),
-  );
-
-  // Drivers we can't even map (no position) become infeasible rows directly.
-  const unmappableRows = ranking.unmappable.map((u) => ({
-    driverId: u.driverId,
-    driverName: u.driverName,
-    feasible: false,
-    score: null,
-    deadheadMi: 0,
-    loadedMi: 0,
-    etaMs: 0,
-    marginCents: 0,
-    marginPct: 0,
-    blockedReason: u.reason,
-    warnings: [] as string[],
-  }));
-
-  res.json({
-    loadId: load.id,
-    requiredEquip: load.requiredEquip,
-    tractorId: tractor.id,
-    trailerId: trailer.id,
-    candidates: [...ranking.ranked, ...unmappableRows],
-  });
+  const result = await suggestForLoad(orgId, parsed.data.loadId);
+  if (!result) return res.status(404).json({ error: "Load not found" });
+  res.json(result);
 }));

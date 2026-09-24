@@ -51,6 +51,7 @@ import { dispatcherCommsRouter } from "./routes/dispatcherComms.js";
 import { dispatcherBrokerBoardRouter } from "./routes/dispatcherBrokerBoard.js";
 import { dispatcherLoadLocksRouter } from "./routes/dispatcherLoadLocks.js";
 import { dispatcherLoadTruthRouter } from "./routes/dispatcherLoadTruth.js";
+import { dispatcherToolsRouter } from "./routes/dispatcherTools.js";
 import { requireAuth, requireDispatcher } from "./middleware/auth.js";
 import { apiKeyAllowList, apiKeyAuth } from "./middleware/apiKeyAuth.js";
 import { dispatcherApiKeysRouter } from "./routes/dispatcherApiKeys.js";
@@ -225,6 +226,11 @@ export function createApp() {
   app.use("/api/dispatcher", dispatcherBrokerBoardRouter);
   app.use("/api/dispatcher", dispatcherLoadLocksRouter);
   app.use("/api/dispatcher", dispatcherLoadTruthRouter);
+  // AI Dispatch Foundation (Task 5): GET /tools — the read-only tool
+  // manifest for a future AI harness. Manifest-only; no invoke endpoint
+  // exists yet. A two-segment static path, no :id-route collision risk with
+  // any router above it.
+  app.use("/api/dispatcher", dispatcherToolsRouter);
   // Public push ingest — authenticated by x-api-key, not a Bearer token, so
   // it sits outside the /api/dispatcher middleware stack. Mounted before the
   // broad "/api" routers for the same reason dispatcherAuthRouter is.

@@ -14,7 +14,7 @@ export interface GeocodeHit {
   source: "gazetteer" | "provider";
 }
 
-// Exported so lib/driverAvailability.ts's own parseCityState (a differently
+// Exported so lib/driverAvailability.ts's own cityStateFromAddress (a differently
 // -cased, field-wise-nullable variant for a human-facing view — see its own
 // doc comment) can reuse the same state-token vocabulary instead of a second
 // hand-copied list drifting out of sync with this one.

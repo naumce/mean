@@ -5,8 +5,8 @@ import { outsideOrg } from "../middleware/orgScope.js";
 import { validateBody } from "../middleware/validate.js";
 import { asyncRoute } from "../lib/asyncRoute.js";
 import { availabilityFor } from "../lib/driverAvailability.js";
-import { driverMetrics, laneOfAssignmentStops } from "../lib/driverMetrics.js";
-import { deliveryWindowEndOf, isLateAssignment, lateMinutes } from "../lib/onTime.js";
+import { driverMetrics } from "../lib/driverMetrics.js";
+import { driverHistory } from "../lib/driverHistory.js";
 
 // Driver Supply (AI Dispatch Foundation, Task 2): the explicit-availability
 // read/write API on top of lib/driverAvailability.ts's shared projection.
@@ -204,9 +204,10 @@ function historyLimit(raw: unknown): number {
 }
 
 // GET /drivers/:id/history — this driver's completed assignments, newest
-// (most recently completed) first. late/lateMinutes reuse onTime.ts exactly
-// as driverMetrics.ts does, and originCity/destCity/laneKey reuse
-// driverMetrics.ts's own laneOfAssignmentStops — three call sites, one rule.
+// (most recently completed) first. The query itself now lives in
+// lib/driverHistory.ts (AI Dispatch Foundation, Task 5) so
+// dispatchTools/drivers.ts's getDriverHistory shares it instead of a second
+// copy; this handler keeps the HTTP-specific `?limit=` parsing/clamping.
 dispatcherDriverSupplyRouter.get(
   "/drivers/:id/history",
   asyncRoute(async (req, res) => {
@@ -216,51 +217,6 @@ dispatcherDriverSupplyRouter.get(
       return res.status(404).json({ error: "Driver not found" });
     }
 
-    const assignments = await prisma.assignment.findMany({
-      where: { orgId: driver.orgId, driverId: id, status: "completed" },
-      orderBy: { completedAt: "desc" },
-      take: historyLimit(req.query.limit),
-      select: {
-        id: true,
-        loadId: true,
-        plannedStart: true,
-        plannedEnd: true,
-        completedAt: true,
-        load: {
-          select: {
-            externalId: true,
-            customerId: true,
-            customer: { select: { name: true } },
-            stops: {
-              orderBy: { sequence: "asc" },
-              select: { type: true, address: true, lat: true, lng: true, appointment: { select: { windowEnd: true } } },
-            },
-          },
-        },
-      },
-    });
-
-    res.json(
-      assignments.map((a) => {
-        const windowEnd = deliveryWindowEndOf(a.load.stops);
-        const lane = laneOfAssignmentStops(a.load.stops);
-        return {
-          assignmentId: a.id,
-          loadId: a.loadId,
-          loadRef: a.load.externalId ?? a.loadId,
-          customerName: a.load.customer?.name ?? null,
-          customerId: a.load.customerId,
-          originCity: lane?.originCity ?? null,
-          destCity: lane?.destCity ?? null,
-          laneKey: lane?.key ?? null,
-          plannedStart: a.plannedStart,
-          plannedEnd: a.plannedEnd,
-          completedAt: a.completedAt,
-          deliveryWindowEnd: windowEnd,
-          late: isLateAssignment(a.completedAt, windowEnd),
-          lateMinutes: lateMinutes(a.completedAt, windowEnd),
-        };
-      }),
-    );
+    res.json(await driverHistory(driver.orgId, id, historyLimit(req.query.limit)));
   }),
 );
