@@ -1,4 +1,4 @@
-// Deterministic randomness for the whole demo world (Task 7, ruling 2): every
+// Deterministic randomness for the whole demo world (Task 7): every
 // call site in seed-world/* draws from ONE mulberry32 stream seeded from the
 // fixed string "fleet-world-2026" — never Math.random(). Two runs with the
 // same `scale`/`now` must be byte-identical, so every helper here is a pure
@@ -34,7 +34,7 @@ export function hashStringToUint32(str) {
  *  calling that function some number of times, so the ENTIRE world's
  *  randomness reduces to "how many times was rand() called, and with what
  *  inputs downstream" — both fixed by the generation code's own fixed
- *  control flow (ruling 2: byte-identical reruns). */
+ *  control flow, which is what makes a rerun byte-identical. */
 export function mulberry32(seedStr) {
   let a = hashStringToUint32(seedStr);
   return function rand() {
@@ -99,8 +99,8 @@ export function sampleDistinct(rand, arr, count) {
 /** Deterministic id from a stable semantic key (e.g. "driver:WD-014" or
  *  "load:W-A-RELIABLE"), NOT from the PRNG stream — a UUID-shaped sha1 of the
  *  key, so re-running the generator with the same inputs reproduces the
- *  identical id for the identical row every time (ruling 2's "byte-identical
- *  reruns", and the seed-world test's "identical scenario driver ids" check),
+ *  identical id for the identical row every time (byte-identical reruns,
+ *  verified by the seed-world test's "identical scenario driver ids" check),
  *  independent of call order, Promise.all scheduling, or Prisma's own random
  *  `@default(uuid())` (which this deliberately bypasses by always passing an
  *  explicit `id` on create). Every id domain (driver/load/stop/...) must

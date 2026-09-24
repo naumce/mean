@@ -9,12 +9,12 @@ import {
   LATE_RATE, NIGHT_LOAD_RATE, ORG_TIMEZONE, REPLY_GIVEN_RATE, TRIP_RATE, WORLD_LOAD_TAG,
 } from "./targets.mjs";
 
-// Generic bulk historical loads (ruling: "~3,000 historical loads over the
-// past 180 days across ~60 lanes ... ~12% late by 20-240 min; ~15% with
-// detention evidence ...; ~20% with an AgentTrip + AgentEvents ... and ~8%
-// no-reply escalations ...; ~10% night loads"). Milan/Dwayne/Boris/Chidi's
-// EXACT-number dedicated history lives in namedHistory.mjs instead — this
-// file only ever produces the approximate, PRNG-driven bulk.
+// Generic bulk historical loads: ~3,000 historical loads over the past 180
+// days across ~60 lanes; ~12% late by 20-240 min; ~15% with detention
+// evidence; ~20% with an AgentTrip + AgentEvents, of which ~8% are no-reply
+// escalations; ~10% night loads. Milan/Dwayne/Boris/Chidi's EXACT-number
+// dedicated history lives in namedHistory.mjs instead — this file only ever
+// produces the approximate, PRNG-driven bulk.
 //
 // Compute-then-write: this whole module is synchronous and returns plain
 // row arrays; seed-world.mjs does the actual createMany calls.

@@ -14,7 +14,8 @@ RUN npx prisma generate
 
 COPY tsconfig.json ./
 COPY src ./src
-COPY seed-control-tower.mjs seed-demo.mjs smoke-control-tower.mjs ./
+COPY seed-control-tower.mjs seed-demo.mjs smoke-control-tower.mjs seed-world.mjs seed-world.d.mts ./
+COPY seed-world ./seed-world
 
 EXPOSE 3001
 ENV NODE_OPTIONS=--max-http-header-size=65536

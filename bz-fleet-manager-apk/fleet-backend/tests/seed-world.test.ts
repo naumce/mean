@@ -203,7 +203,7 @@ describe("seed-world (AI Dispatch Foundation, Task 7)", () => {
     expect(total).toBeGreaterThan(0);
   });
 
-  it("every scenario load carries extras.scenario with its code/title/hint (ruling 4)", async () => {
+  it("every scenario load carries extras.scenario with its code/title/hint", async () => {
     const org = await orgOrThrow();
     for (const s of SCENARIOS) {
       const load = await prisma.load.findFirstOrThrow({ where: { orgId: org.id, externalId: s.externalId } });
@@ -441,7 +441,7 @@ describe("seed-world (AI Dispatch Foundation, Task 7)", () => {
     await expectOnLoad(org.id, driverId);
   });
 
-  it("a second seedWorld run yields identical counts and identical scenario driver ids", async () => {
+  it("a second seedWorld run yields identical counts and identical scenario driver ids, and clears any prior SimulationState", async () => {
     const org = await orgOrThrow();
     const countsBefore = await Promise.all([
       prisma.driver.count({ where: { orgId: org.id } }),
@@ -451,6 +451,16 @@ describe("seed-world (AI Dispatch Foundation, Task 7)", () => {
       prisma.assignment.count({ where: { orgId: org.id } }),
     ]);
     const castIdsBefore = await Promise.all(CAST.map((c) => driverByExternalId(org.id, c.externalId).then((d) => d.id)));
+
+    // A prior demo session's simulation clock must not survive a reseed —
+    // purgeOrgWorld deletes the org's SimulationState row outright (not
+    // merely resets it), so a stale simMinutesAdvanced can never carry into
+    // a freshly seeded world's first tick.
+    await prisma.simulationState.upsert({
+      where: { orgId: org.id },
+      update: { simMinutesAdvanced: 999, running: true },
+      create: { orgId: org.id, simMinutesAdvanced: 999, running: true },
+    });
 
     await seedWorld(prisma, { scale: SCALE, now: NOW_MS });
 
@@ -465,5 +475,8 @@ describe("seed-world (AI Dispatch Foundation, Task 7)", () => {
 
     expect(countsAfter).toEqual(countsBefore);
     expect(castIdsAfter).toEqual(castIdsBefore);
+
+    const simState = await prisma.simulationState.findUnique({ where: { orgId: org.id } });
+    expect(simState).toBeNull();
   }, SEED_TIMEOUT_MS);
 });

@@ -182,7 +182,8 @@ describe('useDriverSupplyStore', () => {
       useDriverSupplyStore().disconnectRealtime()
     })
 
-    it('patches availability[id].current on a driver_location frame for a known driver', async () => {
+    it('coalesces rapid driver_location frames and patches availability[id].current once the flush timer fires', async () => {
+      vi.useFakeTimers()
       mockedGet.mockResolvedValueOnce({ data: [profile({ id: 'd1' })] })
       mockedFetchAvailability.mockResolvedValueOnce([availability({ driverId: 'd1' })])
       const store = useDriverSupplyStore()
@@ -196,9 +197,45 @@ describe('useDriverSupplyStore', () => {
       store.connectRealtime()
       expect(mockedSubscribe).toHaveBeenCalledWith('driver_location', expect.any(Function))
 
-      handler?.({ type: 'driver_location', driverId: 'd1', latitude: 40.1, longitude: -75.2, at: '2026-09-24T12:00:00.000Z' })
+      // Two rapid frames for the same driver — only the LATEST should survive
+      // the coalescing buffer.
+      handler?.({ type: 'driver_location', driverId: 'd1', latitude: 1, longitude: 2, at: '2026-09-24T12:00:00.000Z' })
+      handler?.({ type: 'driver_location', driverId: 'd1', latitude: 40.1, longitude: -75.2, at: '2026-09-24T12:00:01.000Z' })
 
-      expect(store.availability.d1.current).toEqual({ lat: 40.1, lng: -75.2, at: Date.parse('2026-09-24T12:00:00.000Z'), near: null })
+      // Not applied yet — buffered until the flush timer fires.
+      expect(store.availability.d1.current).toEqual({ lat: 32.7, lng: -96.8, at: Date.parse('2026-09-24T00:00:00.000Z'), near: null })
+
+      await vi.advanceTimersByTimeAsync(500)
+
+      expect(store.availability.d1.current).toEqual({ lat: 40.1, lng: -75.2, at: Date.parse('2026-09-24T12:00:01.000Z'), near: null })
+    })
+
+    it('disconnectRealtime flushes any buffered frame instead of dropping it, and leaves no pending timer', async () => {
+      vi.useFakeTimers()
+      mockedGet.mockResolvedValueOnce({ data: [profile({ id: 'd1' })] })
+      mockedFetchAvailability.mockResolvedValueOnce([availability({ driverId: 'd1' })])
+      const store = useDriverSupplyStore()
+      await store.load()
+
+      let handler: ((frame: Frame) => void) | undefined
+      mockedSubscribe.mockImplementation((_type, h) => {
+        handler = h
+        return vi.fn()
+      })
+      store.connectRealtime()
+
+      handler?.({ type: 'driver_location', driverId: 'd1', latitude: 40.1, longitude: -75.2, at: '2026-09-24T12:00:01.000Z' })
+
+      // Disconnect BEFORE the 500ms flush timer would have fired on its own.
+      store.disconnectRealtime()
+
+      expect(store.availability.d1.current).toEqual({ lat: 40.1, lng: -75.2, at: Date.parse('2026-09-24T12:00:01.000Z'), near: null })
+
+      // No timer left pending: advancing well past the flush interval does
+      // nothing further (no stray second flush, no error).
+      const afterDisconnect = store.availability.d1
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(store.availability.d1).toBe(afterDisconnect)
     })
 
     it('ignores a frame for a driver not in this org and a malformed frame', async () => {

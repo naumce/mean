@@ -54,3 +54,13 @@ export function deliveryWindowEndOf(stops: StopForDeliveryWindow[]): Date | null
   const stop = delivery ?? stops[stops.length - 1] ?? null;
   return stop?.appointment?.windowEnd ?? null;
 }
+
+/** `null` beats any Date the other way — a lane's most-recent-run never
+ *  loses to a run whose completion time is unknown. Shared by lib/lanes.ts's
+ *  and lib/driverMetrics.ts's own lane-run rollups, both accumulating
+ *  "most-recent completion" over a set of assignments the same way. */
+export function laterOf(a: Date | null, b: Date | null): Date | null {
+  if (a === null) return b;
+  if (b === null) return a;
+  return a.getTime() >= b.getTime() ? a : b;
+}

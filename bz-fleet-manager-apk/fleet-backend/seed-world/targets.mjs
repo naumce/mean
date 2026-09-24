@@ -5,10 +5,10 @@
 // what the generator actually computes — both sides import THIS file rather
 // than each hand-copying the brief's numbers.
 //
-// Ruling 1: scale multiplies only the BULK counts. The *_CAST_SIZE /
-// SCENARIO_* constants below are therefore never multiplied by scale — they
-// are added on top of a scaled bulk count, exactly like a scaled driver
-// count is "cast + round(150*scale)", never "round((150+cast)*scale)".
+// Scale multiplies only the BULK counts. The *_CAST_SIZE / SCENARIO_*
+// constants below are therefore never multiplied by scale — they are added
+// on top of a scaled bulk count, exactly like a scaled driver count is
+// "cast + round(150*scale)", never "round((150+cast)*scale)".
 
 export const ORG_NAME = "Great Lakes Freight Co";
 export const ORG_TIMEZONE = "America/Detroit";
@@ -25,8 +25,8 @@ export function scaled(baseline, scale) {
 }
 
 // ---------------------------------------------------------------------------
-// Customers — fixed regardless of scale (ruling 1: "the 20 customers ... are
-// always created in full").
+// Customers — the 20 customers are fixed regardless of scale, always created
+// in full.
 // ---------------------------------------------------------------------------
 export const CUSTOMER_COUNT = 20;
 export const HIGH_PRIORITY_CUSTOMER_COUNT = 3;
@@ -75,7 +75,7 @@ export const ESCALATION_RATE = 0.08;
 export const REPLY_GIVEN_RATE = 0.8;
 
 /** Milan Petrovski (scenario A): exactly 50 completed loads, 48 on time —
- *  ruling 5's own numbers, asserted verbatim through driverMetrics(). */
+ *  exact numbers, asserted verbatim through driverMetrics(). */
 export const MILAN_COMPLETED = 50;
 export const MILAN_ON_TIME = 48;
 
@@ -93,9 +93,8 @@ export const DWAYNE_ESCALATIONS = 3;
 export const MARCUS_LANE_RUNS = 14;
 
 /** Two more dedicated drivers (not tied to any scenario letter) whose
- *  reply evidence realizes ruling 5's "6 breakdowns / 2 accidents on
- *  specific ... drivers" — situationKey-tagged replies, never a stored
- *  rating. */
+ *  reply evidence realizes 6 breakdowns and 2 accidents total across
+ *  specific drivers — situationKey-tagged replies, never a stored rating. */
 export const BORIS_COMPLETED = 5;
 export const BORIS_BREAKDOWNS = 4;
 export const BORIS_ACCIDENTS = 1;

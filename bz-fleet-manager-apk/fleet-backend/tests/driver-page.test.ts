@@ -39,10 +39,9 @@ async function seedAvailability(
 
 const UNKNOWN_TOKEN = "not-a-real-token";
 
-// Fix round 1 (task-10-review.md, minor #3): a request-level test of a
-// hostile token is moot — rowByToken's 404 path means an unknown token
-// never reaches renderDriverPage at all — so the escaping is unit-tested
-// directly against the exported helpers instead.
+// A request-level test of a hostile token is moot — rowByToken's 404 path
+// means an unknown token never reaches renderDriverPage at all — so the
+// escaping is unit-tested directly against the exported helpers instead.
 describe("jsStringLiteral / renderDriverPage — a hostile shareToken cannot break out of <script>", () => {
   it("neutralises every '<' so no literal </script> sequence survives", () => {
     const hostile = "</script><img src=x onerror=alert(1)>";
@@ -69,6 +68,19 @@ describe("jsStringLiteral / renderDriverPage — a hostile shareToken cannot bre
   it("still renders the exact token for a normal uuid-shaped value", () => {
     const html = renderDriverPage({ firstName: "Jake", name: "Jake Morrow" }, "abc-123-def");
     expect(html).toContain('"abc-123-def"');
+  });
+
+  it("a name containing a $-pattern (e.g. \"$'\") is spliced in literally, not reinterpreted", () => {
+    // String.replace's STRING form would treat `$'` as "everything after the
+    // match" and splice the rest of the template (including the <script>
+    // block) into the <title>/<h1> — a function replacement never does this.
+    const html = renderDriverPage({ firstName: "Bob $'", name: "Bob $' Jones" }, "tok-1");
+    expect(html).toContain("Hi Bob $&#39;");
+    expect(html).toContain("Bob $&#39; — Availability");
+    // The template must still be intact: exactly one real </script> tag,
+    // never one spliced in from the name.
+    expect(html.toLowerCase().split("</script").length - 1).toBe(1);
+    expect(html).toContain('"tok-1"');
   });
 });
 
@@ -100,6 +112,19 @@ describe("GET /driver/:shareToken (the HTML page)", () => {
     const avail = await seedAvailability(driver.id);
     const res = await request(app).get(`/driver/${avail.shareToken}`);
     expect(res.text).toContain("Dana");
+  });
+
+  it("sends Cache-Control: no-store and Referrer-Policy: no-referrer, on both a hit and a 404", async () => {
+    const { driver } = await seedDriver();
+    const avail = await seedAvailability(driver.id);
+
+    const hit = await request(app).get(`/driver/${avail.shareToken}`);
+    expect(hit.headers["cache-control"]).toBe("no-store");
+    expect(hit.headers["referrer-policy"]).toBe("no-referrer");
+
+    const miss = await request(app).get(`/driver/${UNKNOWN_TOKEN}`);
+    expect(miss.headers["cache-control"]).toBe("no-store");
+    expect(miss.headers["referrer-policy"]).toBe("no-referrer");
   });
 
   it("is reachable with PORTAL_DIST unset (no hosting configured)", async () => {

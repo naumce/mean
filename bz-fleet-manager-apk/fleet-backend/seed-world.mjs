@@ -7,22 +7,22 @@
 // Usage: node seed-world.mjs   (reads DATABASE_URL from the environment/.env
 // the same way every other seed-*.mjs in this package does; never printed).
 //
-// Determinism (ruling 2): every random decision below flows through ONE
-// mulberry32 stream seeded from the fixed string "fleet-world-2026", and
-// `now` is rounded down to the top of the hour — a rerun inside the same
-// clock hour is byte-identical. To keep that guarantee airtight, this file
-// (and every seed-world/* module it calls) follows a strict COMPUTE-THEN-
-// WRITE discipline: every builder is a synchronous, pure function that
-// returns plain row arrays; ALL random draws happen during that synchronous
-// phase, and the `await`-ing createMany calls below never influence what was
+// Determinism: every random decision below flows through ONE mulberry32
+// stream seeded from the fixed string "fleet-world-2026", and `now` is
+// rounded down to the top of the hour — a rerun inside the same clock hour is
+// byte-identical. To keep that guarantee airtight, this file (and every
+// seed-world/* module it calls) follows a strict COMPUTE-THEN-WRITE
+// discipline: every builder is a synchronous, pure function that returns
+// plain row arrays; ALL random draws happen during that synchronous phase,
+// and the `await`-ing createMany calls below never influence what was
 // decided. Every id this file writes is either a fixed identity (org/
 // dispatcher/policy, found-or-created) or `stableId(<semantic key>)` — never
 // Prisma's random `@default(uuid())` — so a rerun reproduces the identical
 // row id for the identical logical row every time.
 //
-// Idempotency (ruling 3): the org is found by name or created; everything
-// under it is purged (purge.mjs) before this file writes a single new row,
-// and nothing outside that org is ever touched.
+// Idempotency: the org is found by name or created; everything under it is
+// purged (purge.mjs) before this file writes a single new row, and nothing
+// outside that org is ever touched.
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
 import { fileURLToPath } from "node:url";
@@ -55,6 +55,7 @@ import {
 // that test avoid `any` without a second .d.ts.
 export { SCENARIOS } from "./seed-world/scenarios.mjs";
 export { ORG_NAME, ORG_TIMEZONE, DISPATCHER_EMAIL, DISPATCHER_PASSWORD, WORLD_LOAD_TAG, WORLD_DRIVER_TAG } from "./seed-world/targets.mjs";
+export { WORLD_ORG_NAME } from "./seed-world/constants.mjs";
 export { CAST } from "./seed-world/cast.mjs";
 
 const PRNG_SEED = "fleet-world-2026";
@@ -93,9 +94,9 @@ function applyPositionOverrides(rows, overrides) {
 }
 
 /**
- * Regenerates the whole demo world. `scale` multiplies only the BULK counts
- * (ruling 1) — drivers beyond the 15-member scenario cast, historical loads
- * beyond the 4 named drivers' dedicated history, and generic current loads
+ * Regenerates the whole demo world. `scale` multiplies only the BULK counts —
+ * drivers beyond the 15-member scenario cast, historical loads beyond the 4
+ * named drivers' dedicated history, and generic current loads
  * beyond the 14 scenario ones. `now` defaults to the real clock; both
  * defaults exist so `node seed-world.mjs` (no args) reproduces the full-
  * scale dev world while `seedWorld(prisma, { scale: 0.15, now: FIXED })`
@@ -132,7 +133,7 @@ export async function seedWorld(prisma, { scale = 1, now = Date.now() } = {}) {
   // ---- The 14 scenarios + Ana's inbound trip -------------------------------
   const scenarioWorld = buildScenarioWorld(rand, { orgId: org.id, customers: customerSpecs, nowMs, agentPolicyId: agentPolicy.id });
 
-  // ---- Named drivers' exact-number history (ruling 5) ----------------------
+  // ---- Named drivers' exact-number history ---------------------------------
   const milan = castByKey("milan");
   const dwayne = castByKey("dwayne");
   const boris = castByKey("boris");
@@ -181,9 +182,9 @@ export async function seedWorld(prisma, { scale = 1, now = Date.now() } = {}) {
   console.log(`[seed-world] fleet: ${fleet.tractors.length} tractors, ${fleet.trailers.length} trailers`);
 
   // ---- Loads / stops / appointments / assignments / pings / agent evidence,
-  // each as ONE createMany across every source (ruling 7: bulk rows via
-  // createMany, ids known up front via stableId — no post-insert lookups
-  // needed anywhere in this file). One array of the five named-driver
+  // each as ONE createMany across every source (bulk rows via createMany,
+  // ids known up front via stableId — no post-insert lookups needed anywhere
+  // in this file). One array of the five named-driver
   // histories so adding a sixth later can't forget one of the six flat
   // concatenations below the way hand-listing each by name invites. -------
   const namedHistories = [milanHistory, dwayneHistory, borisHistory, chidiHistory, marcusHistory];

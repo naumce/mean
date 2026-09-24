@@ -68,7 +68,7 @@ export function nextWeekdayAtLocalTime(refDate, timeZone, targetWeekday, hour, m
   return atLocalTime(refDate, timeZone, hour, minute, daysAhead);
 }
 
-/** `now`, rounded DOWN to the top of the hour (ruling 2) — a rerun inside the
+/** `now`, rounded DOWN to the top of the hour — a rerun inside the
  *  same clock hour is byte-identical because every downstream "days ago" /
  *  "hours from now" computation is anchored to this exact instant. */
 export function roundDownToHour(ms) {

@@ -1,6 +1,6 @@
 import { askEvent, buildBrief, buildTrip, unplannedStopAnomalyEvent } from "./agentEvidence.mjs";
 import { castByScenario } from "./cast.mjs";
-import { addressIn, HUBS, KALAMAZOO_MI } from "./cities.mjs";
+import { addressIn, hub, KALAMAZOO_MI } from "./cities.mjs";
 import { buildDwellPings } from "./detention.mjs";
 import { tripEconomics, revenueForMiles } from "./economics.mjs";
 import { alongRoute, driveMinutes, roadMiles } from "./geo.mjs";
@@ -16,11 +16,6 @@ import { ORG_TIMEZONE, WORLD_LOAD_TAG } from "./targets.mjs";
 // (completed, detention). Every one of these produces a Load + stops +
 // appointment(s) + Assignment, and most also produce DriverLocation pings
 // and/or AgentTrip/AgentEvent rows.
-function hub(city) {
-  const found = HUBS.find((h) => h.city === city);
-  if (!found) throw new Error(`scenarioActive.mjs: no hub "${city}"`);
-  return found;
-}
 
 function extrasFor(code) {
   const s = scenarioByCode(code);
@@ -109,8 +104,7 @@ function commonInProgress(rand, { code, orgId, homeHub, destHub, driverId, requi
 
 /** I — 90 min behind plan (verbatim); pings placed at the lagging position.
  *  Columbus -> Nashville (long enough that 3h elapsed still leaves >4h
- *  remaining — deriveStatus reads this driver ON_LOAD, per ruling 6, not
- *  AVAILABLE_SOON). */
+ *  remaining — deriveStatus reads this driver ON_LOAD, not AVAILABLE_SOON). */
 function buildScenarioI(rand, { orgId, customer, nowMs }) {
   const hassan = castByScenario("I");
   const built = commonInProgress(rand, { code: "I", orgId, homeHub: "Columbus", destHub: "Nashville", driverId: hassan.id, requiredEquip: hassan.equipmentTypes[0], customer, nowMs, startedHoursAgo: 3 });
@@ -226,15 +220,19 @@ export function buildActiveScenarios(rand, { orgId, customers, nowMs, agentPolic
   const driverLocations = parts.flatMap((p) => p.pings ?? []);
   const agentTrips = parts.flatMap((p) => p.agentTrips ?? []);
   const agentEvents = parts.flatMap((p) => p.agentEvents ?? []);
+  // modeUntil: null — K/L/N's perturbation (stopped/dark/offroute) holds
+  // indefinitely until a dispatcher changes the mode or presses Reset, not
+  // just for a fixed window after seeding. A demo pressed Start well over an
+  // hour after seeding must still see all three behaviours on tick 1.
   const simDriverStates = parts
     .filter((p) => p.simMode)
-    .map((p) => ({ driverId: p.driverId, mode: p.simMode, modeUntil: new Date(nowMs + 60 * 60_000), offsetLat: 0, offsetLng: 0 }));
+    .map((p) => ({ driverId: p.driverId, mode: p.simMode, modeUntil: null, offsetLat: 0, offsetLng: 0 }));
 
   // Busy drivers (ON_LOAD/AVAILABLE_SOON, per scenarioLoads.mjs's
   // DriverAvailability pass) — everyone here except Grace (M's load is
   // COMPLETED, not active; she is simply available afterward, like any
-  // other free cast driver). Carries enough of the projection (ruling 6:
-  // availableAt/available* = current load's last delivery stop + plannedEnd)
+  // other free cast driver). Carries enough of the projection —
+  // availableAt/available* = current load's last delivery stop + plannedEnd —
   // for scenarioLoads.mjs to stamp it without re-deriving it.
   const busyDrivers = parts
     .filter((p) => p.assignment.status === "in_progress")

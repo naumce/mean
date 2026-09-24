@@ -1,7 +1,7 @@
 import { pick, randInt } from "./prng.mjs";
 
-// ~25 Midwest / Great Lakes / Texas hubs (ruling: "home bases from ~25
-// Midwest/Great-Lakes/Texas hubs in cities.mjs with lat/lng"). Every one of
+// ~25 Midwest / Great Lakes / Texas hubs — driver home bases, drawn from this
+// one gazetteer-backed list with lat/lng. Every one of
 // these coordinates is copied from src/lib/usCities.ts's own gazetteer
 // (`inGazetteer: true` below is therefore true for all of them) so a
 // driver's homeBaseCity/State always resolves through gazetteerLookup() —
@@ -41,9 +41,9 @@ export const HUBS = [
 
 /** Scenario C's driver is in transit FROM Kalamazoo — a real Midwest city,
  *  but not one of the gazetteer's ~150 entries, and not a hub anyone's home
- *  base uses. Kept here (not inline in the scenario file) per the ruling
- *  that every location's lat/lng belongs in cities.mjs regardless of
- *  gazetteer coverage. */
+ *  base uses. Kept here (not inline in the scenario file) because every
+ *  location's lat/lng belongs in cities.mjs regardless of gazetteer
+ *  coverage. */
 export const KALAMAZOO_MI = { city: "Kalamazoo", state: "MI", lat: 42.2917, lng: -85.5872, zip: "49007" };
 
 const STREET_WORDS = [
@@ -65,6 +65,15 @@ export function addressIn(rand, hub) {
 
 export function randomHub(rand) {
   return pick(rand, HUBS);
+}
+
+/** The one HUBS entry named `city` — every scenario builder that places a
+ *  load or a driver at a specific named hub (rather than a random one) shares
+ *  this lookup instead of each re-implementing the same `.find()`. */
+export function hub(city) {
+  const found = HUBS.find((h) => h.city === city);
+  if (!found) throw new Error(`cities.mjs: no hub "${city}"`);
+  return found;
 }
 
 /** `count` distinct hubs (never the same city twice in one call) — used to

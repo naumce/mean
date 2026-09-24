@@ -118,8 +118,8 @@ export function buildDriverRoster(rand, bulkCount) {
 // for every driver — the existing seeds' own pattern (seed-control-tower.mjs,
 // seed-demo.mjs's mkDetentionDriver): none of these ~163 accounts need a
 // real login in any test, so paying bcrypt's ~80ms per call ~163 times would
-// be pure waste (ruling 7's performance budget matters far more here than a
-// hash nobody verifies).
+// be pure waste — the performance budget here matters far more than a hash
+// nobody verifies.
 const FIXED_DRIVER_PASSWORD_HASH = "$2b$10$seedseedseedseedseedse.seedseedseedseedseedseedseedse";
 
 export function driverRows(specs, orgId, nowMs) {

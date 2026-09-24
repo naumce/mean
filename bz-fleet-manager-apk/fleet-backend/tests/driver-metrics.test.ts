@@ -219,7 +219,7 @@ describe("driverMetrics", () => {
     expect(metrics.laneExperience[1]).toMatchObject({ runs: 2, originCity: "Tulsa", destCity: "Amarillo" });
   });
 
-  it("fix round 1: includeDetention:false skips the scan — averageDetentionMinutes is null even though this fixture has a real 60-minute claim", async () => {
+  it("includeDetention:false skips the scan — averageDetentionMinutes is null even though this fixture has a real 60-minute claim", async () => {
     const { org, driver } = await seedFixture();
 
     // Same fixture as the test above (the one genuine detention claim, 60
@@ -316,12 +316,11 @@ describe("driverMetrics", () => {
   });
 });
 
-// Review fix round 1, Minor #4 — two `tripStats` (driverResponseMetrics.ts)
-// branches were implemented correctly but never exercised: seedFixture's own
-// "second ask" always follows an intervening reply, and no fixture ever has
-// a reply with nothing open. Pure-function tests against responseMetricsFor
-// directly (no DB fixture needed) so each edge case is isolated to exactly
-// the one branch it's proving.
+// Two `tripStats` (driverResponseMetrics.ts) branches are otherwise never
+// exercised: seedFixture's own "second ask" always follows an intervening
+// reply, and no fixture ever has a reply with nothing open. Pure-function
+// tests against responseMetricsFor directly (no DB fixture needed) so each
+// edge case is isolated to exactly the one branch it's proving.
 describe("responseMetricsFor — state machine edge cases", () => {
   it("a second ASK before any reply does not open a second question", () => {
     // If the `if (openedAtMs === null)` guard were missing, the second ask
@@ -390,9 +389,9 @@ describe("GET /drivers/:id/metrics", () => {
     // `nowMs` this call defaults to, and the fixture's detention pings are
     // dated relative to the fixed NOW_MS below, not real time. Asserting
     // `toBe(60)` here would pass today but start failing on no code change
-    // once the suite runs ~365 days after the fixture's ping dates (review
-    // fix round 1, Important #2) — both are exercised deterministically at
-    // the service level above instead, via an explicit NOW_MS.
+    // once the suite runs ~365 days after the fixture's ping dates — both are
+    // exercised deterministically at the service level above instead, via an
+    // explicit NOW_MS.
   });
 
   it("404s for a driver outside the caller's org, and for a nonexistent id", async () => {

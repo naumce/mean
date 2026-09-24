@@ -1,6 +1,7 @@
 import { prisma } from "../db.js";
 import type { LoadInput } from "../domain/dispatch/types.js";
 import { cityStateFromAddress } from "./driverAvailability.js";
+import { laterOf } from "./onTime.js";
 
 // Lane intelligence: a "lane" is a recurring origin->destination pattern,
 // keyed by coordinate buckets (1 decimal ≈ 11km) so nearby facilities group
@@ -106,14 +107,6 @@ function laneOfStops(stops: StopForLaneRun[]): { key: string; originCity: string
     originCity: cityStateFromAddress(pickup.address).city,
     destCity: cityStateFromAddress(delivery.address).city,
   };
-}
-
-/** `null` beats any Date the other way — a run with no known completion time
- *  never wins "most recent" against one that has one. */
-function laterOf(a: Date | null, b: Date | null): Date | null {
-  if (a === null) return b;
-  if (b === null) return a;
-  return a.getTime() >= b.getTime() ? a : b;
 }
 
 /**

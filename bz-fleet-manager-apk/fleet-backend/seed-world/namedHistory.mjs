@@ -1,5 +1,5 @@
 import { askEvent, buildBrief, buildTrip, escalationEvent, replyEvent } from "./agentEvidence.mjs";
-import { addressIn, HUBS } from "./cities.mjs";
+import { addressIn, hub } from "./cities.mjs";
 import { tripEconomics, revenueForMiles } from "./economics.mjs";
 import { pick, randInt, stableId } from "./prng.mjs";
 import { atLocalTime } from "./time.mjs";
@@ -10,12 +10,12 @@ import {
 } from "./targets.mjs";
 
 // Exact-number dedicated history for Milan (scenario A), Dwayne (scenario
-// B), and Boris/Chidi (ruling 5's breakdown/accident evidence) — every count
-// here is chosen by INDEX, never by chance(), so a rerun with the same PRNG
-// position reproduces the identical on-time/late, replied/unreplied and
-// escalated/not split every time (on top of ruling 2's byte-identical
-// guarantee, this makes the exact counts trivially true by construction
-// rather than something a statistical roll merely tends toward).
+// B), and Boris/Chidi (breakdown/accident evidence) — every count here is
+// chosen by INDEX, never by chance(), so a rerun with the same PRNG position
+// reproduces the identical on-time/late, replied/unreplied and escalated/not
+// split every time (on top of the generator's own byte-identical guarantee,
+// this makes the exact counts trivially true by construction rather than
+// something a statistical roll merely tends toward).
 //
 // Generic bulk history (history.mjs) still supplies the~3,000-load backdrop
 // these four drivers' OWN numbers sit inside — see targets.mjs's
@@ -97,7 +97,7 @@ export function buildMilanHistory(rand, { orgId, driver, customers, lanes, nowMs
  *  (closing the question); of the rest, the first DWAYNE_ESCALATIONS also
  *  get a no-reply ESCALATION. -> opened=18, closed=11, responseRate ~0.611,
  *  noResponseIncidents=3 (driverResponseMetrics.ts's own per-trip state
- *  machine, exactly as ruling 5 specifies). */
+ *  machine). */
 export function buildDwayneHistory(rand, { orgId, agentPolicyId, driver, customers, lanes, nowMs }) {
   const rows = emptyRows();
   for (let i = 0; i < DWAYNE_COMPLETED; i++) {
@@ -144,9 +144,9 @@ export function buildDwayneHistory(rand, { orgId, agentPolicyId, driver, custome
 }
 
 /** A dedicated driver whose replies carry `breakdownCount` "breakdown" and
- *  `accidentCount` "accident" situationKeys — ruling 5's "6 breakdowns / 2
- *  accidents on specific ... drivers", split (in targets.mjs) as 4+1 for
- *  Boris and 2+1 for Chidi. Each load gets exactly one ask+reply pair; which
+ *  `accidentCount` "accident" situationKeys — 6 breakdowns and 2 accidents
+ *  total, split (in targets.mjs) as 4+1 for Boris and 2+1 for Chidi. Each
+ *  load gets exactly one ask+reply pair; which
  *  loads carry which situationKey is assigned by index, so the totals are
  *  exact by construction, not by chance. */
 export function buildIncidentDriverHistory(rand, { orgId, agentPolicyId, driver, customers, lanes, nowMs, completedCount, breakdownCount, accidentCount, tagPrefix }) {
@@ -191,12 +191,6 @@ export function buildBorisHistory(rand, args) {
 
 export function buildChidiHistory(rand, args) {
   return buildIncidentDriverHistory(rand, { ...args, completedCount: CHIDI_COMPLETED, breakdownCount: CHIDI_BREAKDOWNS, accidentCount: CHIDI_ACCIDENTS, tagPrefix: "CHIDI" });
-}
-
-function hub(city) {
-  const found = HUBS.find((h) => h.city === city);
-  if (!found) throw new Error(`namedHistory.mjs: no hub "${city}"`);
-  return found;
 }
 
 /**

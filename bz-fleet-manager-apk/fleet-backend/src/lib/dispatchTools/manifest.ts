@@ -29,8 +29,8 @@ import { MAX_LIST_LIMIT } from "./limit.js";
 // boundary into a cross-tenant read the moment an invoke endpoint exists).
 // Nor does it include the `nowMs` override a couple of functions accept:
 // that parameter exists so a TEST can fix "now", not so a model can pretend
-// to call from a different moment. This is this task's own reasoned
-// convention (not stated verbatim in the brief) — flagged in task-5-report.md.
+// to call from a different moment. This is a deliberate convention, not
+// stated verbatim in any external spec.
 //
 // This file imports `zod/v4` (the v4 API zod 3.25 ships under a subpath) so
 // `z.toJSONSchema` is available with no new dependency; every other file in

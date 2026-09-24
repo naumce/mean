@@ -79,8 +79,17 @@ export const DRIVER_PAGE_HTML = `<!doctype html>
   function post(path, body) {
     return fetch(base + path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body || {}) });
   }
+  function showUpdateError() {
+    $("availLine").textContent = "Could not update — try again";
+  }
+  // Resolves the parsed body on a 2xx response, or null on anything else (a
+  // 429 from the shared limiter, a 400, a dropped connection) — every caller
+  // below checks for null instead of assigning a non-2xx error body (or no
+  // body at all) straight into state and rendering its fields as "undefined".
   function patchAvailability(body) {
-    return fetch(base + "/availability", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then(function (r) { return r.json(); });
+    return fetch(base + "/availability", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .catch(function () { return null; });
   }
 
   function setToggle(id, on) {
@@ -104,16 +113,31 @@ export const DRIVER_PAGE_HTML = `<!doctype html>
   }
 
   function load() {
-    fetch(base + "/availability").then(function (r) { return r.json(); }).then(function (j) { state = j; render(); });
+    fetch(base + "/availability")
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .catch(function () { return null; })
+      .then(function (j) {
+        if (!j) { showUpdateError(); return; }
+        state = j;
+        render();
+      });
   }
 
   $("shareToggle").onclick = function () {
     if (!state) return;
-    patchAvailability({ locationSharingEnabled: !state.locationSharingEnabled }).then(function (j) { state = j; render(); });
+    patchAvailability({ locationSharingEnabled: !state.locationSharingEnabled }).then(function (j) {
+      if (!j) { showUpdateError(); return; }
+      state = j;
+      render();
+    });
   };
   $("loadsToggle").onclick = function () {
     if (!state) return;
-    patchAvailability({ acceptingLoads: !state.acceptingLoads }).then(function (j) { state = j; render(); });
+    patchAvailability({ acceptingLoads: !state.acceptingLoads }).then(function (j) {
+      if (!j) { showUpdateError(); return; }
+      state = j;
+      render();
+    });
   };
 
   // Throttled to one POST per 30s, whatever the source (live GPS or the lab

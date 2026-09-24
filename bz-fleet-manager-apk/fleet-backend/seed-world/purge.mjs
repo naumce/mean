@@ -1,14 +1,19 @@
-// Idempotent purge (ruling 3): before regenerating, delete EVERYTHING under
-// the "Great Lakes Freight Co" org, in FK-safe order, and nothing outside it.
-// `Plan`/`AgentPolicy` are deliberately NOT deleted here — seed-world.mjs
-// upserts both in place, keeping their row (and the Plan's DB-trigger-
-// assigned id) stable across reruns.
+// Idempotent purge: before regenerating, delete EVERYTHING under the "Great
+// Lakes Freight Co" org, in FK-safe order, and nothing outside it. `Plan`/
+// `AgentPolicy` are deliberately NOT deleted here — seed-world.mjs upserts
+// both in place, keeping their row (and the Plan's DB-trigger-assigned id)
+// stable across reruns.
 //
 // LoadLock/AgentCommand/AgentUpdate/LoadChange all cascade automatically
 // with their Load (`onDelete: Cascade` in schema.prisma) — deleting Load
 // would clear them for free. They are still deleted explicitly and BEFORE
-// Load below anyway, both to match the ruling's literal ordering and because
-// an explicit delete costs nothing extra when nothing exists yet to cascade.
+// Load below anyway, both for a clear, literal ordering and because an
+// explicit delete costs nothing extra when nothing exists yet to cascade.
+//
+// SimulationState is a per-org singleton with no FK to any load/driver row,
+// so it is never cleared by a cascade from anything else this function
+// deletes — it is deleted directly, alongside the driver-scoped rows below,
+// so a reseed never inherits the previous session's simulated clock.
 export async function purgeOrgWorld(prisma, orgId) {
   const [loads, drivers] = await Promise.all([
     prisma.load.findMany({ where: { orgId }, select: { id: true } }),
@@ -46,6 +51,7 @@ export async function purgeOrgWorld(prisma, orgId) {
     prisma.driverAvailability.deleteMany({ where: { driverId: { in: driverIds } } }),
     prisma.driverPreference.deleteMany({ where: { driverId: { in: driverIds } } }),
     prisma.hosState.deleteMany({ where: { driverId: { in: driverIds } } }),
+    prisma.simulationState.deleteMany({ where: { orgId } }),
   ]);
   await prisma.driver.deleteMany({ where: { id: { in: driverIds } } });
 

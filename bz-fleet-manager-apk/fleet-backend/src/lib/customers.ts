@@ -119,8 +119,9 @@ export async function customerHistory(orgId: string, customerId: string): Promis
   const commonLanes = [...lanes.values()].sort((a, b) => b.runs - a.runs).slice(0, COMMON_LANES_LIMIT);
 
   const sinceMs = Date.now() - DETENTION_LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
-  const detentions = await scanDetention(orgId, sinceMs);
-  const loadIds = new Set(loads.map((l) => l.id));
+  const loadIdList = loads.map((l) => l.id);
+  const detentions = await scanDetention(orgId, sinceMs, { loadIds: loadIdList });
+  const loadIds = new Set(loadIdList);
   // `d.claim !== null` is the whole point: scanDetention returns a row for
   // every stop it could observe a real dwell at, INCLUDING one that stayed
   // within the agreed free time (StopDetention.claim is null there, with

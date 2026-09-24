@@ -86,6 +86,16 @@ function mergedDrivers(state: DriverSupplyState): SupplyDriver[] {
 // snapshot" handling stores/loadLocks.ts's Style B exists for.
 let unsubscribers: Array<() => void> = []
 
+// The runner emits one `driver_location` frame per in-progress driver per
+// real second (~45 at demo scale) — rebuilding `state.availability` on every
+// single frame re-sorts/redraws the whole table and map ~45x/s. Frames are
+// buffered per driverId (a later frame for the same driver simply replaces
+// the pending one — only the latest position within the window matters) and
+// flushed as one record rebuild at most every FLUSH_INTERVAL_MS.
+const FLUSH_INTERVAL_MS = 500
+let pendingPings: Record<string, { lat: number; lng: number; at: number }> = {}
+let flushTimerId: number | null = null
+
 export const useDriverSupplyStore = defineStore('driverSupply', {
   state: (): DriverSupplyState => ({
     drivers: [],
@@ -190,7 +200,9 @@ export const useDriverSupplyStore = defineStore('driverSupply', {
       }
     },
 
-    /** Live map: `driver_location` frames patch just that driver's ping. The
+    /** Live map: `driver_location` frames patch just that driver's ping,
+     *  coalesced (see `pendingPings`/FLUSH_INTERVAL_MS above) so a burst of
+     *  frames rebuilds `state.availability` once, not once per frame. The
      *  30s poll above stays on as the reliability net, unchanged. */
     connectRealtime(): void {
       if (unsubscribers.length) return
@@ -200,27 +212,53 @@ export const useDriverSupplyStore = defineStore('driverSupply', {
           const latitude = typeof frame.latitude === 'number' ? frame.latitude : null
           const longitude = typeof frame.longitude === 'number' ? frame.longitude : null
           if (!driverId || latitude === null || longitude === null) return
-          const existing = this.availability[driverId]
-          if (!existing) return // unknown driver — nothing in this org to patch
           const at = typeof frame.at === 'string' ? Date.parse(frame.at) : Date.now()
-          this.availability = {
-            ...this.availability,
-            [driverId]: {
-              ...existing,
-              // `near` is a server-side gazetteer lookup this frame doesn't
-              // carry; keeping the previous value is closer to the truth
-              // between ticks than dropping it, and the next 30s poll
-              // replaces it with the freshly computed one regardless.
-              current: { lat: latitude, lng: longitude, at, near: existing.current?.near ?? null },
-            },
+          pendingPings[driverId] = { lat: latitude, lng: longitude, at }
+          if (flushTimerId === null) {
+            flushTimerId = window.setTimeout(() => {
+              flushTimerId = null
+              this.flushPendingPings()
+            }, FLUSH_INTERVAL_MS)
           }
         }),
       ]
     },
 
+    /** Applies every buffered ping in one `state.availability` rebuild.
+     *  Unknown drivers (nothing in this org to patch) are dropped silently,
+     *  same as the per-frame handler did before coalescing. */
+    flushPendingPings(): void {
+      const pending = pendingPings
+      pendingPings = {}
+      const next = { ...this.availability }
+      let changed = false
+      for (const [driverId, ping] of Object.entries(pending)) {
+        const existing = next[driverId]
+        if (!existing) continue
+        next[driverId] = {
+          ...existing,
+          // `near` is a server-side gazetteer lookup this frame doesn't
+          // carry; keeping the previous value is closer to the truth
+          // between ticks than dropping it, and the next 30s poll replaces
+          // it with the freshly computed one regardless.
+          current: { lat: ping.lat, lng: ping.lng, at: ping.at, near: existing.current?.near ?? null },
+        }
+        changed = true
+      }
+      if (changed) this.availability = next
+    },
+
     disconnectRealtime(): void {
       for (const off of unsubscribers) off()
       unsubscribers = []
+      if (flushTimerId !== null) {
+        window.clearTimeout(flushTimerId)
+        flushTimerId = null
+      }
+      // Apply whatever was buffered rather than dropping it — a disconnect
+      // (route change, tab hidden) must not silently lose the last known
+      // position of every driver that pinged since the previous flush.
+      this.flushPendingPings()
     },
 
     setFilters(partial: Partial<DriverSupplyFilters>): void {

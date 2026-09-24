@@ -57,8 +57,8 @@ describe("searchLoads", () => {
     const { orgA, l1 } = await seedDispatchToolsFixture();
     const rows = await searchLoads(orgA.id, { fromMs: NOW_MS - DAY_MS, toMs: NOW_MS });
     // L2/L3/L4/L5's first-stop windows are all seeded well outside this
-    // range; L6 has no first-stop appointment at all (review fix round 1,
-    // Important #2) and must be excluded rather than defaulted in.
+    // range; L6 has no first-stop appointment at all and must be excluded
+    // rather than defaulted in.
     expect(rows.map((r) => r.id)).toEqual([l1.id]);
   });
 
@@ -101,11 +101,11 @@ describe("getUncoveredLoads", () => {
   });
 
   it("excludes a load with no pickup appointment at all, even though it is otherwise uncovered", async () => {
-    // Review fix round 1, Important #2: l6 is open + unassigned (uncovered
-    // by status+assignment) but its first stop has no appointment, so there
-    // is no window to evaluate "≥ now - 24h" against — not-evaluable is not
-    // a default bucket, matching onTime.ts's own philosophy for a completed
-    // load with no delivery window.
+    // l6 is open + unassigned (uncovered by status+assignment) but its first
+    // stop has no appointment, so there is no window to evaluate
+    // "≥ now - 24h" against — not-evaluable is not a default bucket,
+    // matching onTime.ts's own philosophy for a completed load with no
+    // delivery window.
     const { orgA, l6 } = await seedDispatchToolsFixture();
     const rows = await getUncoveredLoads(orgA.id, NOW_MS);
     expect(rows.map((r) => r.id)).not.toContain(l6.id);
@@ -134,10 +134,9 @@ describe("getCurrentETA", () => {
     // cells-only "sheet_write" with no `remaining` at all. Both must be
     // skipped by newestEtaFromEvents/etaFromEvidence, landing back on the
     // same ETA_SHEET the previous test asserts — this test exists
-    // specifically to prove the skip branch is reached at all (review fix
-    // round 1, Important #2: previously the newest event was always already
-    // the valid one, so this loop's "continue past a null" path never
-    // actually ran).
+    // specifically to prove the skip branch is reached at all, rather than
+    // the newest event always already being the valid one (which would leave
+    // this loop's "continue past a null" path never actually exercised).
     const { orgA, l4 } = await seedDispatchToolsFixture();
     const eta = await getCurrentETA(orgA.id, l4.id);
     expect(eta).toMatchObject({ source: "agent_itinerary", etaMs: ETA_SHEET, precision: "live" });
@@ -156,9 +155,8 @@ describe("getCurrentETA", () => {
   });
 
   it("falls back to none when the load's only assignment is canceled (its plannedEnd is not ETA evidence)", async () => {
-    // Review fix round 1, ❌ #1: this exclusion was already implemented
-    // (PLANNED_ETA_STATUSES omits "canceled") but was undisclosed and
-    // untested. L5's only Assignment row is status "canceled".
+    // PLANNED_ETA_STATUSES omits "canceled". L5's only Assignment row is
+    // status "canceled".
     const { orgA, l5 } = await seedDispatchToolsFixture();
     const eta = await getCurrentETA(orgA.id, l5.id);
     expect(eta).toMatchObject({ source: "none", etaMs: null, precision: null });

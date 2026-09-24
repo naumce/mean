@@ -114,12 +114,10 @@ describe("deriveCustomer — bootstrap (rung 3: no customerName in this patch at
     expect((await prisma.load.findUnique({ where: { id: load.id } }))?.customerId).toBe(customer.id);
   });
 
-  // Fix round 1 (review Important #2): rung 1 and rung 2 each have a direct
-  // trace-content assertion of their own (load-writer.test.ts:24-38 and the
-  // direct-customerId tests below); the bootstrap rung had none — only
-  // `r.changed`/`Load.customerId` were ever checked for it. This is the
-  // trace-content proof `broker-board-cell-route.test.ts`'s comment already
-  // claimed existed.
+  // Rung 1 and rung 2 each have a direct trace-content assertion of their own
+  // (load-writer.test.ts:24-38 and the direct-customerId tests below); this
+  // is that same trace-content proof for the bootstrap rung, which otherwise
+  // only ever had `r.changed`/`Load.customerId` checked.
   it("traces the bootstrap link as its own LoadChange row: field customerId, before null, after the created customer's id", async () => {
     const { org, load } = await setup({ customerName: "ACME FOODS" });
     await apply(load.id, org.id, { revenueCents: 500000 });

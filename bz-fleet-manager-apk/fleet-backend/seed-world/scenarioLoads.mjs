@@ -1,6 +1,7 @@
 import { CAST } from "./cast.mjs";
 import { buildActiveScenarios } from "./scenarioActive.mjs";
 import { buildOpenScenarios } from "./scenarioOpen.mjs";
+import { AVAILABLE_SOON_WINDOW_MS } from "./constants.mjs";
 
 // Thin orchestrator: combines the 8 open/candidate scenarios (A B C D E F G
 // H) with the 6 in-progress-or-completed ones (Ana's inbound + I J K L M N),
@@ -8,7 +9,6 @@ import { buildOpenScenarios } from "./scenarioOpen.mjs";
 // cast driver's DriverAvailability row and their Driver.lastLat/lastLng
 // override — so scenarioOpen.mjs/scenarioActive.mjs never need to know about
 // each other or about the full cast list.
-const AVAILABLE_SOON_WINDOW_MS = 4 * 60 * 60 * 1000; // driverAvailability.ts's own constant, copied (no cross-package import)
 
 function latestPingPerDriver(driverLocations) {
   const latest = new Map();

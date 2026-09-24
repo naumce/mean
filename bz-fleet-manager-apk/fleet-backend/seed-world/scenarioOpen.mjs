@@ -1,5 +1,5 @@
 import { castByScenario } from "./cast.mjs";
-import { addressIn, HUBS } from "./cities.mjs";
+import { addressIn, hub } from "./cities.mjs";
 import { destinationPoint } from "./geo.mjs";
 import { stableId } from "./prng.mjs";
 import { scenarioByCode } from "./scenarios.mjs";
@@ -13,11 +13,6 @@ import { ORG_TIMEZONE } from "./targets.mjs";
 // Ana (C)/Meridian Foods (H) need no positioning: C's candidate is covered
 // by scenarioActive.mjs's Ana-inbound trip, and H is about the CUSTOMER, not
 // a driver.
-function hub(city) {
-  const found = HUBS.find((h) => h.city === city);
-  if (!found) throw new Error(`scenarioOpen.mjs: no hub "${city}"`);
-  return found;
-}
 
 function customerByName(customers, name) {
   const found = customers.find((c) => c.name === name);

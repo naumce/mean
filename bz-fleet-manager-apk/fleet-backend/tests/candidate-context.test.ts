@@ -18,9 +18,9 @@ import type { DriverMetrics } from "../src/lib/driverMetrics.js";
 // /suggest (and /drivers/:id/next) row with availability/HOS/lane/metrics/
 // preferences/qualifications, WITHOUT touching feasibility or the score in
 // any way. Test 1 below is the proof: it pins the exact score/feasible/
-// deadheadMi/blockedReason/order this fixture produces BEFORE Task 6 touches
-// any source file, and the same assertions must still pass byte-for-byte
-// after — see task-6-report.md for the before/after run.
+// deadheadMi/blockedReason/order this fixture produces, and those assertions
+// must always pass byte-for-byte regardless of anything candidateContext.ts
+// adds.
 
 beforeEach(resetDb);
 
@@ -357,7 +357,7 @@ describe("buildCandidateContext (pure unit cases)", () => {
     expect(ctx.laneRuns).toBe(0);
   });
 
-  it("fix round 1: valid pickup/delivery coordinates but an unparseable address — lane.key is non-null, lane.label is null", () => {
+  it("valid pickup/delivery coordinates but an unparseable address — lane.key is non-null, lane.label is null", () => {
     // Distinguishes "no coordinates" (the case above, both null) from "have
     // coordinates but can't build a City/ST label" — laneOfContextStops must
     // compute `key` from lat/lng alone, independent of whether the address

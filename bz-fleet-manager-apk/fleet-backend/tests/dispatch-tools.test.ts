@@ -119,8 +119,8 @@ describe("GET /api/dispatcher/tools", () => {
 });
 
 describe("no file under src/lib/dispatchTools/ writes to the database", () => {
-  // Review fix round 1, Important #1: the original list only caught the
-  // singular mutation methods — none of these substrings appears inside
+  // The list must catch more than the singular mutation methods — none of
+  // these substrings appears inside
   // `.createMany(`/`.updateMany(`/`.deleteMany(` (the character right after
   // "update" there is "M", not "("), so Prisma's batch-mutation methods
   // would have slipped past this scan undetected. `$queryRawUnsafe` is also

@@ -170,9 +170,9 @@ describe("customerHistory", () => {
     // A SECOND load for the SAME "detained" customer: a real, well-evidenced
     // dwell (2+ pings, a genuine segment) that never leaves free time —
     // rawMin (60) - freeMin (DEFAULT_FREE_MIN 120) <= 0, so detentionClaim
-    // returns null (Fix round 1, review Critical #1). scanDetention still
-    // reports this stop (observedMin > 0, not skipped) with `claim: null` —
-    // proving the count is OWED detention, not merely observed dwell.
+    // returns null. scanDetention still reports this stop (observedMin > 0,
+    // not skipped) with `claim: null` — proving the count is OWED detention,
+    // not merely observed dwell.
     const withinFreeTimeLoad = await prisma.load.create({
       data: {
         orgId: org.id, customerId: detained.id, requiredEquip: "DryVan", revenueCents: 1,

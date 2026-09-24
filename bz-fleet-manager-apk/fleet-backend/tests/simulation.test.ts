@@ -5,15 +5,22 @@ import { prisma } from "../src/db.js";
 import { signDispatcherAccess } from "../src/lib/tokens.js";
 import * as realtimeModule from "../src/realtime.js";
 import { tick } from "../src/lib/simulation/engine.js";
+import { availabilityFor } from "../src/lib/driverAvailability.js";
 import { eastOffsetDeg, positionAlong } from "../src/lib/simulation/movement.js";
 import { haversineMi } from "../src/domain/dispatch/distance.js";
 import { disarmVanish, vanishNext } from "./vanish.js";
 
 // child_process is mocked for the whole file: /sim/reset spawns
 // `node seed-world.mjs` for real otherwise, which is both slow (~7s) and
-// rewrites the shared demo org out from under every other test.
-vi.mock("node:child_process", () => ({ spawn: vi.fn(() => new EventEmitter()) }));
+// rewrites the shared demo org out from under every other test. `kill` is a
+// spy (never a real signal) so the timeout-path test below can assert it was
+// called without needing a process that actually exits.
+vi.mock("node:child_process", () => ({
+  spawn: vi.fn(() => Object.assign(new EventEmitter(), { kill: vi.fn() })),
+}));
 import { spawn } from "node:child_process";
+import { runnerState, startRunner } from "../src/lib/simulation/runner.js";
+import { WORLD_ORG_NAME } from "../seed-world.mjs";
 
 beforeEach(resetDb);
 afterEach(() => {
@@ -259,8 +266,15 @@ describe("tick()", () => {
 
     const avail = await prisma.driverAvailability.findUniqueOrThrow({ where: { driverId: driver.id } });
     expect(avail.source).toBe("simulation");
-    expect(avail.availableCity).toBe("Indianapolis");
-    expect(avail.availableState).toBe("IN");
+    // The row itself never pins a location/time snapshot — only
+    // availabilityStatus (+source) are stored; availableAt/Lat/Lng/City/State
+    // stay null so a later assignment's live projection is never shadowed by
+    // a stale completion fact (see the two-load sequence test below).
+    expect(avail.availableAt).toBeNull();
+    expect(avail.availableLat).toBeNull();
+    expect(avail.availableLng).toBeNull();
+    expect(avail.availableCity).toBeNull();
+    expect(avail.availableState).toBeNull();
     // The fixture never creates a DriverAvailability row before this tick, so
     // acceptingLoads defaults false; the assignment that just completed is no
     // longer "current" for projectAvailability, so deriveStatus's rule 3
@@ -268,6 +282,58 @@ describe("tick()", () => {
     // lands on UNAVAILABLE — the same answer any driver who has never told
     // the board they're open for a load would get.
     expect(avail.availabilityStatus).toBe("UNAVAILABLE");
+  });
+
+  it("two-load sequence: after completing load 1, starting load 2 makes availabilityFor follow load 2's drop/plannedEnd, not load 1's stale completion", async () => {
+    const { org, driver } = await seedFixture();
+
+    // Tick 1: complete the fixture's own load (CHI -> INDY), exactly like the
+    // test above — this is the tick that used to WRITE Indianapolis into the
+    // stored row.
+    await tick(org.id, 180);
+    const afterFirstCompletion = await prisma.driverAvailability.findUniqueOrThrow({ where: { driverId: driver.id } });
+    expect(afterFirstCompletion.availableCity).toBeNull();
+
+    // A second load, INDY -> a third city (Columbus), assigned to the same
+    // driver with a plannedStart already in the past relative to `now` so the
+    // next tick starts it immediately.
+    const COLUMBUS = { lat: 39.9612, lng: -82.9988 };
+    const COLUMBUS_ADDRESS = "500 Dock Rd, Columbus, OH 43215";
+    const load2 = await prisma.load.create({
+      data: {
+        orgId: org.id, requiredEquip: "Reefer", revenueCents: 40000, status: "assigned",
+        stops: {
+          create: [
+            { sequence: 1, type: "pickup", address: INDY_ADDRESS, lat: INDY.lat, lng: INDY.lng },
+            { sequence: 2, type: "delivery", address: COLUMBUS_ADDRESS, lat: COLUMBUS.lat, lng: COLUMBUS.lng },
+          ],
+        },
+      },
+    });
+    // Tick 1 already advanced the sim clock 180 minutes ahead of real time;
+    // this tick adds 1 more (181 total). plannedStart sits comfortably before
+    // that so load 2 is due; plannedEnd sits comfortably AFTER it so load 2
+    // starts but does not also complete within this same tick.
+    const t0 = Date.now();
+    const plannedStart = new Date(t0 - 5 * 60_000);
+    const plannedEnd = new Date(t0 + 400 * 60_000);
+    const assignment2 = await prisma.assignment.create({
+      data: { orgId: org.id, loadId: load2.id, driverId: driver.id, plannedStart, plannedEnd, status: "assigned" },
+    });
+
+    // Tick 2: starts load 2 (plannedStart already passed) without completing it.
+    const startResult = await tick(org.id, 1);
+    expect(startResult.started).toBe(1);
+    expect((await prisma.assignment.findUniqueOrThrow({ where: { id: assignment2.id } })).status).toBe("in_progress");
+
+    const [view] = await availabilityFor(org.id, [driver.id]);
+    // Load 2's delivery city/plannedEnd — never load 1's Indianapolis/its own
+    // completedAt — because the stored row carries no frozen location for the
+    // live projection to be shadowed by.
+    expect(view.available.city).toBe("Columbus");
+    expect(view.available.state).toBe("OH");
+    expect(view.availableAt).toBe(plannedEnd.getTime());
+    expect(view.currentAssignment?.loadId).toBe(load2.id);
   });
 
   it("a manual DriverAvailability row survives a completion untouched", async () => {
@@ -301,9 +367,9 @@ describe("tick()", () => {
     expect(result.skipped).toBe(1);
 
     expect((await prisma.assignment.findUniqueOrThrow({ where: { id: assignment.id } })).status).toBe("completed");
-    // The locked one never transitioned — its OWN transaction rolled back in
-    // full (fix round 2: one transaction per transition), and that rollback
-    // must not have touched the other driver's progress.
+    // The locked one never transitioned — its OWN transaction (one per
+    // transition) rolled back in full, and that rollback must not have
+    // touched the other driver's progress.
     expect((await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentB.id } })).status).toBe("in_progress");
 
     // The tick's own clock advance is not part of what a skipped transition
@@ -427,8 +493,16 @@ describe("/sim routes", () => {
     expect((await request(app).post("/api/dispatcher/sim/tick").set("authorization", auth).send({ minutes: 0 })).status).toBe(400);
     expect((await request(app).post("/api/dispatcher/sim/tick").set("authorization", auth).send({ minutes: 1441 })).status).toBe(400);
     expect((await request(app).post("/api/dispatcher/sim/tick").set("authorization", auth).send({})).status).toBe(400);
+    // A fractional value would otherwise reach engine.ts's simMinutesAdvanced
+    // + minutes write into an Int column and fail Prisma validation after the
+    // tick's transitions/pings already committed.
+    expect((await request(app).post("/api/dispatcher/sim/tick").set("authorization", auth).send({ minutes: 2.5 })).status).toBe(400);
     expect((await request(app).post("/api/dispatcher/sim/start").set("authorization", auth).send({ speed: 0 })).status).toBe(400);
     expect((await request(app).post("/api/dispatcher/sim/start").set("authorization", auth).send({ speed: 121 })).status).toBe(400);
+    // A fractional speed is passed straight through to tick() as `minutes` by
+    // runner.ts — the same Int-column failure as above, just reached a tick
+    // later once the runner starts ticking.
+    expect((await request(app).post("/api/dispatcher/sim/start").set("authorization", auth).send({ speed: 1.5 })).status).toBe(400);
     expect((await request(app).post(`/api/dispatcher/sim/drivers/${driver.id}/mode`).set("authorization", auth).send({ mode: "bogus" })).status).toBe(400);
   });
 
@@ -514,6 +588,66 @@ describe("/sim routes", () => {
     const state = await prisma.simulationState.findUniqueOrThrow({ where: { orgId: org.id } });
     expect(state).toMatchObject({ running: true, speed: 3, simMinutesAdvanced: 9 });
 
+    const retry = await request(app).post("/api/dispatcher/sim/reset").set("authorization", auth).send({});
+    expect(retry.status).toBe(202);
+    const retryChild = vi.mocked(spawn).mock.results[1]!.value as EventEmitter;
+    retryChild.emit("exit", 0);
+  });
+
+  it("keys the runner stop and the post-exit SimulationState reset to the demo org by name, not the caller's org", async () => {
+    process.env.DEMO_MODE = "true";
+    vi.mocked(spawn).mockClear();
+    const demoOrg = await prisma.org.create({ data: { name: WORLD_ORG_NAME } });
+    await prisma.simulationState.create({ data: { orgId: demoOrg.id, running: true, speed: 9, simMinutesAdvanced: 77 } });
+    startRunner(demoOrg.id, 9);
+
+    const { org: callerOrg } = await seedFixture();
+    const auth = await dispatcherAuthFor(callerOrg.id);
+
+    const res = await request(app).post("/api/dispatcher/sim/reset").set("authorization", auth).send({});
+    expect(res.status).toBe(202);
+    // stopRunner runs synchronously before spawn — the demo org's runner is
+    // stopped immediately even though a DIFFERENT org's dispatcher pressed
+    // Reset.
+    expect(runnerState(demoOrg.id).running).toBe(false);
+
+    const child = vi.mocked(spawn).mock.results[0]!.value as EventEmitter;
+    child.emit("exit", 0);
+    // The post-exit SimulationState upsert is fire-and-forget from the
+    // handler's own perspective (no request left to answer) — give its real
+    // DB round trip a moment to land before reading it back.
+    await new Promise((r) => setTimeout(r, 50));
+
+    const demoState = await prisma.simulationState.findUniqueOrThrow({ where: { orgId: demoOrg.id } });
+    expect(demoState).toMatchObject({ running: false, speed: 1, simMinutesAdvanced: 0, lastTickAt: null });
+  });
+
+  it("times out a hung reset after 5 minutes: kills the child, releases the lock, and logs", async () => {
+    process.env.DEMO_MODE = "true";
+    vi.mocked(spawn).mockClear();
+    const { org } = await seedFixture();
+    const auth = await dispatcherAuthFor(org.id);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const setTimeoutSpy = vi.spyOn(global, "setTimeout");
+
+    const first = await request(app).post("/api/dispatcher/sim/reset").set("authorization", auth).send({});
+    expect(first.status).toBe(202);
+
+    const callIndex = setTimeoutSpy.mock.calls.findIndex((c) => c[1] === 5 * 60_000);
+    expect(callIndex).toBeGreaterThanOrEqual(0);
+    const timeoutCallback = setTimeoutSpy.mock.calls[callIndex]![0] as () => void;
+    const timeoutHandle = setTimeoutSpy.mock.results[callIndex]!.value as NodeJS.Timeout;
+
+    const child = vi.mocked(spawn).mock.results[0]!.value as EventEmitter & { kill: ReturnType<typeof vi.fn> };
+
+    timeoutCallback(); // simulate the 5-minute timer firing, with the child never exiting
+    clearTimeout(timeoutHandle); // the REAL underlying timer must not also fire 5 real minutes from now
+
+    expect(child.kill).toHaveBeenCalledOnce();
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("timed out"));
+
+    // The lock released without waiting for the (killed, but never-emitting-
+    // in-this-test) child to actually exit.
     const retry = await request(app).post("/api/dispatcher/sim/reset").set("authorization", auth).send({});
     expect(retry.status).toBe(202);
     const retryChild = vi.mocked(spawn).mock.results[1]!.value as EventEmitter;

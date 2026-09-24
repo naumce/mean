@@ -92,8 +92,8 @@ dispatcherDriverSupplyRouter.get(
     }
     // Unscoped (legacy/dev) dispatcher: the same "sees everything" bypass
     // orgWhere() gives every other list route. availabilityFor takes one
-    // concrete orgId (Task 6 depends on that exact signature — SDD ledger),
-    // so an unscoped caller is served with one batched call per distinct org
+    // concrete orgId (Task 6 depends on that exact signature), so an
+    // unscoped caller is served with one batched call per distinct org
     // among all drivers, not one call per driver.
     const orgs = await prisma.driver.findMany({
       where: { orgId: { not: null } },
@@ -132,14 +132,14 @@ dispatcherDriverSupplyRouter.patch(
     const body = req.body as PatchAvailabilityBody;
     const patch = toPatch(body);
 
-    // Fix round 1: a row counts as a manual STATUS override (deriveStatus's
-    // rule 1) ONLY when the dispatcher explicitly chose a status in THIS
-    // patch — never as a side effect of toggling acceptingLoads/location
-    // fields alone. Previously every PATCH wrote source:"manual"
-    // unconditionally, so a driver's very first PATCH — even one that only
-    // ever touched acceptingLoads — created a row that sat at the schema's
-    // own "UNAVAILABLE" availabilityStatus default and read as a hard
-    // override, silently masking acceptingLoads (task-2-report.md, Concern 1).
+    // A row counts as a manual STATUS override (deriveStatus's rule 1) ONLY
+    // when the dispatcher explicitly chose a status in THIS patch — never as
+    // a side effect of toggling acceptingLoads/location fields alone.
+    // Writing source:"manual" unconditionally on every PATCH would make a
+    // driver's very first PATCH — even one that only ever touched
+    // acceptingLoads — create a row that sits at the schema's own
+    // "UNAVAILABLE" availabilityStatus default and reads as a hard override,
+    // silently masking acceptingLoads.
     //
     //  - availabilityStatus IN the body: upsert source:"manual" with that
     //    status, same as any other field.

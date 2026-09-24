@@ -3,11 +3,7 @@ import { prisma } from "../../db.js";
 import { emitToDispatchers } from "../../realtime.js";
 import { emitLoadChanged } from "../loadEvents.js";
 import { SYSTEM_ACTOR } from "../actor.js";
-import {
-  availabilityFor,
-  cityStateFromAddress,
-  lastGeocodedDeliveryStop,
-} from "../driverAvailability.js";
+import { availabilityFor, lastGeocodedDeliveryStop } from "../driverAvailability.js";
 import { transitionAssignment } from "../assignmentLifecycle.js";
 import { clamp, positionAlong } from "./movement.js";
 import type { GeoPoint } from "../../domain/dispatch/types.js";
@@ -16,7 +12,7 @@ import type { GeoPoint } from "../../domain/dispatch/types.js";
 // committed plans forward in time, so the Night Shift agent and every
 // existing dispatcher view see the demo world exactly as if it were real.
 //
-// RULING 1 (binding) — two clocks, never confused:
+// Two clocks, never confused:
 //   - `simNowMs = wallNowMs + simMinutesAdvanced * 60_000` is a NOTIONAL
 //     "what time is it in the fiction" value, used only to decide whether a
 //     plan has crossed plannedStart/plannedEnd. Nothing about the process
@@ -35,8 +31,8 @@ import type { GeoPoint } from "../../domain/dispatch/types.js";
 //     current pings, exactly what a phone would have sent, regardless of how
 //     far the fictional clock has moved.
 //
-// RULING (fix round 2, binding) — one transaction per transition, not one
-// shared transaction for the whole tick. Every `transitionAssignment` call
+// One transaction per transition, not one shared transaction for the whole
+// tick. Every `transitionAssignment` call
 // below opens its OWN `prisma.$transaction`. A tick that touches several
 // assignments must not let one bad one — a dispatcher-held `LoadLock`, a
 // concurrent unassign racing a completion, a deadlock — take the rest down
@@ -148,8 +144,8 @@ function effectiveModeOf(
 }
 
 /** A single failed transition is reported and skipped, never thrown. Safe
- *  because `transitionAssignment` now runs inside its OWN `prisma.$transaction`
- *  (fix round 2): whatever failed — a thrown `LoadLocked`, a P2025 because the
+ *  because `transitionAssignment` runs inside its OWN `prisma.$transaction`:
+ *  whatever failed — a thrown `LoadLocked`, a P2025 because the
  *  assignment or load vanished between this tick's read and its write, a
  *  deadlock — Prisma has already rolled that ONE transaction back in full
  *  before the rejection reaches here. There is no shared transaction left for
@@ -208,7 +204,6 @@ async function advanceInProgress(
   pings: PingEvent[];
   transitions: TransitionEvent[];
   completedDriverIds: string[];
-  cityOverrides: Map<string, { city: string | null; state: string | null }>;
   skipped: number;
 }> {
   const inProgress = await prisma.assignment.findMany({
@@ -226,7 +221,7 @@ async function advanceInProgress(
   const driverById = new Map(drivers.map((d) => [d.id, d]));
   const simStateById = new Map(simStates.map((s) => [s.driverId, s]));
 
-  // Expire modeUntil FIRST (ruling 2c): a perturbation that has run its
+  // Expire modeUntil FIRST: a perturbation that has run its
   // course reads as "auto" for the rest of this tick, and the row itself is
   // reset so the next tick (and GET /sim/state) see it that way too. A plain
   // write, not a transition — nothing here calls transitionAssignment, so it
@@ -247,7 +242,6 @@ async function advanceInProgress(
   const pings: PingEvent[] = [];
   const transitions: TransitionEvent[] = [];
   const completedDriverIds: string[] = [];
-  const cityOverrides = new Map<string, { city: string | null; state: string | null }>();
   let skipped = 0;
 
   for (const a of inProgress) {
@@ -273,7 +267,6 @@ async function advanceInProgress(
       pingPoint = null;
       if (deliveryStop && deliveryStop.lat != null && deliveryStop.lng != null) {
         pingPoint = completionPing(effective.mode, { lat: deliveryStop.lat, lng: deliveryStop.lng });
-        if (pingPoint) cityOverrides.set(a.driverId, cityStateFromAddress(deliveryStop.address));
       }
     } else {
       const startMs = a.plannedStart.getTime();
@@ -303,35 +296,43 @@ async function advanceInProgress(
     }
   }
 
-  return { pings, transitions, completedDriverIds, cityOverrides, skipped };
+  return { pings, transitions, completedDriverIds, skipped };
 }
 
 /** Step (e), run after every write above has committed (see the header
  *  comment on why availabilityFor can't run any earlier). Skips any row
- *  whose `source` is "manual" — Task 2's ruling that only a dispatcher's own
- *  explicit override may win against the derived projection. `cityOverrides`
- *  carries the delivery-stop address for a driver who completed THIS tick:
- *  past that moment the driver has no `current` assignment left for
- *  projectAvailability to parse a city out of, even though we know exactly
- *  where they just dropped the trailer. */
+ *  whose `source` is "manual" — only a dispatcher's own explicit override may
+ *  win against the derived projection.
+ *
+ *  For every other row this writes ONLY `availabilityStatus` and
+ *  `source: "simulation"` — never `availableAt/Lat/Lng/City/State`, which are
+ *  always cleared to null instead. A driver reaching this function just
+ *  STARTED or COMPLETED an assignment; either way, their live projection
+ *  (`projectAvailability`, driven by their CURRENT assignment or last ping)
+ *  already answers "where/when will they be free" correctly on the very next
+ *  read. Storing a snapshot of that answer here — even just the completion
+ *  city — would freeze it: the moment this driver is given a NEW assignment,
+ *  the stale stored value would keep winning over the fresh projection
+ *  forever, because a non-null column always wins field-by-field regardless
+ *  of `source` (see driverAvailability.ts's own `toView`). Nulling these
+ *  columns out is what keeps every future read honest without this function
+ *  needing to know anything about what comes next for the driver. */
 async function syncAvailability(
   orgId: string,
   driverIds: readonly string[],
   wallNowMs: number,
-  cityOverrides: ReadonlyMap<string, { city: string | null; state: string | null }>,
 ): Promise<void> {
   if (driverIds.length === 0) return;
   const views = await availabilityFor(orgId, [...driverIds], wallNowMs);
   for (const view of views) {
     if (view.source === "manual") continue;
-    const override = cityOverrides.get(view.driverId);
     const fields = {
       availabilityStatus: view.status,
-      availableAt: new Date(view.availableAt),
-      availableLat: view.available.lat,
-      availableLng: view.available.lng,
-      availableCity: override ? override.city : view.available.city,
-      availableState: override ? override.state : view.available.state,
+      availableAt: null,
+      availableLat: null,
+      availableLng: null,
+      availableCity: null,
+      availableState: null,
       source: "simulation",
     };
     await prisma.driverAvailability.upsert({
@@ -345,8 +346,9 @@ async function syncAvailability(
 /**
  * Advances org `orgId`'s simulation by `minutes` simulated minutes. See the
  * header comment for the wall-clock/sim-clock split and the one-transaction-
- * per-transition ruling; see ruling 2 (the task brief) for the exact step
- * ordering this follows.
+ * per-transition rule. Step order: start due assignments, advance
+ * in-progress ones, persist the clock advance, emit the tick's events, then
+ * sync availability for every driver touched.
  */
 export async function tick(orgId: string, minutes: number, wallNowMs: number = Date.now()): Promise<TickResult> {
   let state = await prisma.simulationState.findUnique({ where: { orgId } });
@@ -375,7 +377,7 @@ export async function tick(orgId: string, minutes: number, wallNowMs: number = D
   }
 
   const touchedDriverIds = [...new Set([...started.driverIds, ...advanced.completedDriverIds])];
-  await syncAvailability(orgId, touchedDriverIds, wallNowMs, advanced.cityOverrides);
+  await syncAvailability(orgId, touchedDriverIds, wallNowMs);
 
   return {
     simNowMs,

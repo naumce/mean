@@ -1,8 +1,8 @@
 import { pick, pickWeighted, randInt, stableId } from "./prng.mjs";
 
-// 20 customers, fixed regardless of scale (ruling 1). Exactly 3 are
-// priority "high", and "Meridian Foods" (scenario H) is always one of them —
-// both counts and that name are verbatim requirements.
+// 20 customers, fixed regardless of scale. Exactly 3 are priority "high",
+// and "Meridian Foods" (scenario H) is always one of them — both counts and
+// that name are verbatim requirements.
 const HIGH_PRIORITY_NAMES = ["Meridian Foods", "Cascade Industrial Supply", "TitanCore Manufacturing"];
 
 const STANDARD_NAMES = [

@@ -8,6 +8,7 @@ import { demoModeEnabled } from "./dispatcherDemo.js";
 import { tick } from "../lib/simulation/engine.js";
 import { startRunner, stopRunner, runnerState } from "../lib/simulation/runner.js";
 import { eastOffsetDeg } from "../lib/simulation/movement.js";
+import { WORLD_ORG_NAME } from "../../seed-world.mjs";
 
 // Simulation controls (AI Dispatch Foundation Task 8): trucks move along
 // their committed plans, loads start and complete, availability follows —
@@ -80,7 +81,7 @@ dispatcherSimRouter.post(
   }),
 );
 
-const startSchema = z.object({ speed: z.number().min(1).max(120) });
+const startSchema = z.object({ speed: z.number().int().min(1).max(120) });
 dispatcherSimRouter.post(
   "/sim/start",
   validateBody(startSchema),
@@ -161,6 +162,25 @@ dispatcherSimRouter.post(
 // regardless of which org's dispatcher pressed the button.
 let resetInFlight = false;
 
+// A hung reseed (a stuck migration, a wedged DB connection) must not hold
+// `resetInFlight` — and therefore every future reset — until the process
+// restarts.
+const RESET_TIMEOUT_MS = 5 * 60_000;
+
+/** The fixed demo org's id, looked up by its seed-assigned name rather than
+ *  trusted from the caller: seed-world.mjs always rebuilds THIS one org
+ *  regardless of which tenant's dispatcher pressed the button, so keying the
+ *  runner stop and the post-exit SimulationState reset to the CALLER's own
+ *  org would target the wrong row whenever the two differ — a runner left
+ *  ticking on the demo org through its own purge, or a reset that clears an
+ *  unrelated org's clock instead. Falls back to the caller's org only when no
+ *  org named WORLD_ORG_NAME exists yet (a fresh database that has never been
+ *  seeded) — there is no demo org id to key to in that case. */
+async function demoOrgId(fallbackOrgId: string): Promise<string> {
+  const org = await prisma.org.findFirst({ where: { name: WORLD_ORG_NAME }, select: { id: true } });
+  return org?.id ?? fallbackOrgId;
+}
+
 dispatcherSimRouter.post(
   "/sim/reset",
   asyncRoute(async (req, res) => {
@@ -168,13 +188,25 @@ dispatcherSimRouter.post(
     if (!orgId) return;
     if (resetInFlight) return res.status(409).json({ error: "RESET_RUNNING" });
 
+    const targetOrgId = await demoOrgId(orgId);
+
     resetInFlight = true;
-    stopRunner(orgId);
+    stopRunner(targetOrgId);
     const child = spawn("node", ["seed-world.mjs"], {
       cwd: process.cwd(),
       env: process.env,
       stdio: "inherit",
     });
+
+    const timeoutHandle = setTimeout(() => {
+      console.error(
+        `seed-world.mjs timed out after ${RESET_TIMEOUT_MS / 60_000} min for org ${targetOrgId} — killing it and releasing the reset lock`,
+      );
+      resetInFlight = false;
+      child.kill();
+    }, RESET_TIMEOUT_MS);
+    timeoutHandle.unref?.();
+
     // Node throws an unhandled exception (crashing the whole process, every
     // tenant's requests included) if a ChildProcess emits 'error' with no
     // listener attached — this one fires when the OS could not even start
@@ -182,16 +214,20 @@ dispatcherSimRouter.post(
     // lock releases so a retry is possible; SimulationState is left alone,
     // same as a non-zero exit below, because nothing was actually reseeded.
     child.on("error", (err) => {
+      clearTimeout(timeoutHandle);
       resetInFlight = false;
-      console.error(`seed-world.mjs failed to start for org ${orgId}`, err);
+      console.error(`seed-world.mjs failed to start for org ${targetOrgId}`, err);
     });
     child.on("exit", (code) => {
+      clearTimeout(timeoutHandle);
       resetInFlight = false;
       // A non-zero exit means the reseed did not actually complete — resetting
       // SimulationState to defaults here would claim a fresh scenario exists
-      // when the org's real data was never touched.
+      // when the org's real data was never touched. A killed-by-timeout child
+      // also lands here (a non-zero/null code), so it is never double-counted
+      // against the lock the timeout already released.
       if (code !== 0) {
-        console.warn(`seed-world.mjs exited with code ${code} for org ${orgId} — SimulationState left untouched`);
+        console.warn(`seed-world.mjs exited with code ${code} for org ${targetOrgId} — SimulationState left untouched`);
         return;
       }
       // The reseed rewrote every row under this org from scratch — a
@@ -200,11 +236,11 @@ dispatcherSimRouter.post(
       // that has no request to answer; a failure here is logged, not thrown.
       prisma.simulationState
         .upsert({
-          where: { orgId },
+          where: { orgId: targetOrgId },
           update: { running: false, speed: 1, simMinutesAdvanced: 0, lastTickAt: null },
-          create: { orgId },
+          create: { orgId: targetOrgId },
         })
-        .catch((err: unknown) => console.error(`post-reset SimulationState reset failed for org ${orgId}`, err));
+        .catch((err: unknown) => console.error(`post-reset SimulationState reset failed for org ${targetOrgId}`, err));
     });
     res.status(202).json({ started: true });
   }),

@@ -316,3 +316,39 @@ describe("scanDetention omits stops with no observed dwell", () => {
     expect(seen!.noClaimReason).toMatch(/precise/i);
   });
 });
+
+describe("scanDetention scope", () => {
+  it("driverIds/loadIds each narrow the query to the matching assignments; omitting scope is unchanged", async () => {
+    const org = await seedOrg();
+    const driverA = await seedDriver(org.id, "Driver A Scope");
+    const driverB = await seedDriver(org.id, "Driver B Scope");
+    const now = Date.now();
+
+    const loadA = await seedAssignedLoad(org.id, driverA.id, [
+      { sequence: 1, type: "delivery", address: "A Scope Dock", lat: DOCK_A.lat, lng: DOCK_A.lng, windowStartMs: now - 5 * HOUR },
+    ]);
+    const loadB = await seedAssignedLoad(org.id, driverB.id, [
+      { sequence: 1, type: "delivery", address: "B Scope Dock", lat: DOCK_B.lat, lng: DOCK_B.lng, windowStartMs: now - 5 * HOUR },
+    ]);
+    await seedPings(driverA.id, DOCK_A, [now - 4 * HOUR, now - 3 * HOUR, now - 2 * HOUR, now - 1 * HOUR]);
+    await seedPings(driverB.id, DOCK_B, [now - 4 * HOUR, now - 3 * HOUR, now - 2 * HOUR, now - 1 * HOUR]);
+
+    // No scope: both drivers' claims are present, exactly as before this
+    // option existed.
+    const unscoped = await scanDetention(org.id, now - 24 * HOUR);
+    expect(unscoped.some((r) => r.loadId === loadA.id)).toBe(true);
+    expect(unscoped.some((r) => r.loadId === loadB.id)).toBe(true);
+
+    // Scoped to driver A: driver B's assignment never enters the query at all.
+    const byDriver = await scanDetention(org.id, now - 24 * HOUR, { driverIds: [driverA.id] });
+    expect(byDriver.length).toBeGreaterThan(0);
+    expect(byDriver.every((r) => r.driverId === driverA.id)).toBe(true);
+    expect(byDriver.some((r) => r.loadId === loadB.id)).toBe(false);
+
+    // Scoped to load B: driver A's assignment never enters the query at all.
+    const byLoad = await scanDetention(org.id, now - 24 * HOUR, { loadIds: [loadB.id] });
+    expect(byLoad.length).toBeGreaterThan(0);
+    expect(byLoad.every((r) => r.loadId === loadB.id)).toBe(true);
+    expect(byLoad.some((r) => r.loadId === loadA.id)).toBe(false);
+  });
+});

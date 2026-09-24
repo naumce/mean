@@ -67,6 +67,9 @@ describe("projectAvailability", () => {
   });
 
   it("basis last_ping: an ungeocoded delivery stop falls back to the driver's last ping", () => {
+    // KC is the gazetteer's own "kansas city|mo" coordinate (distance 0), so
+    // the last-ping basis now names it — see the dedicated "at"/"beyond 3 mi"
+    // tests below for the threshold itself.
     const driver = { lastLat: KC.lat, lastLng: KC.lng };
     const current = {
       plannedEnd: new Date("2026-08-21T15:00:00.000Z"),
@@ -76,8 +79,8 @@ describe("projectAvailability", () => {
       at: current.plannedEnd.getTime(),
       lat: KC.lat,
       lng: KC.lng,
-      city: null,
-      state: null,
+      city: "Kansas City",
+      state: "MO",
       basis: "last_ping",
     });
   });
@@ -88,10 +91,31 @@ describe("projectAvailability", () => {
       at: now,
       lat: KC.lat,
       lng: KC.lng,
-      city: null,
-      state: null,
+      city: "Kansas City",
+      state: "MO",
       basis: "last_ping",
     });
+  });
+
+  it("basis last_ping: within 3 mi of a known place, city/state resolve to it (\"at\")", () => {
+    // ~2 mi north of the gazetteer's own Kansas City coordinate — still
+    // within the LAST_PING_CITY_MAX_MI=3 threshold.
+    const nearKC = { lastLat: KC.lat + 0.03, lastLng: KC.lng };
+    const result = projectAvailability(nearKC, null, Date.now());
+    expect(result.basis).toBe("last_ping");
+    expect(result.city).toBe("Kansas City");
+    expect(result.state).toBe("MO");
+  });
+
+  it("basis last_ping: beyond 3 mi of any known place, city/state stay null", () => {
+    // ~87 mi from Kansas City (and further still from every other gazetteer
+    // hub) — nearestKnownPlace still finds a nearest entry, just not within
+    // the 3 mi "at" threshold.
+    const farFromKC = { lastLat: KC.lat + 1, lastLng: KC.lng + 1 };
+    const result = projectAvailability(farFromKC, null, Date.now());
+    expect(result.basis).toBe("last_ping");
+    expect(result.city).toBeNull();
+    expect(result.state).toBeNull();
   });
 
   it("basis none: no current assignment and no ping", () => {
@@ -173,9 +197,9 @@ describe("deriveStatus", () => {
     const now = Date.now();
     const { assignment } = await createAssignedLoad(org.id, driver.id, { plannedEnd: new Date(now) });
 
-    expect(deriveStatus(null, { ...assignment, plannedEnd: new Date(now + AVAILABLE_SOON_WINDOW_MS) }, null, now))
+    expect(deriveStatus(null, { ...assignment, plannedEnd: new Date(now + AVAILABLE_SOON_WINDOW_MS) }, now))
       .toBe("AVAILABLE_SOON");
-    expect(deriveStatus(null, { ...assignment, plannedEnd: new Date(now + AVAILABLE_SOON_WINDOW_MS + 1) }, null, now))
+    expect(deriveStatus(null, { ...assignment, plannedEnd: new Date(now + AVAILABLE_SOON_WINDOW_MS + 1) }, now))
       .toBe("ON_LOAD");
   });
 
@@ -189,11 +213,11 @@ describe("deriveStatus", () => {
     const explicit = await prisma.driverAvailability.create({
       data: { driverId: driver.id, source: "manual", acceptingLoads: true, availabilityStatus: "AVAILABLE" },
     });
-    expect(deriveStatus(explicit, null, null, Date.now())).toBe("AVAILABLE");
+    expect(deriveStatus(explicit, null, Date.now())).toBe("AVAILABLE");
   });
 
   it("UNAVAILABLE with no row and no current assignment", () => {
-    expect(deriveStatus(null, null, null, Date.now())).toBe("UNAVAILABLE");
+    expect(deriveStatus(null, null, Date.now())).toBe("UNAVAILABLE");
   });
 
   it("a manual OFF_DUTY/UNAVAILABLE row wins even over an active assignment", async () => {
@@ -203,7 +227,7 @@ describe("deriveStatus", () => {
     const offDuty = await prisma.driverAvailability.create({
       data: { driverId: driver.id, source: "manual", availabilityStatus: "OFF_DUTY" },
     });
-    expect(deriveStatus(offDuty, assignment, null, now)).toBe("OFF_DUTY");
+    expect(deriveStatus(offDuty, assignment, now)).toBe("OFF_DUTY");
   });
 
   it("a simulation-sourced row's availabilityStatus is not an override, but its acceptingLoads is still read", async () => {
@@ -213,18 +237,8 @@ describe("deriveStatus", () => {
     });
     // Were the override honoured this would be OFF_DUTY; it isn't, so the
     // normal rules run and acceptingLoads (read straight off the same row)
-    // makes it AVAILABLE instead — proving both halves of the ruling at once.
-    expect(deriveStatus(simulated, null, null, Date.now())).toBe("AVAILABLE");
-  });
-
-  it("hos does not change the outcome (reserved for a future rule)", async () => {
-    const { driver } = await seedOrgAndDriver({});
-    await prisma.hosState.create({
-      data: { driverId: driver.id, driveRemainingMin: 0, windowRemainingMin: 0, cycleRemainingMin: 0 },
-    });
-    const hos = await prisma.hosState.findUnique({ where: { driverId: driver.id } });
-    expect(deriveStatus(null, null, hos, Date.now())).toBe("UNAVAILABLE");
-    expect(deriveStatus(null, null, null, Date.now())).toBe("UNAVAILABLE");
+    // makes it AVAILABLE instead — proving both halves of the rule at once.
+    expect(deriveStatus(simulated, null, Date.now())).toBe("AVAILABLE");
   });
 });
 
@@ -269,10 +283,12 @@ describe("GET /drivers/:id/availability", () => {
 
     const res = await request(app).get(`/api/dispatcher/drivers/${driver.id}/availability`).set("authorization", auth);
     expect(res.status).toBe(200);
-    expect(res.body.available).toEqual({ lat: KC.lat, lng: KC.lng, city: null, state: null });
-    // KC is the gazetteer's own "kansas city|mo" coordinate, so `near` resolves
-    // essentially on top of it (Task 9) — distanceMi is asserted loosely since
-    // it is a real haversine computation, not a fixed constant.
+    // KC is the gazetteer's own "kansas city|mo" coordinate (distance 0), so
+    // the projection's last-ping basis names it too, same as `current.near`.
+    expect(res.body.available).toEqual({ lat: KC.lat, lng: KC.lng, city: "Kansas City", state: "MO" });
+    // `near` resolves essentially on top of it (Task 9) — distanceMi is
+    // asserted loosely since it is a real haversine computation, not a fixed
+    // constant.
     expect(res.body.current).toEqual({
       lat: KC.lat, lng: KC.lng, at: pingAt.getTime(),
       near: { city: "Kansas City", state: "MO", distanceMi: expect.any(Number) },
@@ -350,16 +366,13 @@ describe("GET /drivers/availability (list)", () => {
 });
 
 describe("PATCH /drivers/:id/availability", () => {
-  it("fix round 1: a first PATCH with only acceptingLoads and no explicit status creates a 'derived' row, not an override — and still exposes a shareToken", async () => {
-    // Previously (task-2-report.md, Concern 1): a PATCH that never touched
-    // availabilityStatus still wrote source:"manual" unconditionally, so the
-    // freshly created row sat at the schema's own "UNAVAILABLE"
-    // availabilityStatus default and read as a hard override — masking
-    // acceptingLoads. Fixed: a row becomes a manual STATUS override only
-    // when the dispatcher explicitly PATCHes availabilityStatus. Without it,
-    // a freshly created row is written source:"derived" (deriveStatus
-    // ignores a non-manual row's status entirely), so acceptingLoads:true
-    // here correctly yields AVAILABLE.
+  it("a first PATCH with only acceptingLoads and no explicit status creates a 'derived' row, not an override — and still exposes a shareToken", async () => {
+    // A row becomes a manual STATUS override only when the dispatcher
+    // explicitly PATCHes availabilityStatus. Without it, a freshly created
+    // row is written source:"derived" (deriveStatus ignores a non-manual
+    // row's status entirely), so acceptingLoads:true here correctly yields
+    // AVAILABLE rather than being masked by the schema's own "UNAVAILABLE"
+    // availabilityStatus default.
     const { auth, driver } = await seedOrgAndDriver();
     expect(await prisma.driverAvailability.findUnique({ where: { driverId: driver.id } })).toBeNull();
 

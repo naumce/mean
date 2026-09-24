@@ -22,17 +22,16 @@ import { signDispatcherAccess } from "../src/lib/tokens.js";
 //    also carries two events with NO resolvable etaAtMs (a "plan" whose
 //    etaAtMs is a string, and a "sheet_write" with no `remaining`) AFTER the
 //    valid sheet_write, so getCurrentETA's skip-and-fall-back-to-the-older-
-//    valid-event branch (review fix round 1, Important #2) is genuinely
-//    exercised rather than trivially true on the first event checked.
-//  - L5 (review fix round 1, ❌ #1): status "canceled", whose ONLY assignment
-//    is also "canceled" — proves a canceled assignment's plannedEnd is never
-//    reported as an ETA. Status "canceled" (not "open") so it never lands in
-//    any existing status/uncovered assertion below.
-//  - L6 (review fix round 1, Important #2): open, no assignment (so it IS
-//    "uncovered" by status+assignment), but its first stop carries NO
-//    appointment at all — proves the "not evaluable, not a default bucket"
-//    branch in both `searchLoads`'s fromMs/toMs filter and
-//    `getUncoveredLoads`.
+//    valid-event branch is genuinely exercised rather than trivially true on
+//    the first event checked.
+//  - L5: status "canceled", whose ONLY assignment is also "canceled" —
+//    proves a canceled assignment's plannedEnd is never reported as an ETA.
+//    Status "canceled" (not "open") so it never lands in any existing
+//    status/uncovered assertion below.
+//  - L6: open, no assignment (so it IS "uncovered" by status+assignment),
+//    but its first stop carries NO appointment at all — proves the "not
+//    evaluable, not a default bucket" branch in both `searchLoads`'s
+//    fromMs/toMs filter and `getUncoveredLoads`.
 //  - One tractor + one DryVan trailer so findFeasibleDrivers/
 //    getDispatchCandidateDetails have a real pool to rank against.
 // Org B carries one driver, one customer, and one load for cross-org checks.
@@ -155,8 +154,7 @@ export async function seedDispatchToolsFixture() {
 
   // L6: uncovered by status+assignment (open, no assignment), but its first
   // stop carries no appointment at all -> excluded from both searchLoads'
-  // fromMs/toMs filter and getUncoveredLoads (review fix round 1,
-  // Important #2 — previously zero fixture coverage of this branch).
+  // fromMs/toMs filter and getUncoveredLoads.
   const l6 = await createLoad(orgA.id, "open", [
     { sequence: 1, type: "pickup", address: KC.address, lat: KC.lat, lng: KC.lng }, // no windowEnd -> no appointment
     { sequence: 2, type: "delivery", address: DALLAS.address, lat: DALLAS.lat, lng: DALLAS.lng, windowEnd: new Date(NOW_MS + 2 * DAY_MS) },
@@ -210,10 +208,9 @@ export async function seedDispatchToolsFixture() {
   });
   // Two more events, NEWER than the valid sheet_write above, neither of
   // which carries a resolvable etaAtMs — getCurrentETA must skip both and
-  // still fall back to the older, valid sheet_write's ETA_SHEET (review fix
-  // round 1, Important #2: this skip branch was correct by inspection but
-  // had no fixture ever exercising it, since the newest event was always
-  // already the valid one).
+  // still fall back to the older, valid sheet_write's ETA_SHEET, rather than
+  // the newest event always already being the valid one (which would leave
+  // this skip branch unexercised).
   await prisma.agentEvent.create({
     // A re-plan whose etaAtMs is malformed (wrong type) rather than absent —
     // etaFromEvidence's `typeof === "number"` check must reject this, not

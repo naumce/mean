@@ -5,7 +5,7 @@ import { alongRoute, offsetFromLine } from "./geo.mjs";
 // off the line" or "90 min behind plan" is exact by construction and the
 // test can recompute the same expected point independently and compare.
 
-/** The ordinary case (ruling 6): 3 recent pings tracing the great-circle
+/** The ordinary case: 3 recent pings tracing the great-circle
  *  line from `origin` toward `destination`, ending at `progressFraction`
  *  (0..1) of the way there, most recent at `nowMs`. */
 export function alongRoutePings(driverId, origin, destination, progressFraction, nowMs) {

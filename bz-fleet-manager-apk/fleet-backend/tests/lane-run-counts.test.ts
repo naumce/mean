@@ -2,9 +2,8 @@ import { prisma } from "../src/db.js";
 import { resetDb } from "./helpers.js";
 import { laneKey, laneRunCounts } from "../src/lib/lanes.js";
 
-// AI Dispatch Foundation, Task 4, review fix round 1 (Important #1) —
-// laneRunCounts (src/lib/lanes.ts:114-142) shipped with no test coverage at
-// all. Kept in its own file rather than folded into driver-metrics.test.ts:
+// AI Dispatch Foundation, Task 4 — laneRunCounts (src/lib/lanes.ts:114-142).
+// Kept in its own file rather than folded into driver-metrics.test.ts:
 // that file is already 450 lines, and these fixtures don't need the fuller
 // on-time/detention/agent-trip machinery seedFixture there builds — just
 // plain completed assignments on a lane.

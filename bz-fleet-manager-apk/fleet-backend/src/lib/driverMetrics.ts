@@ -1,5 +1,5 @@
 import { prisma } from "../db.js";
-import { deliveryWindowEndOf, isLateAssignment, lateMinutes } from "./onTime.js";
+import { deliveryWindowEndOf, isLateAssignment, laterOf, lateMinutes } from "./onTime.js";
 import { laneKey } from "./lanes.js";
 import { cityStateFromAddress } from "./driverAvailability.js";
 import { scanDetention, type StopDetention } from "./detentionScan.js";
@@ -107,14 +107,6 @@ function meanOf(values: number[]): number | null {
   return values.length ? values.reduce((sum, v) => sum + v, 0) / values.length : null;
 }
 
-/** `null` beats any Date the other way — a lane's most-recent-run never
- *  loses to a run whose completion time is unknown. */
-function laterOf(a: Date | null, b: Date | null): Date | null {
-  if (a === null) return b;
-  if (b === null) return a;
-  return a.getTime() >= b.getTime() ? a : b;
-}
-
 /** The hour (0-23) `date` falls on in `timeZone`, via Intl rather than a new
  *  dependency (brief). `hour12: false` formats midnight as "24" rather than
  *  "00" on some ICU builds — `% 24` normalizes either spelling. */
@@ -208,9 +200,10 @@ function averageDetentionMinutesFor(driverId: string, detentions: StopDetention[
 // ---------------------------------------------------------------------------
 
 export interface DriverMetricsOptions {
-  /** `scanDetention` is a 365-day, ORG-WIDE scan that also reads every
-   *  distinct driver's DriverLocation pings (detentionScan.ts) — the
-   *  heaviest single piece of this function's batch. `CandidateContext`
+  /** `scanDetention` is a 365-day scan, scoped here to just `driverIds`
+   *  (detentionScan.ts's own `scope.driverIds`) but still reading every one
+   *  of those distinct drivers' DriverLocation pings — the heaviest single
+   *  piece of this function's batch. `CandidateContext`
    *  (Task 6, candidateContext.ts) never surfaces `averageDetentionMinutes`
    *  at all, so every `/suggest`/`/drivers/:id/next` call was paying for
    *  that scan to compute a number nothing reads. `false` skips the scan
@@ -280,7 +273,7 @@ export async function driverMetricsBatch(
       },
     }),
     prisma.org.findUnique({ where: { id: orgId }, select: { timezone: true } }),
-    includeDetention ? scanDetention(orgId, detentionSinceMs) : Promise.resolve<StopDetention[]>([]),
+    includeDetention ? scanDetention(orgId, detentionSinceMs, { driverIds: uniqueIds }) : Promise.resolve<StopDetention[]>([]),
   ]);
 
   const timezone = org?.timezone ?? DEFAULT_TIMEZONE;

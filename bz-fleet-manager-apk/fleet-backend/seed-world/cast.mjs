@@ -1,11 +1,11 @@
 import { HUBS } from "./cities.mjs";
 import { stableId } from "./prng.mjs";
 
-// The scenario cast (ruling 1: "always created in full", regardless of
-// scale): 13 drivers each realizing one lettered scenario (H needs a
-// customer, not a driver, so it has none) plus 2 more — Boris/Chidi — whose
-// job is purely to carry ruling 5's "6 breakdowns / 2 accidents on specific
-// ... drivers" reply evidence and are never referenced by a scenario letter.
+// The scenario cast — always created in full, regardless of scale: 13
+// drivers each realizing one lettered scenario (H needs a customer, not a
+// driver, so it has none) plus 2 more — Boris/Chidi — whose job is purely to
+// carry the "6 breakdowns / 2 accidents on specific ... drivers" reply
+// evidence and are never referenced by a scenario letter.
 //
 // Identity is fully hand-fixed here (never PRNG-derived) so a rerun's
 // `stableId("driver:" + externalId)` reproduces the exact same row id every

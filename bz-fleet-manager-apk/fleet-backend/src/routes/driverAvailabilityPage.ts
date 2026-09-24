@@ -70,18 +70,30 @@ export function jsStringLiteral(value: string): string {
 
 /** Pure and directly unit-testable — a request-level test of a hostile
  *  token is moot (rowByToken's 404 path means an unknown token never
- *  reaches this function at all), so this is exercised directly instead. */
+ *  reaches this function at all), so this is exercised directly instead.
+ *
+ *  Both `.replace()` calls use a FUNCTION replacement rather than a string
+ *  one: `String.prototype.replace`'s string form re-interprets `$&`/`` $` ``/
+ *  `$'`/`$1`/`$$` in the replacement text as special patterns, so a name (or,
+ *  in principle, a token) containing a literal `$` could splice arbitrary
+ *  surrounding template text — including past the `<script>` boundary —
+ *  into the page instead of appearing verbatim. A function replacement's
+ *  return value is always inserted as-is, with no such reinterpretation. */
 export function renderDriverPage(driver: { firstName: string | null; name: string }, shareToken: string): string {
-  return DRIVER_PAGE_HTML.replace(/__NAME__/g, escapeHtml(firstNameOf(driver))).replace(
-    /__TOKEN__/g,
-    jsStringLiteral(shareToken),
-  );
+  const escapedName = escapeHtml(firstNameOf(driver));
+  const tokenLiteral = jsStringLiteral(shareToken);
+  return DRIVER_PAGE_HTML.replace(/__NAME__/g, () => escapedName).replace(/__TOKEN__/g, () => tokenLiteral);
 }
 
 driverPageRouter.get(
   "/driver/:shareToken",
   pageLimiter,
   asyncRoute(async (req, res) => {
+    // The URL (and the inline script it serves) carries a bearer-equivalent
+    // credential: never cached (a shared phone's browser history/back-
+    // forward cache must not resurrect it after the token rotates) and never
+    // leaked to a third-party site this page might someday link to.
+    res.set({ "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
     const row = await rowByToken(req.params.shareToken as string);
     if (!row) {
       res.status(404).type("text/plain").send(NOT_FOUND);

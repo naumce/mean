@@ -4,8 +4,9 @@ import { suggestForLoad, type SuggestResult, type SuggestCandidateRow } from "..
 // here are thin wrappers over lib/suggestForLoad.ts's own pipeline (itself
 // extracted from the /suggest route in this same task). Task 6 is what
 // actually enriches rankOrgDrivers/suggestForLoad with richer candidate
-// context — this file only exposes what exists today as a tool boundary, per
-// the T5<->T6 ordering ruling (SDD ledger).
+// context — this file only exposes what exists today as a tool boundary;
+// being thin wrappers, both functions pick up that richer context for free
+// once suggestForLoad carries it, with no change needed here.
 
 /** Every org driver ranked for this load (feasible candidates scored,
  *  infeasible ones with a reason) — suggestForLoad verbatim; null when the

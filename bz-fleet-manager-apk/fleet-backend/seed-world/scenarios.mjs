@@ -5,9 +5,9 @@
 // LIST the scenarios (a future UI, the doc task) without pulling in the
 // generator itself.
 //
-// `title` for "A" is verbatim per the task brief; the rest follow its shape
-// (a short label + one sentence telling the dispatcher where to look) without
-// a mandated exact wording. `externalId` is verbatim for every letter.
+// `title` for "A" is verbatim; the rest follow its shape (a short label +
+// one sentence telling the dispatcher where to look) without a mandated
+// exact wording. `externalId` is verbatim for every letter.
 export const SCENARIOS = [
   {
     code: "A",

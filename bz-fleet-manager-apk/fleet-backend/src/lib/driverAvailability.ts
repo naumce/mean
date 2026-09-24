@@ -1,4 +1,4 @@
-import type { Assignment, DriverAvailability, HosState, Prisma } from "@prisma/client";
+import type { Assignment, DriverAvailability, Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { ACTIVE_STATUSES } from "./activeStatuses.js";
 import { STATE_CODES, nearestKnownPlace, type NearestKnownPlace } from "./geocode.js";
@@ -63,6 +63,13 @@ export function lastGeocodedDeliveryStop<T extends { type: string; lat: number |
   return [...stops].reverse().find((s) => s.type === "delivery" && s.lat != null && s.lng != null) ?? null;
 }
 
+/** How close a "last_ping" basis's position must be to a gazetteer place
+ *  before projectAvailability names it — close enough that "at <City>" reads
+ *  as true, not approximate. The wider "near <City> · N mi" case is already
+ *  covered by DriverAvailabilityView.current.near (Task 9); this is a
+ *  narrower, stricter threshold for the AVAILABLE column specifically. */
+const LAST_PING_CITY_MAX_MI = 3;
+
 /**
  * EXACTLY dispatcherDriverNext.ts's pre-extraction rule (lines 47-54): the
  * driver's future position is their CURRENT assignment's last geocoded
@@ -73,7 +80,11 @@ export function lastGeocodedDeliveryStop<T extends { type: string; lat: number |
  * city/state are new here (the route this was extracted from never needed
  * them): parsed from the same last-drop stop's address when that's the
  * basis. A ping is a bare lat/lng with no address to parse, so basis
- * "last_ping"/"none" always carry null city/state.
+ * "last_ping" instead resolves city/state from the nearest gazetteer place
+ * (nearestKnownPlace) when one sits within LAST_PING_CITY_MAX_MI — a driver
+ * with no current assignment still gets an honest "at <City>" rather than a
+ * blank field. Basis "none" always carries null city/state (no position at
+ * all to look up).
  */
 export function projectAvailability(
   driver: { lastLat: number | null; lastLng: number | null },
@@ -92,7 +103,18 @@ export function projectAvailability(
     : driver.lastLat != null && driver.lastLng != null
       ? "last_ping"
       : "none";
-  const { city, state } = lastDrop ? cityStateFromAddress(lastDrop.address) : { city: null, state: null };
+
+  let city: string | null = null;
+  let state: string | null = null;
+  if (lastDrop) {
+    ({ city, state } = cityStateFromAddress(lastDrop.address));
+  } else if (basis === "last_ping" && lat != null && lng != null) {
+    const nearest = nearestKnownPlace(lat, lng);
+    if (nearest && nearest.distanceMi <= LAST_PING_CITY_MAX_MI) {
+      city = nearest.city;
+      state = nearest.state;
+    }
+  }
   return { at, lat, lng, city, state, basis };
 }
 
@@ -109,45 +131,30 @@ export const AVAILABLE_SOON_WINDOW_MS = 4 * 60 * 60 * 1000;
 /**
  * Rules, in order:
  *  1. A row with source "manual" whose `availabilityStatus` is OFF_DUTY or
- *     UNAVAILABLE wins outright — the dispatcher said so explicitly.
- *     Only a MANUAL row counts as this kind of override (SDD ledger,
- *     T2xT8 pre-flight ruling: "only source:manual rows override derived
- *     status") — a "derived" or "simulation" row (Task 8 writes those) is
- *     treated as if its `availabilityStatus` were absent, so this
- *     derivation runs fresh instead of trusting a self-reported status.
- *     That ruling is scoped to the status override specifically; a
- *     derived/simulation row's `acceptingLoads` is still read normally in
+ *     UNAVAILABLE wins outright — the dispatcher said so explicitly. Only a
+ *     MANUAL row counts as this kind of override: a "derived" or
+ *     "simulation" row is treated as if its `availabilityStatus` were
+ *     absent, so this derivation runs fresh instead of trusting a
+ *     self-reported status. The override is scoped to status specifically;
+ *     a derived/simulation row's `acceptingLoads` is still read normally in
  *     rule 3 below — it's an input fact, not a claimed conclusion.
  *
- *     Fix round 1 (task-2-report.md, Concern 1): source "manual" by itself
- *     used to be an unreliable signal, because dispatcherDriverSupply.ts's
- *     PATCH wrote it unconditionally on every write — including a first
- *     PATCH that only ever set `acceptingLoads`, whose freshly-created row
- *     then sat at the schema's own `availabilityStatus` default
- *     ("UNAVAILABLE") and read as a hard override nobody asked for. The
- *     route now writes source:"manual" ONLY on a PATCH that explicitly
- *     includes `availabilityStatus` (source:"derived" otherwise, and an
- *     UPDATE that omits it leaves both columns untouched) — so by the time
- *     a row reaches this function, source:"manual" reliably means "the
- *     dispatcher chose this status," not just "some PATCH touched this row."
- *     This function's own logic did not need to change for that fix; only
- *     the writer (dispatcherDriverSupply.ts) did.
+ *     `dispatcherDriverSupply.ts`'s PATCH writes source:"manual" only when a
+ *     request explicitly includes `availabilityStatus` (source:"derived"
+ *     otherwise, and an update that omits it leaves both columns untouched)
+ *     — so by the time a row reaches this function, source:"manual"
+ *     reliably means "the dispatcher chose this status," never merely "some
+ *     PATCH touched this row."
  *  2. Otherwise, an active assignment -> AVAILABLE_SOON when its planned end
  *     is within AVAILABLE_SOON_WINDOW_MS of now, else ON_LOAD.
  *  3. Otherwise, `acceptingLoads` -> AVAILABLE.
  *  4. Otherwise UNAVAILABLE.
- *
- * `hos` is accepted for a future rule (e.g. downgrading a driver who is
- * nearly out of hours) but does not change the status today.
  */
 export function deriveStatus(
   explicit: DriverAvailability | null,
   current: Assignment | null,
-  hos: HosState | null,
   nowMs: number,
 ): AvailabilityStatus {
-  void hos; // reserved for a future rule — see doc comment above
-
   const manualStatus = explicit?.source === "manual" ? explicit.availabilityStatus : null;
   if (manualStatus === "OFF_DUTY" || manualStatus === "UNAVAILABLE") return manualStatus;
 
@@ -178,7 +185,7 @@ export interface DriverAvailabilityView {
    *  Supply's CURRENT column reads it, never the raw lat/lng, for display. */
   current: { lat: number; lng: number; at: number; near: NearestKnownPlace | null } | null;
   currentAssignment: { loadId: string; loadRef: string; deliveryEtaMs: number; deliveryCity: string | null } | null;
-  source: string;
+  source: "manual" | "derived" | "simulation" | "none";
 }
 
 type DriverForAvailability = Prisma.DriverGetPayload<{
@@ -215,15 +222,15 @@ function toView(driver: DriverForAvailability, nowMs: number): DriverAvailabilit
 
   // Location fields set via PATCH win over the projection, field-by-field (a
   // dispatcher who only overrides the city keeps the projected lat/lng) —
-  // regardless of the row's `source`. Unlike `availabilityStatus` (see
-  // deriveStatus above), these columns are all nullable with no non-empty
-  // default, so there's no "schema default masquerading as an explicit
-  // choice" ambiguity to guard against here: a non-null value on the row
-  // unambiguously means someone set it (a manual PATCH today; a future
-  // Task 8 simulation, plausibly). Fix round 1 made this matter concretely —
-  // a PATCH that sets a location field without also setting
-  // availabilityStatus now creates a "derived" row (dispatcherDriverSupply.ts),
-  // so gating this on source==="manual" the way the status check does would
+  // regardless of the row's `source`. These columns are all nullable with no
+  // non-empty default, so a non-null value on the row unambiguously means a
+  // dispatcher set it: the simulation (engine.ts's syncAvailability) never
+  // writes any of the five, on any row, so there is no "schema default
+  // masquerading as an explicit choice" ambiguity, and no risk of a
+  // simulation-derived value winning here by accident. Gating this on
+  // source==="manual" the way the status check does would be wrong anyway: a
+  // PATCH that sets a location field without also setting availabilityStatus
+  // creates a "derived" row (dispatcherDriverSupply.ts), and that gate would
   // silently drop the very value the dispatcher just PATCHed.
   const available = {
     lat: explicit?.availableLat ?? projected.lat,
@@ -265,12 +272,16 @@ function toView(driver: DriverForAvailability, nowMs: number): DriverAvailabilit
     locationSharingEnabled: explicit?.locationSharingEnabled ?? false,
     locationSharingUpdatedAt: explicit?.locationSharingUpdatedAt ?? null,
     shareToken: explicit?.shareToken ?? null,
-    status: deriveStatus(explicit, current, driver.hos, nowMs),
+    status: deriveStatus(explicit, current, nowMs),
     availableAt,
     available,
     current: currentPing,
     currentAssignment,
-    source: explicit?.source ?? "none",
+    // Cast, not narrowed: the schema column is a plain String (never a
+    // Prisma enum) so only its writers (dispatcherDriverSupply.ts's PATCH,
+    // engine.ts's syncAvailability, and the seed) guarantee it is actually
+    // one of these four values.
+    source: (explicit?.source ?? "none") as DriverAvailabilityView["source"],
   };
 }
 

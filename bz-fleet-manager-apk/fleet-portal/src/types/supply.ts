@@ -46,7 +46,7 @@ export interface DriverAvailabilityView {
   available: AvailableProjection
   current: CurrentPing | null
   currentAssignment: CurrentAssignment | null
-  source: string
+  source: 'manual' | 'derived' | 'simulation' | 'none'
 }
 
 /** PATCH /dispatcher/drivers/:id/availability body — every field optional,

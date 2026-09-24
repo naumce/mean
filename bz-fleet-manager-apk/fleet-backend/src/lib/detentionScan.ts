@@ -73,20 +73,39 @@ function primarySegment(segments: DwellSegment[]): DwellSegment | undefined {
   );
 }
 
+export interface DetentionScanScope {
+  /** Narrows the scan to these drivers' assignments only — the caller
+   *  already knows it needs at most one driver's claims (a metrics drawer)
+   *  and has no use for scanning the other ~165. */
+  driverIds?: string[];
+  /** Narrows the scan to these loads' assignments only — the caller already
+   *  knows the exact set of loads it needs claims for (a customer's history)
+   *  and has no use for scanning every other load in the org. */
+  loadIds?: string[];
+}
+
 /**
  * Assemble detention claims for every stop of every assigned load in an org.
  *
  * `sinceMs` bounds how far back driver ping history is fetched — the whole
  * window each driver's pings are pulled across, in one query per driver.
+ * `scope` additively narrows the assignment query (and therefore the set of
+ * distinct drivers whose pings get read) — omitted, this scans the whole org
+ * exactly as before; passing `driverIds`/`loadIds` never widens the result,
+ * only shrinks the query that produces it.
  */
-export async function scanDetention(orgId: string, sinceMs: number): Promise<StopDetention[]> {
+export async function scanDetention(orgId: string, sinceMs: number, scope: DetentionScanScope = {}): Promise<StopDetention[]> {
   const since = new Date(sinceMs);
 
   const [assignments, org] = await Promise.all([
     prisma.assignment.findMany({
       // orgId is the tenant boundary: a second org's loads must never appear
       // in this scan, however their assignments/drivers/pings are shaped.
-      where: { orgId },
+      where: {
+        orgId,
+        ...(scope.driverIds ? { driverId: { in: scope.driverIds } } : {}),
+        ...(scope.loadIds ? { loadId: { in: scope.loadIds } } : {}),
+      },
       select: {
         loadId: true,
         driverId: true,

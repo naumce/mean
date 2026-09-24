@@ -5,15 +5,15 @@ import { alongRoutePings } from "./pings.mjs";
 import { chance, pick, randFloat, randInt, shuffle, stableId } from "./prng.mjs";
 import { hoursFromNow } from "./time.mjs";
 import { NEAR_TERM_PICKUP_HOURS, NEXT_WEEK_MAX_DAYS, NEXT_WEEK_MIN_DAYS, NEXT_WEEK_SHARE_OF_OPEN, WORLD_LOAD_TAG } from "./targets.mjs";
+import { AVAILABLE_SOON_WINDOW_MS } from "./constants.mjs";
 
 // Generic bulk current/future loads: open (uncovered), assigned (future),
-// in_progress (with pings), tendered (an outstanding offer) — ruling 6's
-// "current world consistency" rules, applied to whichever driver each load
-// happens to draw. The 14 lettered scenarios (scenarioLoads.mjs) are built
-// entirely separately and are never part of this pool.
+// in_progress (with pings), tendered (an outstanding offer) — the current-
+// world consistency rules, applied to whichever driver each load happens to
+// draw. The 14 lettered scenarios (scenarioLoads.mjs) are built entirely
+// separately and are never part of this pool.
 //
 // Compute-then-write: synchronous, returns plain row arrays.
-const AVAILABLE_SOON_WINDOW_MS = 4 * 60 * 60 * 1000;
 const OFF_DUTY_SHARE_OF_FREE = 0.3;
 
 function buildStopsAndAppointments(rand, externalId, loadId, origin, destination, pickupWindow, deliveryWindow) {
@@ -176,9 +176,9 @@ export function buildGenericCurrentWorld(rand, { orgId, bulkDrivers, lanes, cust
       : { driverId: driver.id, acceptingLoads: true, availabilityStatus: "AVAILABLE", source: "derived", availableAt: null, availableLat: null, availableLng: null, availableCity: null, availableState: null, locationSharingEnabled: driver.locationSharingEnabled, locationSharingUpdatedAt: new Date(nowMs) };
   });
 
-  // Only in_progress drivers get a live position override (ruling 6:
-  // "Driver.lastLat/lastLng = its latest ping"); assigned/tendered drivers
-  // haven't moved yet, so they stay at their home-base default.
+  // Only in_progress drivers get a live position override — their
+  // Driver.lastLat/lastLng becomes their latest ping; assigned/tendered
+  // drivers haven't moved yet, so they stay at their home-base default.
   const driverPositionOverrides = {};
   for (const ping of inProgressBuilt.driverLocations) {
     const current = driverPositionOverrides[ping.driverId];
