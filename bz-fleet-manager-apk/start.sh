@@ -14,7 +14,7 @@ npx prisma migrate deploy
 # name for one deploy, then remove it. seed-control-tower.mjs = the org and
 # dispatcher; seed-demo.mjs = the rich two-carrier dataset on top of it.
 case "$SEED_DEMO" in
-  seed-control-tower.mjs|seed-demo.mjs) node "$SEED_DEMO" ;;
+  seed-control-tower.mjs|seed-demo.mjs|seed-world.mjs) node "$SEED_DEMO" ;;
   1) node seed-control-tower.mjs ;;
 esac
 
