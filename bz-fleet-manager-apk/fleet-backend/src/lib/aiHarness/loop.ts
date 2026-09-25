@@ -59,6 +59,19 @@ export interface RunStats {
   invalidCalls: number;
   promptTokens: number | null;
   completionTokens: number | null;
+  /** The highest single call's `promptTokens` over the whole run (I3) — a
+   *  per-run SUM (`promptTokens` above) hides how close any one call came to
+   *  `config.numCtx`; this is the number that actually predicts silent
+   *  context loss. `null` only when no call ever reported a prompt-token
+   *  count at all. */
+  maxPromptTokens: number | null;
+  /** `true` once `maxPromptTokens` passed 85% of the run's own `numCtx` (I3)
+   *  — Ollama drops the oldest non-system messages silently once its context
+   *  fills, so this is the harness's own after-the-fact signal that a run
+   *  came close enough to have plausibly lost history, surfaced per row in
+   *  the evaluation table rather than left for a reader to notice on their
+   *  own. */
+  contextPressure: boolean;
   durationMs: number;
 }
 

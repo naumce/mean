@@ -7,7 +7,6 @@ import {
   fetchAiExperiment,
   fetchAiExperiments,
   fetchAiRun,
-  fetchAiRuns,
   fetchAiStatus,
   fetchUncoveredLoads,
   postAiVerdict,
@@ -188,8 +187,6 @@ export const useAiLabStore = defineStore('aiLab', {
       this.error = null
       try {
         const { runId } = await startAiRun(experimentId, loadId)
-        const { runs } = await fetchAiRuns({ experimentId })
-        this.runs = runs
         return runId
       } catch (error) {
         this.error = isQueueFull(error)
@@ -203,8 +200,6 @@ export const useAiLabStore = defineStore('aiLab', {
       this.error = null
       try {
         const { runIds } = await startAiBatch(experimentId, limit)
-        const { runs } = await fetchAiRuns({ experimentId })
-        this.runs = runs
         return runIds
       } catch (error) {
         this.error = isQueueFull(error)

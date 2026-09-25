@@ -15,11 +15,11 @@ import {
   type HarnessConfig,
 } from "../lib/aiHarness/config.js";
 import { checkOllama } from "../lib/aiHarness/ollamaAdapter.js";
-import { runnerState } from "../lib/aiHarness/runner.js";
+import { runnerState, orphanedCount } from "../lib/aiHarness/runner.js";
 import { DISPATCH_PROMPT_V1 } from "../lib/aiHarness/prompts/dispatch-v1.js";
 import { getUncoveredLoads, type LoadDetail } from "../lib/dispatchTools/loads.js";
 import { cityStateFromAddress } from "../lib/driverAvailability.js";
-import { scenarioOf, toRunSummaries } from "../lib/aiHarness/runView.js";
+import { scenarioOf, toRunSummaries, RUN_SUMMARY_SELECT } from "../lib/aiHarness/runView.js";
 import { dispatcherAiRunsRouter } from "./dispatcherAiRuns.js";
 
 // routes/dispatcherAi.ts (Qwen Harness v0.1, Task 6): the AI Lab's developer
@@ -89,6 +89,11 @@ aiRouter.get("/status", asyncRoute(async (req, res) => {
     defaults: DEFAULT_HARNESS_CONFIG,
     promptVersions: [DISPATCH_PROMPT_V1.version],
     queue: orgId ? runnerState(orgId) : { running: null, queued: [] },
+    // I1: rows the database still calls queued/running that this process's
+    // in-memory queue does not own — the residue a restart leaves behind.
+    // `POST /ai/runs/:id/cancel` reclaims one by id; this is what tells a
+    // dispatcher there is something to reclaim at all.
+    orphaned: orgId ? await orphanedCount(orgId) : 0,
   });
 }));
 
@@ -179,10 +184,14 @@ aiRouter.get("/experiments/:id", asyncRoute(async (req, res) => {
       orderBy: { proposedAt: "desc" },
       select: { proposedAt: true },
     }),
+    // I5: this list only ever renders RunSummary fields — select exactly
+    // those instead of every column (a big `baseline`/`evidence` pair alone
+    // was tens of KB per row, discarded the moment toRunSummary ran).
     prisma.aiDecisionRecord.findMany({
       where: { experimentId: experiment.id },
       orderBy: { proposedAt: "desc" },
       take: 100,
+      select: RUN_SUMMARY_SELECT,
     }),
   ]);
 

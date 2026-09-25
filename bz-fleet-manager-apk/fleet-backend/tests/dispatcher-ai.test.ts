@@ -127,7 +127,32 @@ describe("GET /ai/status", () => {
       defaults: expect.objectContaining({ adapter: "ollama", model: "qwen3:8b" }),
       promptVersions: ["dispatch-v1"],
       queue: { running: null, queued: [] },
+      orphaned: 0,
     });
+    stub.mockRestore();
+  });
+
+  // I1: `orphaned` counts this org's rows the database still calls
+  // queued/running that the (fresh, test) process's in-memory runner has
+  // never heard of — inserted directly rather than through enqueueRun, the
+  // same as a real restart would leave behind.
+  it("reports orphaned rows the runner does not own", async () => {
+    const { org, auth } = await setupDispatcher("Status Orphan Co");
+    const stub = vi.spyOn(ollamaAdapter, "checkOllama").mockResolvedValue({
+      reachable: true, version: "0.34.3", models: ["qwen3:8b"], modelPresent: true, error: null,
+    });
+    const experiment = await createExperiment(org.id);
+    const load = await createReeferLoad(org.id, "L-STATUS-ORPHAN");
+    await prisma.aiDecisionRecord.create({
+      data: {
+        experimentId: experiment.id, orgId: org.id, loadId: load.id, kind: "dispatch_candidate",
+        status: "running", startedAt: new Date(), context: {}, toolCalls: [], toolResults: [],
+      },
+    });
+
+    const res = await request(app).get("/api/dispatcher/ai/status").set(auth);
+    expect(res.status).toBe(200);
+    expect(res.body.orphaned).toBe(1);
     stub.mockRestore();
   });
 });
@@ -212,6 +237,37 @@ describe("experiments CRUD", () => {
 
     const missing = await request(app).get("/api/dispatcher/ai/experiments/no-such-id").set(auth);
     expect(missing.status).toBe(404);
+  });
+
+  // I5: this route must never pull a run's heavy JSON columns just to build
+  // the list — `baseline`/`evidence` alone run tens of KB per row.
+  it("GET :id's runs list never carries baseline/evidence/toolCalls/toolResults/context/proposedDecision", async () => {
+    const { org, auth } = await setupDispatcher("Heavy Payload Co");
+    const experiment = await createExperiment(org.id, "Heavy");
+    const load = await createReeferLoad(org.id, "L-HEAVY");
+    const bigBaseline = {
+      capturedAt: new Date().toISOString(), requiredEquip: "Reefer", note: null,
+      candidates: Array.from({ length: 200 }, (_, i) => ({
+        driverId: `d${i}`, driverName: `Driver ${i}`, feasible: true, score: 0.5,
+        deadheadMi: 10, marginCents: 100, etaMs: 1000, blockedReason: null, context: null,
+      })),
+      feasibleDriverIds: [], topFeasibleDriverId: null,
+    };
+    await seedFinishedRun(org.id, experiment.id, load.id, { baseline: bigBaseline });
+
+    const res = await request(app).get(`/api/dispatcher/ai/experiments/${experiment.id}`).set(auth);
+    expect(res.status).toBe(200);
+    expect(res.body.runs).toHaveLength(1);
+    // `context` is intentionally still present — it is tiny
+    // ({ loadRef, requestedAt }) and RunSummary.loadRef is derived from it;
+    // only the genuinely heavy/unneeded columns are checked here.
+    for (const key of ["baseline", "evidence", "toolCalls", "toolResults", "proposedDecision"]) {
+      expect(res.body.runs[0]).not.toHaveProperty(key);
+    }
+    // The big baseline still round-trips correctly for the run this test
+    // actually seeded — proves the response is otherwise complete, not just
+    // missing keys because the row itself came back empty.
+    expect(res.body.runs[0]).toMatchObject({ loadId: load.id, status: "proposed" });
   });
 
   it("PATCH merges config over the stored one and re-syncs the legacy model column", async () => {
@@ -485,6 +541,42 @@ describe("POST /ai/runs/:id/cancel", () => {
 
     const res = await request(app).post(`/api/dispatcher/ai/runs/${record.id}/cancel`).set(other.auth);
     expect(res.status).toBe(404);
+  });
+
+  // I1: a row left `running` by a restart (inserted directly here, never
+  // through enqueueRun) is unknown to this process's runner, but cancel must
+  // still reclaim it rather than answer `{ cancelled: false }` forever. A
+  // verdict on the now-cancelled row still 409s (the allow-list is
+  // proposed/incomplete/failed only); a replay is allowed, same as any other
+  // cancelled run.
+  it("cancels an orphaned row (running in the DB, owned by no runner); verdict still 409s but replay is allowed", async () => {
+    const { org, auth } = await setupDispatcher("Cancel Orphan Co");
+    const experiment = await createExperiment(org.id);
+    const load = await createReeferLoad(org.id, "L-CANCEL-ORPHAN");
+    const record = await prisma.aiDecisionRecord.create({
+      data: {
+        experimentId: experiment.id, orgId: org.id, loadId: load.id, kind: "dispatch_candidate",
+        status: "running", startedAt: new Date(), context: {}, toolCalls: [], toolResults: [],
+      },
+    });
+
+    const cancel = await request(app).post(`/api/dispatcher/ai/runs/${record.id}/cancel`).set(auth);
+    expect(cancel.status).toBe(200);
+    expect(cancel.body).toEqual({ cancelled: true });
+
+    const row = await prisma.aiDecisionRecord.findUnique({ where: { id: record.id } });
+    expect(row?.status).toBe("cancelled");
+    expect(row?.terminationReason).toBe("cancelled");
+    expect(row?.completedAt).not.toBeNull();
+    expect(row?.error).toMatch(/orphaned/i);
+
+    const decision = await request(app).post(`/api/dispatcher/ai/runs/${record.id}/decision`).set(auth).send({ verdict: "accept" });
+    expect(decision.status).toBe(409);
+
+    setAdapterFactory(() => scriptedAdapter([]));
+    const replay = await request(app).post(`/api/dispatcher/ai/runs/${record.id}/replay`).set(auth);
+    expect(replay.status).toBe(202);
+    await waitForRunStatus(replay.body.runId, TERMINAL_STATUSES);
   });
 });
 

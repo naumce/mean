@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import type { Evidence } from '../../types/aiLab'
 
-// AI Lab (Qwen Harness v0.1): all seven `Evidence` fields (fix round 1 — the
-// first cut only showed three). Design §2's own description of
+// AI Lab (Qwen Harness v0.1): all eight `Evidence` fields (fix round 1 — the
+// first cut only showed three; round 2 added `proposalAttempts`, rendered as
+// a single line rather than its own <details> section — it is one number,
+// not a list to expand). Design §2's own description of
 // `collectEvidence` calls `factsCited` out specifically as "the facts cited
 // (the proposal's reasons verbatim, plus the step numbers whose results
 // mention the proposed driver)" — the actual citation trail behind the
@@ -87,5 +89,7 @@ function driverLabel(driverId: string): string {
         <span v-if="!evidence.supportingSteps.length" class="text-ink-3">none</span>
       </div>
     </details>
+
+    <div class="mt-1 text-ink-2" data-testid="evidence-proposal-attempts">proposal attempts: {{ evidence.proposalAttempts }}</div>
   </div>
 </template>

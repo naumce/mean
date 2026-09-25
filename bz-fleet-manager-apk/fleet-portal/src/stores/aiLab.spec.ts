@@ -7,7 +7,6 @@ import {
   fetchAiExperiment,
   fetchAiExperiments,
   fetchAiRun,
-  fetchAiRuns,
   fetchAiStatus,
   fetchUncoveredLoads,
   postAiVerdict,
@@ -29,7 +28,6 @@ vi.mock('../lib/api', () => ({
   fetchUncoveredLoads: vi.fn(),
   startAiRun: vi.fn(),
   startAiBatch: vi.fn(),
-  fetchAiRuns: vi.fn(),
   fetchAiRun: vi.fn(),
   cancelAiRun: vi.fn(),
   postAiVerdict: vi.fn(),
@@ -47,7 +45,6 @@ const mockedUpdateExperiment = vi.mocked(updateAiExperiment)
 const mockedFetchUncoveredLoads = vi.mocked(fetchUncoveredLoads)
 const mockedStartRun = vi.mocked(startAiRun)
 const mockedStartBatch = vi.mocked(startAiBatch)
-const mockedFetchRuns = vi.mocked(fetchAiRuns)
 const mockedFetchRun = vi.mocked(fetchAiRun)
 const mockedCancelRun = vi.mocked(cancelAiRun)
 const mockedPostVerdict = vi.mocked(postAiVerdict)
@@ -98,7 +95,7 @@ describe('useAiLabStore', () => {
     setActivePinia(createPinia())
     for (const m of [
       mockedFetchStatus, mockedFetchExperiments, mockedCreateExperiment, mockedFetchExperiment, mockedUpdateExperiment,
-      mockedFetchUncoveredLoads, mockedStartRun, mockedStartBatch, mockedFetchRuns, mockedFetchRun, mockedCancelRun,
+      mockedFetchUncoveredLoads, mockedStartRun, mockedStartBatch, mockedFetchRun, mockedCancelRun,
       mockedPostVerdict, mockedReplay, mockedFetchEvaluation, mockedSubscribe,
     ]) m.mockReset()
   })
@@ -198,15 +195,12 @@ describe('useAiLabStore', () => {
   })
 
   describe('startRun / startBatch', () => {
-    it('startRun posts {loadId} and refreshes the runs list', async () => {
+    it('startRun posts {loadId} and returns the new runId', async () => {
       mockedStartRun.mockResolvedValueOnce({ runId: 'run-9' })
-      mockedFetchRuns.mockResolvedValueOnce({ runs: [runSummary({ id: 'run-9' })] })
       const store = useAiLabStore()
       const runId = await store.startRun('exp-1', 'l1')
       expect(mockedStartRun).toHaveBeenCalledWith('exp-1', 'l1')
-      expect(mockedFetchRuns).toHaveBeenCalledWith({ experimentId: 'exp-1' })
       expect(runId).toBe('run-9')
-      expect(store.runs[0]?.id).toBe('run-9')
     })
 
     it('a 429 QUEUE_FULL becomes a friendly error, not the raw code', async () => {
@@ -217,14 +211,12 @@ describe('useAiLabStore', () => {
       expect(store.error).toMatch(/queue is full/i)
     })
 
-    it('startBatch posts {limit} and refreshes the runs list', async () => {
+    it('startBatch posts {limit} and returns the new runIds', async () => {
       mockedStartBatch.mockResolvedValueOnce({ runIds: ['run-1', 'run-2'] })
-      mockedFetchRuns.mockResolvedValueOnce({ runs: [runSummary({ id: 'run-1' }), runSummary({ id: 'run-2' })] })
       const store = useAiLabStore()
       const runIds = await store.startBatch('exp-1', 10)
       expect(mockedStartBatch).toHaveBeenCalledWith('exp-1', 10)
       expect(runIds).toEqual(['run-1', 'run-2'])
-      expect(store.runs).toHaveLength(2)
     })
   })
 
@@ -418,7 +410,6 @@ describe('useAiLabStore', () => {
       mockedFetchExperiments.mockResolvedValueOnce({ experiments: [experiment({ id: 'exp-old', status: 'archived' })] })
       mockedCreateExperiment.mockResolvedValueOnce({ experiment: experiment({ id: 'exp-scratch', name: 'Scratch' }) })
       mockedStartRun.mockResolvedValueOnce({ runId: 'run-42' })
-      mockedFetchRuns.mockResolvedValueOnce({ runs: [] })
 
       const store = useAiLabStore()
       const runId = await store.askQwen('l1')
@@ -436,7 +427,6 @@ describe('useAiLabStore', () => {
         ],
       })
       mockedStartRun.mockResolvedValueOnce({ runId: 'run-7' })
-      mockedFetchRuns.mockResolvedValueOnce({ runs: [] })
 
       const store = useAiLabStore()
       const runId = await store.askQwen('l1')

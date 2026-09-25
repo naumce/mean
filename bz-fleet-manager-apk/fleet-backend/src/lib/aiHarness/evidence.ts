@@ -1,5 +1,5 @@
 import type { StoredStep } from "./runStore.js";
-import type { Proposal } from "./decision.js";
+import { PROPOSE_DECISION_NAME, type Proposal } from "./decision.js";
 import type { Baseline } from "./baseline.js";
 
 // aiHarness/evidence.ts (Qwen Harness v0.1, Task 5): reconstructs what a run's
@@ -36,6 +36,11 @@ export interface Evidence {
   historyInspected: string[];
   factsCited: FactCited[];
   supportingSteps: number[];
+  /** Round 2: every `propose_decision` `tool_call` step (I4 persists one for
+   *  each attempt, accepted or rejected) — kept as its own count rather than
+   *  folded into `toolsCalled`, since a proposal is the model's OUTPUT, not a
+   *  registry tool it called to gather evidence (adjustment #1). */
+  proposalAttempts: number;
 }
 
 interface ToolCallPayloadLike {
@@ -55,8 +60,18 @@ interface FeasibilityRowLike {
   blockedReason?: unknown;
 }
 
+/** Round 2: excludes `propose_decision`'s own `tool_call` steps — every
+ *  reader of this list (`toolsCalled`, `candidatesInspected`'s
+ *  argument-derived ids, the `getDriverMetrics`/`getDriverHistory` readers)
+ *  is about tools the model called to gather evidence; a proposal attempt is
+ *  the model's output, not something it inspected, and it is counted
+ *  separately as `proposalAttempts`. */
 function toolCallSteps(steps: StoredStep[]): StoredStep[] {
-  return steps.filter((s) => s.kind === "tool_call");
+  return steps.filter((s) => s.kind === "tool_call" && nameOf(s.payload) !== PROPOSE_DECISION_NAME);
+}
+
+function proposalAttemptsOf(steps: StoredStep[]): number {
+  return steps.filter((s) => s.kind === "tool_call" && nameOf(s.payload) === PROPOSE_DECISION_NAME).length;
 }
 
 function nameOf(payload: unknown): string | null {
@@ -202,5 +217,6 @@ export function collectEvidence(
     historyInspected: driverIdsFromCallsNamed(steps, "getDriverHistory"),
     factsCited: factsCitedOf(proposal),
     supportingSteps: supportingStepsOf(steps, proposal, contentsBySeq),
+    proposalAttempts: proposalAttemptsOf(steps),
   };
 }

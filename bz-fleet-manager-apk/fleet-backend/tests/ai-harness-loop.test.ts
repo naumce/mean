@@ -97,14 +97,23 @@ describe("runDispatchDecision: happy path", () => {
   it("two tool calls then a valid proposal: ordered steps, stats, evidence, and a tool-seeded feasible set", async () => {
     const { org, feasible } = await seedOrgWithDrivers();
     const store = memoryRunStore();
+    // I2: `invoke` here stubs out the whole `invokeTool` boundary (never a
+    // seeded database for tool execution), so it has to hand back what the
+    // REAL `invokeTool` would — the model-facing COMPACT projection
+    // (`dispatchTools/invoke.ts`'s `projectForModel`), never the engine's raw
+    // `candidates` array.
     const feasibleResult = {
       loadId: "load-1",
       requiredEquip: "Reefer",
-      tractorId: null,
-      trailerId: null,
-      candidates: [
-        { driverId: feasible.id, driverName: "Feasible Driver", feasible: true, score: 0.9, deadheadMi: 5, loadedMi: 300, etaMs: 100000, marginCents: 4000, marginPct: 0.3, warnings: [] },
+      note: null,
+      counts: { feasible: 1, blocked: 0, shownFeasible: 1, shownBlocked: 0 },
+      feasible: [
+        {
+          driverId: feasible.id, driverName: "Feasible Driver", score: 0.9, deadheadMi: 5,
+          availabilityStatus: null, laneRuns: null, onTimeRate: null, responseRate: null, hosKnown: null,
+        },
       ],
+      blocked: [],
     };
     const invoke = async (_orgId: string, name: string): Promise<InvokeResult> => {
       if (name === "findFeasibleDrivers") return { ok: true, value: feasibleResult };
@@ -148,13 +157,15 @@ describe("runDispatchDecision: happy path", () => {
     expect(outcome.stats.completionTokens).toBe(25);
 
     const steps = store.stepsFor("d-happy");
+    // I4: the accepted propose_decision call also gets its own `tool_call`
+    // step first, exactly like the two registry-tool calls before it.
     expect(steps.map((s) => s.kind)).toEqual([
       "system", "user",
       "assistant", "tool_call", "tool_result",
       "assistant", "tool_call", "tool_result",
-      "assistant", "final",
+      "assistant", "tool_call", "final",
     ]);
-    expect(steps.map((s) => s.seq)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(steps.map((s) => s.seq)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
 
     const findResultStep = steps.find((s) => s.kind === "tool_result" && s.name === "findFeasibleDrivers");
     expect(findResultStep?.payload).toMatchObject({ ok: true, name: "findFeasibleDrivers", truncated: false });
@@ -210,8 +221,20 @@ describe("runDispatchDecision: the propose_decision terminal contract", () => {
     expect(outcome.status).toBe("proposed");
     expect(outcome.proposal?.driverId).toBe(feasible.id);
 
+    // I4: every propose_decision ATTEMPT — rejected or accepted — gets its
+    // own `tool_call` step first, so the rejected attempt's own arguments are
+    // visible on the timeline exactly like any other call.
     const steps = store.stepsFor("d-corrected");
-    expect(steps.map((s) => s.kind)).toEqual(["system", "user", "assistant", "tool_result", "assistant", "final"]);
+    expect(steps.map((s) => s.kind)).toEqual([
+      "system", "user",
+      "assistant", "tool_call", "tool_result",
+      "assistant", "tool_call", "final",
+    ]);
+    const rejectedCall = steps.find((s) => s.kind === "tool_call" && s.name === "propose_decision");
+    expect(rejectedCall?.payload).toEqual({
+      name: "propose_decision",
+      arguments: { driverId: other.id, reason: "Not actually feasible for this load at all.", confidence: 0.5, alternatives: [] },
+    });
     const rejected = steps.find((s) => s.kind === "tool_result");
     expect(rejected?.name).toBe("propose_decision");
     expect(rejected?.payload).toMatchObject({ name: "propose_decision", ok: false });
@@ -225,7 +248,7 @@ describe("runDispatchDecision: the propose_decision terminal contract", () => {
     const store = memoryRunStore();
     const invoke = async (): Promise<InvokeResult> => ({
       ok: true,
-      value: { candidates: [{ driverId: feasible.id, feasible: true, score: 0.7 }] },
+      value: { feasible: [{ driverId: feasible.id, score: 0.7 }], blocked: [] },
     });
     const adapter = scriptedAdapter([
       assistantTurn("Checking.", [{ name: "findFeasibleDrivers", arguments: { loadId: "load-1" } }]),
@@ -250,7 +273,7 @@ describe("runDispatchDecision: the propose_decision terminal contract", () => {
     // for THIS run's load.
     const invoke = async (): Promise<InvokeResult> => ({
       ok: true,
-      value: { candidates: [{ driverId: feasible.id, feasible: true, score: 0.7 }] },
+      value: { feasible: [{ driverId: feasible.id, score: 0.7 }], blocked: [] },
     });
     const adapter = scriptedAdapter([
       assistantTurn("Checking a different load by mistake.", [{ name: "findFeasibleDrivers", arguments: { loadId: "load-2" } }]),
@@ -457,12 +480,116 @@ describe("runDispatchDecision: thinking on vs. off", () => {
     const thinkingSteps = withThinking.stepsFor("d-think");
     const noThinkSteps = withoutThinking.stepsFor("d-nothink");
 
-    expect(thinkingSteps.map((s) => s.kind)).toEqual(["system", "user", "thinking", "assistant", "final"]);
-    expect(noThinkSteps.map((s) => s.kind)).toEqual(["system", "user", "assistant", "final"]);
+    expect(thinkingSteps.map((s) => s.kind)).toEqual(["system", "user", "thinking", "assistant", "tool_call", "final"]);
+    expect(noThinkSteps.map((s) => s.kind)).toEqual(["system", "user", "assistant", "tool_call", "final"]);
     expect(thinkingSteps.filter((s) => s.kind !== "thinking").map(stepShape)).toEqual(noThinkSteps.map(stepShape));
 
     expect(withThinking.latest("d-think").status).toBe(withoutThinking.latest("d-nothink").status);
     expect(withThinking.latest("d-think").terminationReason).toBe(withoutThinking.latest("d-nothink").terminationReason);
+  });
+});
+
+describe("runDispatchDecision: context window signals (I3)", () => {
+  it("never replays a turn's thinking back to the model on a later call", async () => {
+    const { org, feasible } = await seedOrgWithDrivers();
+    const store = memoryRunStore();
+    const invoke = async (): Promise<InvokeResult> => ({ ok: true, value: { onTimeRate: 0.9 } });
+    const adapter = scriptedAdapter([
+      assistantTurn(
+        "Checking.",
+        [{ name: "getDriverMetrics", arguments: { driverId: feasible.id } }],
+        "A long chain of reasoning about this load that must never be resent.",
+      ),
+      assistantTurn("Recommending.", [
+        { name: "propose_decision", arguments: { driverId: feasible.id, reason: "This is the only feasible candidate available.", confidence: 0.6, alternatives: [] } },
+      ]),
+    ]);
+
+    await runDispatchDecision(
+      makeInput({
+        orgId: org.id,
+        decisionId: "d-nothink-replay",
+        store,
+        adapter,
+        invoke,
+        captureBaseline: async () => baselineWith([{ driverId: feasible.id, feasible: true }]),
+      }),
+    );
+
+    expect(adapter.requests).toHaveLength(2);
+    const replayedAssistantMessage = adapter.requests[1]!.messages.find((m) => m.role === "assistant");
+    expect(replayedAssistantMessage).toBeDefined();
+    expect(replayedAssistantMessage).not.toHaveProperty("thinking");
+
+    // Still persisted as its own step for the transcript/UI — dropping it
+    // from the REPLAYED history changes nothing about what a developer sees.
+    const thinkingStep = store.stepsFor("d-nothink-replay").find((s) => s.kind === "thinking");
+    expect(thinkingStep?.payload).toEqual({ text: "A long chain of reasoning about this load that must never be resent." });
+  });
+
+  it("stats.maxPromptTokens is the highest single call's promptTokens, and contextPressure trips once one exceeds 85% of numCtx", async () => {
+    const { org, feasible } = await seedOrgWithDrivers();
+    const store = memoryRunStore();
+    const invoke = async (): Promise<InvokeResult> => ({ ok: true, value: { onTimeRate: 0.9 } });
+    const adapter = scriptedAdapter([
+      {
+        message: { role: "assistant", content: "Checking.", toolCalls: [{ name: "getDriverMetrics", arguments: { driverId: feasible.id } }] },
+        doneReason: "tool_calls",
+        stats: { promptTokens: 2000, completionTokens: 50, totalDurationMs: 10 },
+      },
+      {
+        message: { role: "assistant", content: "Still checking.", toolCalls: [{ name: "getDriverMetrics", arguments: { driverId: "some-other-driver" } }] },
+        doneReason: "tool_calls",
+        stats: { promptTokens: 9000, completionTokens: 50, totalDurationMs: 10 },
+      },
+      // The default assistantTurn stats (promptTokens: 10) must never win
+      // over the earlier, much larger call — this is a MAX, not "the last
+      // call's own value."
+      assistantTurn("Recommending.", [
+        { name: "propose_decision", arguments: { driverId: feasible.id, reason: "This is the only feasible candidate available.", confidence: 0.6, alternatives: [] } },
+      ]),
+    ]);
+
+    const outcome = await runDispatchDecision(
+      makeInput({
+        orgId: org.id,
+        decisionId: "d-ctx-pressure",
+        store,
+        adapter,
+        invoke,
+        captureBaseline: async () => baselineWith([{ driverId: feasible.id, feasible: true }]),
+        config: { ...DEFAULT_HARNESS_CONFIG, numCtx: 10000, maxTurns: 10 },
+      }),
+    );
+
+    expect(outcome.stats.maxPromptTokens).toBe(9000); // 90% of numCtx 10000
+    expect(outcome.stats.contextPressure).toBe(true);
+    expect(store.latest("d-ctx-pressure").stats).toMatchObject({ maxPromptTokens: 9000, contextPressure: true });
+  });
+
+  it("contextPressure stays false when every call stays under 85% of numCtx", async () => {
+    const { org, feasible } = await seedOrgWithDrivers();
+    const store = memoryRunStore();
+    const adapter = scriptedAdapter([
+      assistantTurn("Recommending.", [
+        { name: "propose_decision", arguments: { driverId: feasible.id, reason: "This is the only feasible candidate available.", confidence: 0.6, alternatives: [] } },
+      ]),
+    ]);
+
+    const outcome = await runDispatchDecision(
+      makeInput({
+        orgId: org.id,
+        decisionId: "d-ctx-fine",
+        store,
+        adapter,
+        captureBaseline: async () => baselineWith([{ driverId: feasible.id, feasible: true }]),
+      }),
+    );
+
+    // assistantTurn's fixed promptTokens (10) is nowhere near 85% of the
+    // default numCtx (16384).
+    expect(outcome.stats.maxPromptTokens).toBe(10);
+    expect(outcome.stats.contextPressure).toBe(false);
   });
 });
 
@@ -518,7 +645,8 @@ describe("runDispatchDecision: onStep/onStatus ordering", () => {
       "step:1:system",
       "step:2:user",
       "step:3:assistant",
-      "step:4:final",
+      "step:4:tool_call",
+      "step:5:final",
       "status:proposed",
     ]);
   });
@@ -579,11 +707,14 @@ describe("runDispatchDecision: prismaRunStore end-to-end", () => {
     expect(outcome.status).toBe("proposed");
 
     const rows = await prisma.aiRunStep.findMany({ where: { decisionId: decision.id }, orderBy: { seq: "asc" } });
+    // I4: the accepted propose_decision call gets its own `tool_call` step
+    // before `final`, same as every other tool call.
     expect(rows.map((r) => [r.seq, r.kind])).toEqual([
       [1, "system"],
       [2, "user"],
       [3, "assistant"],
-      [4, "final"],
+      [4, "tool_call"],
+      [5, "final"],
     ]);
     expect(rows.every((r) => typeof r.atMs === "bigint")).toBe(true);
 
@@ -594,7 +725,8 @@ describe("runDispatchDecision: prismaRunStore end-to-end", () => {
       [1, "system"],
       [2, "user"],
       [3, "assistant"],
-      [4, "final"],
+      [4, "tool_call"],
+      [5, "final"],
     ]);
     expect(listed.every((s) => typeof s.atMs === "number")).toBe(true);
 

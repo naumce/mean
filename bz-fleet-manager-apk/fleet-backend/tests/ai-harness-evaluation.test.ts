@@ -211,6 +211,44 @@ describe("evaluateExperiment", () => {
     });
   });
 
+  // I3: `contextPressure` is read straight off `stats` (`?? false` when the
+  // row predates the field), never recomputed here — evaluation.ts only
+  // reports what the loop already decided.
+  it("passes through stats.contextPressure, defaulting missing/undefined to false", async () => {
+    const org = await prisma.org.create({ data: { name: "Ctx Pressure Co" } });
+    const experiment = await prisma.aiExperiment.create({ data: { orgId: org.id, name: "Ctx Pressure Experiment", model: "qwen3:8b" } });
+    const driver = await prisma.driver.create({ data: { email: "ctx@eval.example", passwordHash: "x", name: "Ctx Driver", orgId: org.id } });
+    const loadPressure = await prisma.load.create({ data: { orgId: org.id, requiredEquip: "Reefer", revenueCents: 0, status: "open" } });
+    const loadFine = await prisma.load.create({ data: { orgId: org.id, requiredEquip: "Reefer", revenueCents: 0, status: "open" } });
+
+    const withPressure = await prisma.aiDecisionRecord.create({
+      data: {
+        experimentId: experiment.id, orgId: org.id, loadId: loadPressure.id, kind: "dispatch_candidate",
+        status: "proposed", terminationReason: "proposed",
+        context: {}, toolCalls: [], toolResults: [],
+        proposedDecision: proposalFor(driver.id, 0.9) as unknown as object,
+        stats: { modelCalls: 5, toolCalls: 4, uniqueTools: 2, repeatedCalls: 0, invalidCalls: 0, promptTokens: 12000, completionTokens: 500, maxPromptTokens: 12000, contextPressure: true, durationMs: 1000 },
+        startedAt: new Date(NOW), completedAt: new Date(NOW + 1000),
+      },
+    });
+    // Predates the field entirely (no maxPromptTokens/contextPressure key at
+    // all) — the honest "old row" shape, not just contextPressure: undefined.
+    const predatesField = await prisma.aiDecisionRecord.create({
+      data: {
+        experimentId: experiment.id, orgId: org.id, loadId: loadFine.id, kind: "dispatch_candidate",
+        status: "proposed", terminationReason: "proposed",
+        context: {}, toolCalls: [], toolResults: [],
+        proposedDecision: proposalFor(driver.id, 0.9) as unknown as object,
+        stats: { modelCalls: 2, toolCalls: 1, uniqueTools: 1, repeatedCalls: 0, invalidCalls: 0, promptTokens: 100, completionTokens: 50, durationMs: 500 },
+        startedAt: new Date(NOW), completedAt: new Date(NOW + 500),
+      },
+    });
+
+    const evaluation = await evaluateExperiment(org.id, experiment.id);
+    expect(evaluation?.rows.find((r) => r.runId === withPressure.id)?.contextPressure).toBe(true);
+    expect(evaluation?.rows.find((r) => r.runId === predatesField.id)?.contextPressure).toBe(false);
+  });
+
   it("summary means are null when there are no proposed runs", async () => {
     const org = await prisma.org.create({ data: { name: "No Proposals Co" } });
     const load = await prisma.load.create({ data: { orgId: org.id, requiredEquip: "DryVan", revenueCents: 0, status: "open" } });

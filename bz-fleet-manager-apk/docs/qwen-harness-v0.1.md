@@ -22,7 +22,8 @@ portal /ai-lab -> dispatcherAiRouter (/api/dispatcher/ai/*, 404 unless OLLAMA_UR
 The backend surface lives under `/api/dispatcher/ai/*`
 (`dispatcherAiRouter`, `fleet-backend/src/routes/dispatcherAi.ts`, mounted in
 `app.ts`). `dispatcherAi.ts` holds status, the uncovered-loads picker, and
-experiment CRUD; `dispatcherAiRuns.ts` holds run lifecycle — enqueue, batch,
+experiment create/list/get/update (archiving is `PATCH { status: "archived" }`;
+there is no delete); `dispatcherAiRuns.ts` holds run lifecycle — enqueue, batch,
 list, detail, cancel, verdict, replay, evaluation. Both sit behind the same
 gate as every other `/api/dispatcher` route (auth, dispatcher role, org
 scope), plus one more local to this feature: every route under `/ai/*`,
@@ -39,7 +40,9 @@ portal's run page can watch a run live instead of only polling.
 
 The portal side (`fleet-portal/src/views/ai/AiLabView.vue`,
 `AiExperimentView.vue`, `AiRunView.vue`) is a developer console under
-`/ai-lab`, tower tier only — a status banner, an experiment list/create form,
+`/ai-lab`, linked from the tower-tier nav only (the routes themselves are not
+tier-guarded; the backend gates by dispatcher role and `OLLAMA_URL`) — a
+status banner, an experiment list/create form,
 and a run page with the full step timeline, the proposal beside the baseline,
 and verdict controls. Its own banner copy: "v0.1 — read-only dispatch
 reasoning; nothing here assigns anything."
@@ -77,7 +80,12 @@ version, the pulled-model list, and whether the requested model is present.
 
 The model's `thinking` output (when `think: true`) is captured as its own
 step for the run timeline. It is never parsed and never drives control flow
-— its absence changes nothing about how a run proceeds.
+— its absence changes nothing about how a run proceeds. It is also never
+replayed back to the model on a later call: an early version resent every
+turn's thinking on every subsequent request, which cost 0.5-2k tokens per
+turn and grew turn over turn, materially shrinking how many real turns fit in
+`config.numCtx` before Ollama's own context handling starts silently dropping
+history (see Known limitations).
 
 ## Agent loop
 
@@ -90,10 +98,10 @@ the closures that persist steps and check for timeout/cancellation.
 **Turn structure.** A run captures the deterministic baseline, persists a
 `system` step and a `user` step, then repeats up to `config.maxTurns` times:
 call the model; persist a `thinking` step if present, then an `assistant`
-step; if the answer has no tool calls, nudge once and continue, or (on a
-second content-only answer in a row) end as `no_decision`; otherwise process
-each tool call in order — `propose_decision` specially, everything else
-through `invokeTool`, checked against every cap afterward.
+step; if the answer has no tool calls, nudge once and continue, or (on any
+second content-only answer in the run, nudged or not) end as `no_decision`;
+otherwise process each tool call in order — `propose_decision` specially,
+everything else through `invokeTool`, checked against every cap afterward.
 
 The run ends with exactly one `TerminationReason`: `proposed`, `no_decision`,
 `max_turns`, `max_tool_calls`, `repeated_calls`, `consecutive_invalid`,
@@ -122,8 +130,17 @@ row (`kind`, `name`, `payload`, `atMs`, `durationMs`):
 | `error` | `{ kind, message }` |
 
 `findFeasibleDrivers`'s `tool_result` also carries a `feasibility` array of
-parsed candidate rows, so evidence reconstruction (see Evaluation
-methodology) never depends on the 512-character display `preview`.
+parsed candidate rows — exactly the rows the model-facing compact projection
+(see Tool registry) actually delivered (up to 25 feasible + 25 blocked), never
+the engine's full candidate list — so evidence reconstruction (see Evaluation
+methodology) reports what the model saw and never depends on the
+512-character display `preview`.
+
+Every `tool_call` step, including one that turns out to be an unknown tool, a
+repeated call, invalid parameters, or a rejected `propose_decision`, is
+persisted BEFORE that call is validated or executed — request wall time, not
+completion time — so the developer timeline always shows exactly what was
+asked for, not only the calls that happened to succeed.
 
 **Nudge.** A content-only answer gets one fixed message
 (`DISPATCH_PROMPT_V1.nudge`): to finish by calling `propose_decision`, with
@@ -172,6 +189,18 @@ value the model supplies — and whatever positional arguments it needs. A
 thrown error comes back as `{ ok: false, code: "tool_error" }`. `invokeTool`
 itself never throws, so any outcome goes straight back to the model as a
 tool result.
+
+**Model-facing projection.** A successful result is reshaped by
+`projectForModel(name, value)` before `invokeTool` returns it — the 17 tool
+functions themselves are unchanged, and every OTHER caller (the portal's own
+routes) still gets their real return value. Two things are stripped: (1)
+`extras` (and any `load`/`loads` field nested inside another result), removed
+at every depth from every tool's result — the seeded demo world keeps its
+scenario answer key at `Load.extras.scenario.hint`, naming the expected
+driver, and a model reasoning from that instead of its own tool calls would
+make every evaluation against the seeded world meaningless; (2)
+`findFeasibleDrivers`'s full candidate list is reshaped into a compact form
+(see Known limitations) rather than handed over verbatim.
 
 `toolDefinitionsForModel()` turns the manifest's zod schemas into
 `ToolDefinition[]` (via zod v4's `z.toJSONSchema`). `harnessToolDefinitions()`
@@ -269,8 +298,8 @@ string, not a relation).
 | `humanDecision`, `decidedAt` | `{ verdict, driverId, note, byDispatcherId }`. |
 | `actualOutcome`, `outcomeAt` | Always `null` in v0.1. |
 | `status` | `queued \| running \| proposed \| incomplete \| failed \| cancelled`. |
-| `terminationReason`, `error` | The reason above; `error` set for `model_error`/`timeout`/`internal_error`. |
-| `stats` | `{ modelCalls, toolCalls, uniqueTools, repeatedCalls, invalidCalls, promptTokens, completionTokens, durationMs }`. |
+| `terminationReason`, `error` | The reason above; `error` set for `model_error`/`timeout`/`internal_error`, and for `cancelled` (where the cancellation was detected). |
+| `stats` | `{ modelCalls, toolCalls, uniqueTools, repeatedCalls, invalidCalls, promptTokens, completionTokens, maxPromptTokens, contextPressure, durationMs }`. |
 | `baseline`, `evidence` | See Evaluation methodology. |
 | `modelConfig`, `promptVersion` | Snapshotted at run start — see below. |
 | `startedAt`, `completedAt`, `requestedById`, `parentRunId` | `parentRunId` links a replay to its source run. |
@@ -287,8 +316,9 @@ string, not a relation).
 `store.updateRun` call, before anything else runs — the fully resolved
 config the run is actually executing with, not a live reference to the
 experiment's. Editing an experiment later can never rewrite what an
-already-run decision used. `promptVersion` is copied the same way, one step
-earlier, at enqueue time.
+already-run decision used. `promptVersion` is copied from the experiment at
+enqueue time and overwritten by that same first `updateRun` with the version
+of the prompt the loop actually ran (`DISPATCH_PROMPT_V1.version`).
 
 ## Experiment lifecycle
 
@@ -312,17 +342,25 @@ earlier, at enqueue time.
 
 **Queue semantics.** `runner.ts` keeps one FIFO queue per org, in memory. One
 run executes at a time per org; different orgs run fully concurrently. At
-most `MAX_QUEUED_PER_ORG` (10) runs may be pending (running + queued) before
-`enqueueRun` returns `{ error: "QUEUE_FULL" }` (HTTP 429). Cancel removes a
-still-queued run and marks it `cancelled` directly, or signals a running
-run's `AbortController`, which the loop's own deadline/cancel check finishes
-as `cancelled` on its next pass.
+most `MAX_QUEUED_PER_ORG` (10) runs may be **queued** — the run currently
+executing is not counted, so an org can hold one running plus ten queued —
+before `enqueueRun` returns `{ error: "QUEUE_FULL" }` (HTTP 429). Cancel
+removes a still-queued run and marks it `cancelled` directly, or signals a
+running run's `AbortController`, which the loop's own deadline/cancel check
+finishes as `cancelled` on its next pass.
 
 **Restart behaviour.** The queue is process-local state — nothing survives a
-restart. A run left `"queued"` is **not** auto-resumed; it sits there
-reporting `"queued"` (honest, if stale) until a dispatcher cancels it or a
-fresh enqueue for that org starts draining again — which still never touches
-the orphaned row.
+restart. A run left `"queued"` or `"running"` by a restart or crash is not
+resumed and is unknown to the new process — but it is not stuck: `POST
+/ai/runs/:id/cancel` reads the row directly whenever the runner does not
+recognize it, and if the database still says `"queued"`/`"running"`, marks it
+`cancelled` (with `error` noting the process restart) so the row stops
+reporting a status nothing will ever change again. A verdict still 409s on a
+`cancelled` row either way (the allow-list is `proposed`/`incomplete`/`failed`
+only); a replay is allowed, same as any other `cancelled` run. `GET
+/ai/status` reports how many of the org's rows are in this orphaned state as
+`orphaned`, so a dispatcher can see there is something to reclaim before
+hunting for a stuck run by hand.
 
 ## Safety boundaries
 
@@ -371,6 +409,7 @@ the model got there.
 | Human verdict | `accept \| reject \| other`, once recorded. |
 | Turns, tool calls, unique/repeated/invalid | `stats.modelCalls/toolCalls/uniqueTools/repeatedCalls/invalidCalls`. |
 | Latency, tokens | `stats.durationMs`; `stats.promptTokens` + `stats.completionTokens`. |
+| Ctx pressure | `stats.contextPressure` — the run's `"ctx!"` badge (see Known limitations). |
 | Termination | The run's own `terminationReason`. |
 
 The accompanying summary reports counts by termination reason, how many
@@ -455,7 +494,29 @@ needed). It never prints `AI_EVAL_PASSWORD`, the login token, or any
   generalize them for.
 - **In-memory queue.** `runner.ts`'s whole queue/state is a process-local
   `Map` (see Restart behaviour) — a multi-instance deployment would need a
-  shared queue this version does not have.
+  shared queue this version does not have, and a restart still orphans any
+  row that was `queued`/`running` at that moment (recoverable via `GET
+  /ai/status`'s `orphaned` count and `POST /ai/runs/:id/cancel`, never
+  auto-resumed).
+- **Context window.** The default `numCtx` 16384 holds roughly six or seven
+  turns of this prompt: per-call prompt tokens reached 12.4k after five calls
+  in an early run (+1.5-4.3k per turn, before thinking replay was removed —
+  see Agent loop). Past that, Ollama silently drops the oldest non-system
+  messages — the user request first — and its response carries no flag of its
+  own; this harness cannot change that behavior. What it does do: `stats.maxPromptTokens`
+  records the highest per-call prompt-token count for the
+  run, and `stats.contextPressure` is `true` once any call exceeded 85% of
+  `numCtx`, surfaced per row in the evaluation table's "ctx!" badge — so a run
+  that plausibly lost history is visible after the fact instead of silent.
+  Watch for the badge, or raise `numCtx`, on a run with many turns.
+- **`findFeasibleDrivers` is projected, never sent raw.** A large fleet's full
+  ranked list (165 drivers ≈ 263 KB) is never handed to the model —
+  `dispatchTools/invoke.ts`'s `projectForModel` reduces it to a compact shape (up to 25
+  feasible rows and 25 blocked rows, engine order, plus a `counts` block
+  naming how many of each actually exist) before the per-result 8192-byte cap
+  (see Tool registry) ever applies. The persisted `feasibility` array and the
+  evidence it feeds mirror exactly those delivered rows, not the engine's full
+  candidate list.
 - **No frozen-context replay.** Replay re-runs against the world's current
   state, not a frozen snapshot of what the original run saw.
 - **No outcomes.** `actualOutcome`/`outcomeAt` exist in the schema and stay
@@ -493,28 +554,4 @@ needed). It never prints `AI_EVAL_PASSWORD`, the login token, or any
 
 ## First run
 
-Run on 2026-09-25 against the seeded world (`Great Lakes Freight Co`, 165 drivers), local Ollama 0.34.3, `qwen3:8b`, prompt `dispatch-v1`, default config (think on, temperature 0.2, num_ctx 16384, maxTurns 12). Full table and config: `docs/evaluations/2026-09-25-scenarios-a-h.md`. Every run is in the AI Lab (experiment "Scenarios A–H · dispatch-v1 · qwen3:8b") with its complete step history.
-
-| Scenario | Load ref | Deterministic top | Pick | Confidence | Rank of pick | Human verdict | Turns | Tool calls | Unique/Repeated/Invalid | Latency (s) | Tokens (prompt+completion) | Termination |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| A | W-A-RELIABLE | Charlotte Petrovski | Dwayne Okafor | 0.95 | 4 | — | 4 | 3 | 3/0/0 | 46.5 | 28468+3266 | proposed |
-| B | W-B-CLOSER | Eric Davis | Dwayne Okafor | 0.85 | 4 | — | 5 | 4 | 4/0/0 | 43.8 | 36905+3807 | proposed |
-| C | W-C-SOON | Ana Kovacs | Dwayne Okafor | 0.95 | 3 | — | 4 | 3 | 3/0/0 | 41.5 | 24257+3715 | proposed |
-| D | W-D-HOS | Dwayne Okafor | Dwayne Okafor | 0.95 | 1 | — | 5 | 4 | 4/0/0 | 42.5 | 34746+3641 | proposed |
-| E | W-E-EQUIP | Femi Okafor | — | 0.95 | — | — | 4 | 3 | 3/0/0 | 36.4 | 23659+3197 | proposed |
-| F | W-F-LANE | — | — | 1.00 | — | — | 4 | 2 | 2/0/1 | 50.5 | 23259+3001 | proposed |
-| G | W-G-HOME | Ava Li | Marcus Webb | 1.00 | 5 | — | 5 | 4 | 4/0/0 | 23.2 | 31813+1949 | proposed |
-| H | W-H-PRIORITY | Ava Li | Katerina Walsh | 0.95 | 2 | — | 4 | 3 | 3/0/0 | 42.3 | 24000+3871 | proposed |
-
-8 runs (proposed=8) — 1/8 matched the deterministic top — mean turns 4.4, mean latency 40.8s
-
-Observations (reference data, not verdicts):
-
-- All eight runs terminated with a validated `propose_decision`; no loop-protection cap was hit, one invalid call in total (scenario F: a rejected proposal the model then corrected).
-- The model used 2–4 tool calls per run, almost always `findFeasibleDrivers` plus one or two driver-detail calls; it rarely asked for metrics, history or the customer before deciding.
-- It proposed the same driver (Dwayne Okafor) in four of the eight scenarios, including scenario B, whose seeded evidence (three unanswered check-ins, 61 % reply rate) argues against him — a case where the evidence was available through `getDriverMetrics` and not requested.
-- For scenario E (a Reefer load whose nearest driver is flatbed-only) it proposed no driver at all with high confidence; for F the engine also had no feasible candidate.
-- Confidence was 0.85–1.00 in every run regardless of how much evidence was gathered — confidence is self-reported and should not be read as calibrated.
-- Mean latency 40.8 s per run on this machine; prompt tokens 23–37 k per run because every turn resends the full tool results.
-
-What to try next with this data: a `dispatch-v2` prompt that requires metrics for the top two feasible drivers before proposing; the same eight scenarios on a larger model; human verdicts on these eight runs so the evaluation columns fill in.
+Re-run pending after the scenario-hint fix — see the evaluation file for the superseded run.

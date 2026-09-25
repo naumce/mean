@@ -148,7 +148,48 @@ export async function cancelRun(orgId: string, runId: string): Promise<boolean> 
     return true;
   }
 
+  // I1: this process's own in-memory state knows nothing about `runId` —
+  // either it was queued/started by a process that has since restarted, or
+  // the id is simply wrong. Only the former is this function's to fix: read
+  // the row directly, and if the database still says `queued`/`running` (an
+  // orphan nothing will ever finish), reclaim it as `cancelled` here rather
+  // than leaving it stuck forever with no path out but a manual SQL update.
+  // A row that is already terminal (or does not exist at all) still falls
+  // through to `false`, unchanged from before. `orgId` is checked here too
+  // (defense in depth, matching runView.ts's own convention): the route that
+  // calls this already verified ownership, so this never changes a correct
+  // caller's result — it only stops a future caller passing a mismatched
+  // pair from reclaiming a row it does not own.
+  const row = await prisma.aiDecisionRecord.findUnique({ where: { id: runId }, select: { id: true, orgId: true, status: true } });
+  if (row && row.orgId === orgId && (row.status === "queued" || row.status === "running")) {
+    await prismaRunStore.updateRun(runId, {
+      status: "cancelled",
+      terminationReason: "cancelled",
+      completedAt: new Date(),
+      error: "orphaned: no runner owns this run (process restarted?)",
+    });
+    emitToDispatchers(orgId, "ai_run_status", { runId, status: "cancelled" });
+    return true;
+  }
+
   return false;
+}
+
+/**
+ * Rows this org's OWN database says are `queued`/`running` but that THIS
+ * process's in-memory runner does not own (see this file's own header
+ * comment on what a restart leaves behind) — the read-side count `GET
+ * /ai/status` surfaces so a dispatcher can see there is something to
+ * reclaim (via `cancelRun` above) before hunting for a stuck run by hand.
+ * Never negative: a process that DOES own more rows than the database
+ * currently reports (a write still in flight) clamps to 0 rather than
+ * reporting a meaningless negative count.
+ */
+export async function orphanedCount(orgId: string): Promise<number> {
+  const dbCount = await prisma.aiDecisionRecord.count({ where: { orgId, status: { in: ["queued", "running"] } } });
+  const state = stateFor(orgId);
+  const ownedCount = state.queue.length + (state.running ? 1 : 0);
+  return Math.max(0, dbCount - ownedCount);
 }
 
 function scheduleDrain(orgId: string): void {

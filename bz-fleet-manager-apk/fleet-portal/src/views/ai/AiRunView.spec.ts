@@ -35,6 +35,7 @@ function runDetail(overrides: Partial<RunDetail> = {}): RunDetail {
       historyInspected: ['d2'],
       factsCited: [{ text: 'closer and available sooner', forDriverId: 'd2' }],
       supportingSteps: [1, 2],
+      proposalAttempts: 1,
     },
     proposedDecision: { driverId: 'd2', reason: 'closer and available sooner', confidence: 0.72, alternatives: [] },
     reason: null, humanDecision: null, decidedAt: null, error: null,

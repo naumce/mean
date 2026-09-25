@@ -16,6 +16,7 @@ import {
   scenarioOf,
   toRunDetail,
   toRunSummaries,
+  RUN_SUMMARY_SELECT,
   type RunScenario,
 } from "../lib/aiHarness/runView.js";
 
@@ -112,6 +113,8 @@ dispatcherAiRunsRouter.get("/runs", asyncRoute(async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: "Invalid query" });
   const { experimentId, loadId, status, limit } = parsed.data;
 
+  // I5: same reasoning as GET /ai/experiments/:id — this list only ever
+  // renders RunSummary fields, so it only ever selects those.
   const records = await prisma.aiDecisionRecord.findMany({
     where: {
       ...orgWhere(req),
@@ -121,6 +124,7 @@ dispatcherAiRunsRouter.get("/runs", asyncRoute(async (req, res) => {
     },
     orderBy: { proposedAt: "desc" },
     take: limit ?? 100,
+    select: RUN_SUMMARY_SELECT,
   });
 
   // Defense in depth (fix round 1): scope the name/scenario lookups to the

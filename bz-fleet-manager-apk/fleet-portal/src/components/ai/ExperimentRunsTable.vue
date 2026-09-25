@@ -45,6 +45,7 @@ function topLabel(row: EvaluationRow): string {
           <th class="px-2 py-2 text-right font-medium">Uniq/rep/inv</th>
           <th class="px-2 py-2 text-right font-medium">Latency</th>
           <th class="px-2 py-2 text-right font-medium">Tokens</th>
+          <th class="px-2 py-2 text-center font-medium">Ctx</th>
         </tr>
       </thead>
       <tbody v-if="rows.length > 0" class="divide-y divide-line">
@@ -73,6 +74,15 @@ function topLabel(row: EvaluationRow): string {
           <td class="px-2 py-2 text-right text-ink-2">{{ row.uniqueTools }}/{{ row.repeatedCalls }}/{{ row.invalidCalls }}</td>
           <td class="px-2 py-2 text-right text-ink-2">{{ formatDurationMs(row.latencyMs) }}</td>
           <td class="px-2 py-2 text-right text-ink-2">{{ row.promptTokens ?? '—' }}/{{ row.completionTokens ?? '—' }}</td>
+          <td class="px-2 py-2 text-center">
+            <span
+              v-if="row.contextPressure"
+              class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800"
+              data-testid="ctx-pressure-badge"
+              title="A call in this run passed 85% of numCtx — Ollama may have silently dropped earlier messages."
+            >ctx!</span>
+            <span v-else class="text-ink-3">—</span>
+          </td>
         </tr>
       </tbody>
     </table>

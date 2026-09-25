@@ -8,7 +8,7 @@ import type { invokeTool } from "../dispatchTools/invoke.js";
 import type { RunStore, StepKind, StoredStep, ToolCallSummary, ToolResultSummary } from "./runStore.js";
 import { collectEvidence } from "./evidence.js";
 import { statusForTermination, callModel } from "./loopGuards.js";
-import { toolResultMessage, failureContent, failuresContent, feasibilityRowsFromRawResult, sumTokens, KEEP_ALIVE } from "./loopMessages.js";
+import { toolResultMessage, failureContent, failuresContent, feasibilityRowsFromProjectedResult, sumTokens, maxToken, KEEP_ALIVE } from "./loopMessages.js";
 import type { RunStatus, TerminationReason, RunStats, RunOutcome } from "./loop.js";
 
 // aiHarness/loopHandlers.ts (Qwen Harness v0.1, Task 5, fix round 1): the
@@ -42,6 +42,10 @@ export interface RunState {
   bytesUsed: number;
   promptTokens: number | null;
   completionTokens: number | null;
+  /** The highest single call's `promptTokens` seen so far (I3) — see
+   *  `RunStats.maxPromptTokens`'s own doc comment in loop.ts for why this is
+   *  tracked separately from the running `promptTokens` sum above. */
+  maxPromptTokens: number | null;
   nudgeCount: number;
 }
 
@@ -64,6 +68,7 @@ export function createRunState(initialMessages: ChatMessage[]): RunState {
     bytesUsed: 0,
     promptTokens: null,
     completionTokens: null,
+    maxPromptTokens: null,
     nudgeCount: 0,
   };
 }
@@ -140,6 +145,7 @@ export async function handleAssistantTurn(
   const callDurationMs = ctx.now() - callStartedAtMs;
   state.promptTokens = sumTokens(state.promptTokens, response.stats.promptTokens);
   state.completionTokens = sumTokens(state.completionTokens, response.stats.completionTokens);
+  state.maxPromptTokens = maxToken(state.maxPromptTokens, response.stats.promptTokens);
 
   // Truthy, not "!== undefined": an empty string carries no thinking worth a
   // step, even though `ChatMessage.thinking` technically allows one.
@@ -160,16 +166,19 @@ export async function handleAssistantTurn(
     callDurationMs,
   );
 
-  // Passed through exactly as the adapter delivered it (thinking included
-  // only when present, tool calls only when the model made any) — this is
-  // the model's own turn being replayed back to it on the next call, not a
-  // fresh reconstruction of what it "should" have said.
+  // Passed through exactly as the adapter delivered it, EXCEPT `thinking`
+  // (I3): the spec treats thinking as display-only, but replaying it back on
+  // every later call was never free — it cost 0.5-2k tokens a turn and grew
+  // with each one, materially shrinking how many real turns fit in
+  // `config.numCtx` before Ollama starts silently dropping history. Dropping
+  // it here changes nothing about how the run proceeds (thinking already
+  // never drove control flow), and it is still persisted as its own step
+  // above for the transcript/UI.
   state.messages = [
     ...state.messages,
     {
       role: "assistant",
       content: response.message.content,
-      ...(response.message.thinking !== undefined ? { thinking: response.message.thinking } : {}),
       ...(toolCalls.length > 0 ? { toolCalls } : {}),
     },
   ];
@@ -200,6 +209,14 @@ export async function handleProposeCall(
   ctx: RunContext,
   persistStep: PersistStepFn,
 ): Promise<ProposeCallResult> {
+  // I4: every propose_decision ATTEMPT — accepted or rejected — gets its own
+  // `tool_call` step first, stamped at request time. Before this, a rejected
+  // attempt's own arguments (the reason/confidence/alternatives actually
+  // being turned down) existed nowhere on the timeline except inside the
+  // model's own `assistant` step payload; a developer reading the run had no
+  // single place to see "this is the call that got rejected."
+  await persistStep("tool_call", PROPOSE_DECISION_NAME, { name: PROPOSE_DECISION_NAME, arguments: call.arguments });
+
   const check = await validateProposal(call.arguments, { orgId: ctx.orgId, feasibleDriverIds: state.feasibleSet });
   if (check.ok) {
     await persistStep("final", PROPOSE_DECISION_NAME, {
@@ -228,6 +245,15 @@ export async function handleProposeCall(
  * checks the deadline and the caps after this returns.
  */
 export async function handleToolCall(call: ToolCall, state: RunState, ctx: RunContext, persistStep: PersistStepFn): Promise<void> {
+  // I4: the `tool_call` step is persisted for EVERY call the model makes —
+  // unknown tool, invalid params, and an identical repeat included — stamped
+  // BEFORE the repeated-call check or invokeTool ever runs (request wall
+  // time, not the time the result happened to come back). Before this, only
+  // a call that actually succeeded got a `tool_call` step at all, so exactly
+  // the calls a developer most needs to inspect (the ones that went wrong)
+  // had their own arguments visible nowhere but the model's `assistant` step.
+  const callStep = await persistStep("tool_call", call.name, { name: call.name, arguments: call.arguments });
+
   const key = `${call.name}:${canonicalArgs(call.arguments)}`;
   const seenAtSeq = state.repeatedCallMap.get(key);
   if (seenAtSeq !== undefined) {
@@ -263,14 +289,16 @@ export async function handleToolCall(call: ToolCall, state: RunState, ctx: RunCo
   // loop's separate, cumulative cap (bytesUsed below), checked once per call
   // across the whole run rather than the size of any one result.
   const serialized = serializeToolResult(invokeResult.value);
-  const callStep = await persistStep("tool_call", call.name, { name: call.name, arguments: call.arguments });
   state.toolCallSummaries = [...state.toolCallSummaries, { seq: callStep.seq, name: call.name }];
 
   // Only findFeasibleDrivers gets this extra field: it is the one tool whose
   // result evidence.ts must read back reliably later, and the preview alone
   // (cut to 512 chars) cannot be trusted for that on anything but a tiny
-  // candidate list.
-  const feasibility = call.name === "findFeasibleDrivers" ? feasibilityRowsFromRawResult(invokeResult.value) : undefined;
+  // candidate list. `invokeResult.value` here is already the MODEL-FACING
+  // projected shape (dispatchTools/invoke.ts), the same one just serialized
+  // above — so this reports exactly the rows the model was shown, capped at
+  // 25 feasible/25 blocked, never the engine's full candidate list (I2).
+  const feasibility = call.name === "findFeasibleDrivers" ? feasibilityRowsFromProjectedResult(invokeResult.value) : undefined;
   const resultStep = await persistStep(
     "tool_result",
     call.name,
@@ -319,6 +347,11 @@ export async function finalizeRun(
   errorMessage: string | null = null,
 ): Promise<RunOutcome> {
   const finishedAtMs = ctx.now();
+  // I3: 85% of this run's OWN numCtx (not a fixed byte count) — a smaller
+  // experiment config has a proportionally smaller cushion before Ollama
+  // starts silently dropping history, so the pressure threshold has to scale
+  // with it too.
+  const contextPressure = state.maxPromptTokens !== null && state.maxPromptTokens > ctx.config.numCtx * 0.85;
   const stats: RunStats = {
     modelCalls: state.modelCalls,
     toolCalls: state.toolCallsCount,
@@ -327,6 +360,8 @@ export async function finalizeRun(
     invalidCalls: state.invalidCount,
     promptTokens: state.promptTokens,
     completionTokens: state.completionTokens,
+    maxPromptTokens: state.maxPromptTokens,
+    contextPressure,
     durationMs: finishedAtMs - ctx.startedAtMs,
   };
   const status = statusForTermination(terminationReason);

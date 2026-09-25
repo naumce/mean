@@ -43,8 +43,12 @@ describe("collectEvidence", () => {
       step(9, "assistant", null, { content: "", toolCalls: [{ name: "getDriverHistory", arguments: { driverId: "d1", limit: 10 } }], stats: {}, doneReason: null }),
       step(10, "tool_call", "getDriverHistory", { name: "getDriverHistory", arguments: { driverId: "d1", limit: 10 } }),
       step(11, "tool_result", "getDriverHistory", { name: "getDriverHistory", ok: true, truncated: false, originalSize: 5, returnedSize: 5, preview: "[]" }),
-      // A second, repeated getDriverMetrics call: rejected, so it gets no
-      // tool_call step of its own (loop.ts only persists one on success).
+      // A second, repeated getDriverMetrics call: rejected. Deliberately
+      // omits this attempt's own tool_call step (unlike a real run's, which
+      // does persist one — I4) to prove collectEvidence's tool-name counting
+      // depends only on whichever tool_call steps a step list actually
+      // contains, not on any assumption about how many an attempt "should"
+      // have produced.
       step(12, "assistant", null, { content: "", toolCalls: [{ name: "getDriverMetrics", arguments: { driverId: "d1" } }], stats: {}, doneReason: null }),
       step(13, "tool_result", "getDriverMetrics", { name: "getDriverMetrics", ok: false, error: "identical call already made; reuse the earlier result (step 8)" }),
       step(14, "assistant", null, {
@@ -130,6 +134,51 @@ describe("collectEvidence", () => {
       historyInspected: [],
       factsCited: [{ text: proposal.reason, forDriverId: "d1" }],
       supportingSteps: [],
+      proposalAttempts: 0,
     });
+  });
+
+  // Round 2: propose_decision is the model's OUTPUT, not a registry tool it
+  // called to gather evidence (adjustment #1) — its own tool_call steps (I4
+  // persists one per attempt) must never surface as an inspected tool/driver,
+  // and are counted separately.
+  it("excludes propose_decision's own tool_call steps from toolsCalled/candidatesInspected, counting them as proposalAttempts instead", () => {
+    const proposal: Proposal = { driverId: "d1", reason: "d1 is the only feasible candidate for this load.", confidence: 0.7, alternatives: [] };
+    const rejectedArgs = { driverId: "d2", reason: "Not actually feasible for this load at all.", confidence: 0.5, alternatives: [] };
+    const acceptedArgs = { driverId: "d1", reason: "d1 is the only feasible candidate for this load.", confidence: 0.7, alternatives: [] };
+    const steps: StoredStep[] = [
+      step(1, "assistant", null, { content: "", toolCalls: [{ name: "propose_decision", arguments: rejectedArgs }], stats: {}, doneReason: null }),
+      step(2, "tool_call", "propose_decision", { name: "propose_decision", arguments: rejectedArgs }),
+      step(3, "tool_result", "propose_decision", { name: "propose_decision", ok: false, errors: ["driver d2 was not among the feasible candidates for this load"] }),
+      step(4, "assistant", null, { content: "", toolCalls: [{ name: "propose_decision", arguments: acceptedArgs }], stats: {}, doneReason: null }),
+      step(5, "tool_call", "propose_decision", { name: "propose_decision", arguments: acceptedArgs }),
+      step(6, "final", "propose_decision", { proposal }),
+    ];
+
+    const evidence = collectEvidence(steps, proposal, null, new Map());
+
+    // Neither attempt's own driverId (d2's rejected pick or d1's accepted
+    // one) leaks into candidatesInspected via the tool_call's `arguments`.
+    expect(evidence.toolsCalled).toEqual([]);
+    expect(evidence.candidatesInspected).toEqual([]);
+    expect(evidence.proposalAttempts).toBe(2);
+  });
+
+  it("mixes propose_decision attempts with real registry tool calls without cross-contamination", () => {
+    const proposal: Proposal = { driverId: "d1", reason: "d1's on-time rate justifies the pick.", confidence: 0.7, alternatives: [] };
+    const steps: StoredStep[] = [
+      step(1, "tool_call", "getDriverMetrics", { name: "getDriverMetrics", arguments: { driverId: "d1" } }),
+      step(2, "tool_result", "getDriverMetrics", { name: "getDriverMetrics", ok: true, truncated: false, originalSize: 5, returnedSize: 5, preview: "{}" }),
+      step(3, "tool_call", "propose_decision", { name: "propose_decision", arguments: { driverId: "d99", reason: "Trying a driver outside the feasible set.", confidence: 0.4, alternatives: [] } }),
+      step(4, "tool_result", "propose_decision", { name: "propose_decision", ok: false, errors: ["driver d99 does not exist in this organization"] }),
+      step(5, "tool_call", "propose_decision", { name: "propose_decision", arguments: { driverId: "d1", reason: "d1's on-time rate justifies the pick.", confidence: 0.7, alternatives: [] } }),
+      step(6, "final", "propose_decision", { proposal }),
+    ];
+
+    const evidence = collectEvidence(steps, proposal, null, new Map());
+
+    expect(evidence.toolsCalled).toEqual([{ name: "getDriverMetrics", count: 1 }]);
+    expect(evidence.candidatesInspected).toEqual(["d1"]); // only from getDriverMetrics' own arguments, never d99
+    expect(evidence.proposalAttempts).toBe(2);
   });
 });

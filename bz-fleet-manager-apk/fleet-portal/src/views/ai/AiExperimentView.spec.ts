@@ -25,7 +25,7 @@ function evaluation(): Evaluation {
       deterministicTop: null, deterministicRankOfPick: null, pick: null, confidence: null,
       humanVerdict: null, humanDriverId: null, matchesDeterministicTop: null,
       turns: 3, toolCalls: 5, uniqueTools: 2, repeatedCalls: 0, invalidCalls: 0,
-      latencyMs: 4000, promptTokens: 100, completionTokens: 20, startedAt: '2026-09-25T00:00:00.000Z',
+      latencyMs: 4000, promptTokens: 100, completionTokens: 20, contextPressure: false, startedAt: '2026-09-25T00:00:00.000Z',
     }],
     summary: { runs: 1, byTermination: { proposed: 1 }, proposed: 1, matchedDeterministicTop: 0, accepted: 0, rejected: 0, meanTurns: 3, meanToolCalls: 5, meanLatencyMs: 4000 },
   }

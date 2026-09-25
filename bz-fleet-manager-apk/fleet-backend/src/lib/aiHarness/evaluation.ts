@@ -43,6 +43,13 @@ export interface EvaluationRow {
   latencyMs: number | null;
   promptTokens: number | null;
   completionTokens: number | null;
+  /** I3: `true` once some call in this run pushed `promptTokens` past 85% of
+   *  the run's own `numCtx` — the evaluation table's one place to notice a
+   *  run that plausibly lost history to Ollama's own silent context
+   *  trimming. `false` (never `null`) for a run whose `stats` predates this
+   *  field, same "missing reads as the safe default" rule `humanVerdict`
+   *  etc. already use elsewhere in this row. */
+  contextPressure: boolean;
   startedAt: string | null;
 }
 
@@ -130,6 +137,7 @@ function toRow(
     latencyMs: stats?.durationMs ?? null,
     promptTokens: stats?.promptTokens ?? null,
     completionTokens: stats?.completionTokens ?? null,
+    contextPressure: stats?.contextPressure ?? false,
     startedAt: record.startedAt ? record.startedAt.toISOString() : null,
   };
 }
@@ -177,9 +185,26 @@ export async function evaluateExperiment(orgId: string, experimentId: string): P
   const experiment = await prisma.aiExperiment.findUnique({ where: { id: experimentId } });
   if (!experiment || experiment.orgId !== orgId) return null;
 
+  // I5: `toRow` below reads exactly these columns — `baseline` is needed for
+  // rank-of-pick, but the bigger `evidence`/`toolCalls`/`toolResults` columns
+  // are not, so an experiment with many runs no longer pulls every JSON
+  // column of every row just to compute this table.
   const records = await prisma.aiDecisionRecord.findMany({
     where: { experimentId },
     orderBy: { proposedAt: "desc" },
+    select: {
+      id: true,
+      loadId: true,
+      context: true,
+      status: true,
+      terminationReason: true,
+      baseline: true,
+      proposedDecision: true,
+      confidence: true,
+      humanDecision: true,
+      stats: true,
+      startedAt: true,
+    },
   });
 
   const driverIds = records.flatMap((r) => {

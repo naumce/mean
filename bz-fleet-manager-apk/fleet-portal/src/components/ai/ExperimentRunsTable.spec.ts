@@ -11,7 +11,7 @@ function row(overrides: Partial<EvaluationRow> = {}): EvaluationRow {
     pick: { driverId: 'd2', name: 'Bob' }, confidence: 0.72,
     humanVerdict: null, humanDriverId: null, matchesDeterministicTop: false,
     turns: 4, toolCalls: 6, uniqueTools: 3, repeatedCalls: 0, invalidCalls: 1,
-    latencyMs: 8200, promptTokens: 512, completionTokens: 128, startedAt: '2026-09-25T00:00:00.000Z',
+    latencyMs: 8200, promptTokens: 512, completionTokens: 128, contextPressure: false, startedAt: '2026-09-25T00:00:00.000Z',
     ...overrides,
   }
 }
@@ -22,7 +22,7 @@ describe('ExperimentRunsTable', () => {
     const headers = wrapper.findAll('th').map((h) => h.text())
     expect(headers).toEqual([
       'Load / scenario', 'Status', 'Termination', 'Pick', 'Confidence', 'Deterministic top',
-      'Verdict', 'Turns', 'Tool calls', 'Uniq/rep/inv', 'Latency', 'Tokens',
+      'Verdict', 'Turns', 'Tool calls', 'Uniq/rep/inv', 'Latency', 'Tokens', 'Ctx',
     ])
   })
 
@@ -81,5 +81,18 @@ describe('ExperimentRunsTable', () => {
       props: { rows: [row({ deterministicTop: { driverId: null, name: null }, deterministicRankOfPick: null })] },
     })
     expect(wrapper.findAll('[data-testid="runs-table-row"] td')[5]?.text()).toBe('—')
+  })
+
+  // I3: a run whose prompt tokens got close enough to numCtx to plausibly
+  // have lost history to Ollama's own silent trimming shows a "ctx!" badge;
+  // an ordinary run shows a plain dash instead.
+  it('shows a "ctx!" badge when contextPressure is true, a dash otherwise', () => {
+    const withPressure = mount(ExperimentRunsTable, { props: { rows: [row({ contextPressure: true })] } })
+    expect(withPressure.find('[data-testid="ctx-pressure-badge"]').exists()).toBe(true)
+    expect(withPressure.find('[data-testid="ctx-pressure-badge"]').text()).toBe('ctx!')
+
+    const withoutPressure = mount(ExperimentRunsTable, { props: { rows: [row({ contextPressure: false })] } })
+    expect(withoutPressure.find('[data-testid="ctx-pressure-badge"]').exists()).toBe(false)
+    expect(withoutPressure.findAll('[data-testid="runs-table-row"] td').at(-1)?.text()).toBe('—')
   })
 })

@@ -1,5 +1,7 @@
 # Scenarios A–H evaluation — 2026-09-25
 
+**SUPERSEDED** — this run's model could read the seeded scenario hints through `getLoad` (fixed in the following commit).
+
 - Model: qwen3:8b
 - Prompt version: dispatch-v1
 - Experiment: Scenarios A–H · dispatch-v1 · qwen3:8b (7302086a-a881-4e63-b435-8192dfe372b7)

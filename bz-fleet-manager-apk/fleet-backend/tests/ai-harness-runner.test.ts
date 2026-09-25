@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetDb } from "./helpers.js";
 import { prisma } from "../src/db.js";
 import * as realtime from "../src/realtime.js";
-import { cancelRun, enqueueRun, MAX_QUEUED_PER_ORG, runnerState, setAdapterFactory } from "../src/lib/aiHarness/runner.js";
+import { cancelRun, enqueueRun, MAX_QUEUED_PER_ORG, orphanedCount, runnerState, setAdapterFactory } from "../src/lib/aiHarness/runner.js";
 import { scriptedAdapter } from "./helpers/scriptedAdapter.js";
 import { assistantProposeTurn, createReeferLoad, seedAiHarnessFixture, waitForRunStatus } from "./helpers/aiHarnessFixture.js";
 import type { ChatResponse, ModelAdapter } from "../src/lib/aiHarness/types.js";
@@ -207,6 +207,88 @@ describe("cancelRun", () => {
 
     expect(await cancelRun(org.id, result.runId)).toBe(false);
     expect(await cancelRun(org.id, "no-such-run")).toBe(false);
+  });
+
+  // I1: a restart leaves the database saying `queued`/`running` for a row
+  // this (new) process's in-memory `orgStates` has never heard of — inserted
+  // directly here, never through enqueueRun, so it starts life exactly as
+  // orphaned as a real restart would leave it.
+  it("reclaims a row that is `running` in the database but owned by no runner, marking it cancelled", async () => {
+    const { org } = await seedAiHarnessFixture("Runner Orphan Running Co");
+    const experiment = await seedExperiment(org.id, "Orphan Running Experiment");
+    const load = await createReeferLoad(org.id, "L-ORPHAN-RUNNING");
+    const orphan = await prisma.aiDecisionRecord.create({
+      data: {
+        experimentId: experiment.id, orgId: org.id, loadId: load.id, kind: "dispatch_candidate",
+        status: "running", startedAt: new Date(),
+        context: { loadRef: "L-ORPHAN-RUNNING", requestedAt: new Date().toISOString() },
+        toolCalls: [], toolResults: [],
+      },
+    });
+
+    expect(runnerState(org.id)).toEqual({ running: null, queued: [] });
+    const cancelled = await cancelRun(org.id, orphan.id);
+    expect(cancelled).toBe(true);
+
+    const row = await prisma.aiDecisionRecord.findUnique({ where: { id: orphan.id } });
+    expect(row?.status).toBe("cancelled");
+    expect(row?.terminationReason).toBe("cancelled");
+    expect(row?.completedAt).not.toBeNull();
+    expect(row?.error).toMatch(/orphaned/i);
+  });
+
+  it("reclaims a row that is `queued` in the database but owned by no runner", async () => {
+    const { org } = await seedAiHarnessFixture("Runner Orphan Queued Co");
+    const experiment = await seedExperiment(org.id, "Orphan Queued Experiment");
+    const load = await createReeferLoad(org.id, "L-ORPHAN-QUEUED");
+    const orphan = await prisma.aiDecisionRecord.create({
+      data: {
+        experimentId: experiment.id, orgId: org.id, loadId: load.id, kind: "dispatch_candidate",
+        status: "queued",
+        context: { loadRef: "L-ORPHAN-QUEUED", requestedAt: new Date().toISOString() },
+        toolCalls: [], toolResults: [],
+      },
+    });
+
+    expect(await cancelRun(org.id, orphan.id)).toBe(true);
+    const row = await prisma.aiDecisionRecord.findUnique({ where: { id: orphan.id } });
+    expect(row?.status).toBe("cancelled");
+  });
+});
+
+describe("orphanedCount", () => {
+  it("counts only the org's queued/running rows this process's runner does not own", async () => {
+    const { org } = await seedAiHarnessFixture("Orphaned Count Co");
+    const experiment = await seedExperiment(org.id, "Orphaned Count Experiment");
+    const load = await createReeferLoad(org.id, "L-ORPHAN-COUNT");
+
+    expect(await orphanedCount(org.id)).toBe(0);
+
+    // Two rows inserted directly (never through enqueueRun): one running, one
+    // queued — both unknown to this process's runner.
+    await prisma.aiDecisionRecord.create({
+      data: {
+        experimentId: experiment.id, orgId: org.id, loadId: load.id, kind: "dispatch_candidate",
+        status: "running", startedAt: new Date(), context: {}, toolCalls: [], toolResults: [],
+      },
+    });
+    await prisma.aiDecisionRecord.create({
+      data: { experimentId: experiment.id, orgId: org.id, loadId: load.id, kind: "dispatch_candidate", status: "queued", context: {}, toolCalls: [], toolResults: [] },
+    });
+
+    expect(await orphanedCount(org.id)).toBe(2);
+
+    // A row this process's runner DOES own must not be double-counted as
+    // orphaned — enqueue one for real (held "running" by a deferred adapter)
+    // and confirm the count does not grow by it.
+    const deferred = deferredAdapter();
+    setAdapterFactory(() => deferred.adapter);
+    const ownedLoad = await createReeferLoad(org.id, "L-ORPHAN-COUNT-OWNED");
+    const owned = await enqueueRun({ orgId: org.id, experimentId: experiment.id, loadId: ownedLoad.id, requestedById: null });
+    if ("error" in owned) throw new Error(`unexpected enqueue error: ${owned.error}`);
+    await waitForRunStatus(owned.runId, ["running"]);
+
+    expect(await orphanedCount(org.id)).toBe(2);
   });
 });
 

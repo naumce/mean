@@ -15,12 +15,13 @@ function evidence(overrides: Partial<Evidence> = {}): Evidence {
     historyInspected: ['d1'],
     factsCited: [{ text: 'closer and available sooner', forDriverId: 'd1' }, { text: 'no feasible driver had lower deadhead', forDriverId: null }],
     supportingSteps: [2, 5],
+    proposalAttempts: 3,
     ...overrides,
   }
 }
 
 describe('EvidenceSummary', () => {
-  it('renders all seven fields with their counts', () => {
+  it('renders all seven list/count fields with their counts', () => {
     const wrapper = mount(EvidenceSummary, { props: { evidence: evidence() } })
     expect(wrapper.find('[data-testid="evidence-tools-called"]').text()).toContain('tools called (2)')
     expect(wrapper.find('[data-testid="evidence-candidates-inspected"]').text()).toContain('candidates inspected (2)')
@@ -29,6 +30,13 @@ describe('EvidenceSummary', () => {
     expect(wrapper.find('[data-testid="evidence-history-inspected"]').text()).toContain('history inspected (1)')
     expect(wrapper.find('[data-testid="evidence-facts-cited"]').text()).toContain('facts cited (2)')
     expect(wrapper.find('[data-testid="evidence-supporting-steps"]').text()).toContain('supporting steps (2)')
+  })
+
+  // Round 2: a plain line, not a <details> section — one number, nothing to
+  // expand.
+  it('renders proposalAttempts as one plain line', () => {
+    const wrapper = mount(EvidenceSummary, { props: { evidence: evidence({ proposalAttempts: 3 }) } })
+    expect(wrapper.find('[data-testid="evidence-proposal-attempts"]').text()).toBe('proposal attempts: 3')
   })
 
   it('renders tools called as name x count', () => {
@@ -80,7 +88,7 @@ describe('EvidenceSummary', () => {
       props: {
         evidence: {
           toolsCalled: [], candidatesInspected: [], feasibilitySeen: [], metricsInspected: [],
-          historyInspected: [], factsCited: [], supportingSteps: [],
+          historyInspected: [], factsCited: [], supportingSteps: [], proposalAttempts: 0,
         },
       },
     })
@@ -89,5 +97,6 @@ describe('EvidenceSummary', () => {
     expect(wrapper.find('[data-testid="evidence-feasibility-seen"]').text()).toContain('none')
     expect(wrapper.find('[data-testid="evidence-facts-cited"]').text()).toContain('none')
     expect(wrapper.find('[data-testid="evidence-supporting-steps"]').text()).toContain('none')
+    expect(wrapper.find('[data-testid="evidence-proposal-attempts"]').text()).toBe('proposal attempts: 0')
   })
 })

@@ -46,10 +46,13 @@ export function failuresContent(errors: string[]): string {
   return JSON.stringify({ ok: false, errors });
 }
 
-interface RawFeasibilityRow {
+interface ProjectedFeasibleRowLike {
   driverId?: unknown;
-  feasible?: unknown;
   score?: unknown;
+}
+
+interface ProjectedBlockedRowLike {
+  driverId?: unknown;
   blockedReason?: unknown;
 }
 
@@ -61,32 +64,41 @@ export interface FeasibilityRow {
 }
 
 /**
- * Every candidate row out of a raw `findFeasibleDrivers` result — feasible
- * AND blocked, unlike `baseline.ts`'s `feasibleIdsFromToolResult`, which
- * keeps only feasible ids for seeding the run's feasible set. The loop
- * attaches this onto that tool's OWN `tool_result` step payload (an optional
- * `feasibility` field, ignored by the UI on every other tool) so
- * `evidence.ts` can read reliable rows later without depending on the step's
- * 512-char `preview`. Logic is intentionally duplicated from
- * `feasibleIdsFromToolResult` rather than built on it: that function already
- * commits to returning only ids, and this file must not reach into Task 4's
- * baseline.ts for a second, differently-shaped parse of the same value.
- * Never throws — same defensive shape-checking, same reasoning.
+ * Every candidate row out of a `findFeasibleDrivers` call's MODEL-FACING
+ * result (`dispatchTools/invoke.ts`'s `projectForModel` compact shape) —
+ * feasible AND blocked, unlike `baseline.ts`'s `feasibleIdsFromToolResult`,
+ * which keeps only feasible ids for seeding the run's feasible set. I2: this
+ * reads the PROJECTED `{ feasible: [...], blocked: [...] }` shape (already
+ * capped at 25 rows each), not the engine's raw, unbounded `candidates` array
+ * — the loop attaches whatever comes back onto that tool's own `tool_result`
+ * step payload (an optional `feasibility` field, ignored by the UI on every
+ * other tool) so `evidence.ts` reports exactly the rows the model actually
+ * saw, never the full engine result. Never throws: anything not shaped like
+ * `{ feasible: [...], blocked: [...] }`, or whose rows are not shaped like
+ * `{ driverId: string }`, is simply skipped.
  */
-export function feasibilityRowsFromRawResult(value: unknown): FeasibilityRow[] {
+export function feasibilityRowsFromProjectedResult(value: unknown): FeasibilityRow[] {
   if (value === null || typeof value !== "object") return [];
-  const candidates = (value as { candidates?: unknown }).candidates;
-  if (!Array.isArray(candidates)) return [];
+  const feasible = (value as { feasible?: unknown }).feasible;
+  const blocked = (value as { blocked?: unknown }).blocked;
 
   const rows: FeasibilityRow[] = [];
-  for (const row of candidates as RawFeasibilityRow[]) {
-    if (row == null || typeof row !== "object" || typeof row.driverId !== "string") continue;
-    rows.push({
-      driverId: row.driverId,
-      feasible: row.feasible === true,
-      score: typeof row.score === "number" ? row.score : null,
-      blockedReason: typeof row.blockedReason === "string" ? row.blockedReason : null,
-    });
+  if (Array.isArray(feasible)) {
+    for (const row of feasible as ProjectedFeasibleRowLike[]) {
+      if (row == null || typeof row !== "object" || typeof row.driverId !== "string") continue;
+      rows.push({ driverId: row.driverId, feasible: true, score: typeof row.score === "number" ? row.score : null, blockedReason: null });
+    }
+  }
+  if (Array.isArray(blocked)) {
+    for (const row of blocked as ProjectedBlockedRowLike[]) {
+      if (row == null || typeof row !== "object" || typeof row.driverId !== "string") continue;
+      rows.push({
+        driverId: row.driverId,
+        feasible: false,
+        score: null,
+        blockedReason: typeof row.blockedReason === "string" ? row.blockedReason : null,
+      });
+    }
   }
   return rows;
 }
@@ -98,4 +110,14 @@ export function feasibilityRowsFromRawResult(value: unknown): FeasibilityRow[] {
 export function sumTokens(current: number | null, addition: number | null): number | null {
   if (addition === null) return current;
   return (current ?? 0) + addition;
+}
+
+/** Tracks the HIGHEST single-call value seen so far (I3: `stats.maxPromptTokens`
+ *  is a per-call watermark, not the `sumTokens` running total) — same `null`
+ *  convention as `sumTokens`: "no call so far reported this field" stays
+ *  `null` rather than losing to a guessed `0`, and a later `null` never
+ *  overwrites an already-known maximum. */
+export function maxToken(current: number | null, candidate: number | null): number | null {
+  if (candidate === null) return current;
+  return current === null ? candidate : Math.max(current, candidate);
 }

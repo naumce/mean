@@ -134,6 +134,17 @@ export interface RunStats {
   invalidCalls: number
   promptTokens: number | null
   completionTokens: number | null
+  /** The highest single call's `promptTokens` over the run — distinct from
+   *  the per-run SUM above. Optional (not just nullable): a run persisted
+   *  before this field existed has no key at all on the wire, not `null`. */
+  maxPromptTokens?: number | null
+  /** `true` once `maxPromptTokens` passed 85% of the run's own `numCtx` —
+   *  Ollama drops the oldest non-system messages silently once its context
+   *  fills, so this is the harness's own after-the-fact signal that a run
+   *  plausibly lost history to that. Optional for the same reason as
+   *  `maxPromptTokens` above; `EvaluationRow.contextPressure` below is the
+   *  one place this is always a real boolean (the server backfills it). */
+  contextPressure?: boolean
   durationMs: number
 }
 
@@ -232,6 +243,10 @@ export interface Evidence {
   historyInspected: string[]
   factsCited: EvidenceFactCited[]
   supportingSteps: number[]
+  /** Every `propose_decision` attempt, accepted or rejected (round 2) —
+   *  never folded into `toolsCalled`/`candidatesInspected`: a proposal is the
+   *  model's output, not a registry tool call it made to gather evidence. */
+  proposalAttempts: number
 }
 
 export type RunStepKind = 'system' | 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'final' | 'error' | 'nudge'
@@ -350,13 +365,6 @@ export interface PostVerdictBody {
   note?: string
 }
 
-export interface FetchAiRunsParams {
-  experimentId?: string
-  loadId?: string
-  status?: RunStatus
-  limit?: number
-}
-
 /** Fix round 2: `driverId`/`name` are nullable even when the row itself is
  *  non-null — a pick (or a deterministic top) can exist as a fact ("this run
  *  reached a decision") while explicitly naming no driver. Distinct from
@@ -392,6 +400,11 @@ export interface EvaluationRow {
   latencyMs: number | null
   promptTokens: number | null
   completionTokens: number | null
+  /** `true` once some call in this run pushed `promptTokens` past 85% of the
+   *  run's own `numCtx` — always a real boolean (the server backfills `false`
+   *  for a run whose stats predate this field), never missing like
+   *  `RunStats.contextPressure` can be. */
+  contextPressure: boolean
   startedAt: string | null
 }
 

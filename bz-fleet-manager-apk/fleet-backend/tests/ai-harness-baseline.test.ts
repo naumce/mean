@@ -2,6 +2,7 @@ import { resetDb } from "./helpers.js";
 import { prisma } from "../src/db.js";
 import { captureBaseline, feasibleIdsFromToolResult } from "../src/lib/aiHarness/baseline.js";
 import { findFeasibleDrivers } from "../src/lib/dispatchTools/dispatch.js";
+import { projectForModel } from "../src/lib/dispatchTools/invoke.js";
 
 // Qwen Harness v0.1, Task 4 — baseline.ts: a deterministic snapshot of what
 // ⚡Suggest already knows about a load, captured before a model run starts.
@@ -116,11 +117,17 @@ describe("captureBaseline", () => {
 });
 
 describe("feasibleIdsFromToolResult", () => {
-  it("extracts feasible driverIds from a real findFeasibleDrivers result", async () => {
+  // I2: the loop seeds its feasible set from the MODEL-FACING result — the
+  // same `projectForModel("findFeasibleDrivers", ...)` compact shape
+  // `invokeTool` actually hands back — never the engine's raw, unbounded
+  // `candidates` array; `captureBaseline` above is the one place that still
+  // reads the latter, for the deterministic snapshot.
+  it("extracts feasible driverIds from a real findFeasibleDrivers result, once projected for the model", async () => {
     const { org, feasible, blocked, load } = await seedBaselineFixture();
 
-    const result = await findFeasibleDrivers(org.id, load.id);
-    const ids = feasibleIdsFromToolResult(result);
+    const raw = await findFeasibleDrivers(org.id, load.id);
+    const projected = projectForModel("findFeasibleDrivers", raw);
+    const ids = feasibleIdsFromToolResult(projected);
 
     expect(ids).toEqual([feasible.id]);
     expect(ids).not.toContain(blocked.id);
@@ -133,10 +140,9 @@ describe("feasibleIdsFromToolResult", () => {
     expect(feasibleIdsFromToolResult(42)).toEqual([]);
     expect(feasibleIdsFromToolResult([])).toEqual([]);
     expect(feasibleIdsFromToolResult({})).toEqual([]);
-    expect(feasibleIdsFromToolResult({ candidates: "not-an-array" })).toEqual([]);
-    expect(feasibleIdsFromToolResult({ candidates: [null, 42, "nope"] })).toEqual([]);
-    expect(feasibleIdsFromToolResult({ candidates: [{ driverId: 5, feasible: true }] })).toEqual([]);
-    expect(feasibleIdsFromToolResult({ candidates: [{ feasible: true }] })).toEqual([]);
-    expect(feasibleIdsFromToolResult({ candidates: [{ driverId: "d1", feasible: "true" }] })).toEqual([]);
+    expect(feasibleIdsFromToolResult({ feasible: "not-an-array" })).toEqual([]);
+    expect(feasibleIdsFromToolResult({ feasible: [null, 42, "nope"] })).toEqual([]);
+    expect(feasibleIdsFromToolResult({ feasible: [{ driverId: 5 }] })).toEqual([]);
+    expect(feasibleIdsFromToolResult({ feasible: [{}] })).toEqual([]);
   });
 });

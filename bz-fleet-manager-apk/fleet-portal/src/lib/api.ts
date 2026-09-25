@@ -13,7 +13,6 @@ import type {
   AiStatus,
   CreateExperimentBody,
   Evaluation,
-  FetchAiRunsParams,
   PostVerdictBody,
   RunDetailResponse,
   RunSummary,
@@ -850,11 +849,6 @@ export async function startAiRun(experimentId: string, loadId: string): Promise<
 
 export async function startAiBatch(experimentId: string, limit: number): Promise<{ runIds: string[] }> {
   const { data } = await api.post<{ runIds: string[] }>(`/dispatcher/ai/experiments/${experimentId}/runs/batch`, { limit })
-  return data
-}
-
-export async function fetchAiRuns(params: FetchAiRunsParams = {}): Promise<{ runs: RunSummary[] }> {
-  const { data } = await api.get<{ runs: RunSummary[] }>('/dispatcher/ai/runs', { params })
   return data
 }
 

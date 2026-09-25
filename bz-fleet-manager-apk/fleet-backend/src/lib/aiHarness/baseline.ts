@@ -85,24 +85,29 @@ export async function captureBaseline(orgId: string, loadId: string): Promise<Ba
 
 interface FeasibleRowLike {
   driverId?: unknown;
-  feasible?: unknown;
 }
 
 /**
- * The feasible driver ids out of a `findFeasibleDrivers` tool call's raw
- * result (a `SuggestResult`-shaped value, possibly having crossed a JSON
- * boundary and lost its real types). Never throws: anything that is not
- * shaped like a `{ candidates: [...] }` object, or whose rows are not shaped
- * like `{ driverId: string, feasible: boolean }`, is simply skipped.
+ * The feasible driver ids out of a `findFeasibleDrivers` tool call's
+ * MODEL-FACING result — `dispatchTools/invoke.ts`'s `projectForModel` compact
+ * shape (`{ feasible: [{ driverId, ... }], blocked: [...], ... }`), the same
+ * value the harness loop's `ctx.invoke` actually returns (I2: the loop must
+ * seed its feasible set from what the model was shown, never from the
+ * engine's full result — `captureBaseline` above is the one place that still
+ * reads the latter, for the baseline snapshot). Every row already in
+ * `feasible` is feasible by construction (the projection already split
+ * feasible from blocked), so this only needs to collect ids off it. Never
+ * throws: anything not shaped like `{ feasible: [...] }`, or whose rows are
+ * not shaped like `{ driverId: string }`, is simply skipped.
  */
 export function feasibleIdsFromToolResult(value: unknown): string[] {
   if (value === null || typeof value !== "object") return [];
-  const candidates = (value as { candidates?: unknown }).candidates;
-  if (!Array.isArray(candidates)) return [];
+  const feasible = (value as { feasible?: unknown }).feasible;
+  if (!Array.isArray(feasible)) return [];
 
   const ids: string[] = [];
-  for (const row of candidates as FeasibleRowLike[]) {
-    if (row != null && typeof row === "object" && typeof row.driverId === "string" && row.feasible === true) {
+  for (const row of feasible as FeasibleRowLike[]) {
+    if (row != null && typeof row === "object" && typeof row.driverId === "string") {
       ids.push(row.driverId);
     }
   }

@@ -1,5 +1,5 @@
 import { prisma } from "../../db.js";
-import type { AiDecisionRecord } from "@prisma/client";
+import type { AiDecisionRecord, Prisma } from "@prisma/client";
 import type { HarnessConfig } from "./config.js";
 import type { RunStatus, RunStats } from "./loop.js";
 import type { Baseline } from "./baseline.js";
@@ -137,8 +137,37 @@ export async function fetchScenarios(loadIds: readonly (string | null | undefine
   return new Map(rows.map((l) => [l.id, scenarioOf(l.extras)]));
 }
 
+/**
+ * Exactly the `AiDecisionRecord` columns `toRunSummary` below reads — nothing
+ * from the heavy JSON columns (`baseline`, `evidence`, `context` is the only
+ * JSON field here and it is tiny, `toolCalls`, `toolResults`,
+ * `proposedDecision`). I5: a run list route selects only this, rather than
+ * `findMany` with no `select` at all pulling every column (baseline/evidence
+ * alone run tens of KB per row) just to build a summary that was always
+ * going to discard them. `Pick<AiDecisionRecord, ...>` rather than a
+ * hand-written interface: this stays in lockstep with the real column types
+ * (nullability included) with no separate shape to drift out of sync.
+ */
+export const RUN_SUMMARY_SELECT = {
+  id: true,
+  loadId: true,
+  context: true,
+  status: true,
+  terminationReason: true,
+  driverId: true,
+  confidence: true,
+  humanDecision: true,
+  stats: true,
+  startedAt: true,
+  proposedAt: true,
+  completedAt: true,
+  parentRunId: true,
+} satisfies Prisma.AiDecisionRecordSelect;
+
+export type RunSummarySource = Pick<AiDecisionRecord, keyof typeof RUN_SUMMARY_SELECT>;
+
 export function toRunSummary(
-  record: AiDecisionRecord,
+  record: RunSummarySource,
   driverNames: Map<string, string>,
   scenarios: Map<string, RunScenario | null>,
 ): RunSummary {
@@ -161,7 +190,7 @@ export function toRunSummary(
   };
 }
 
-export async function toRunSummaries(records: AiDecisionRecord[], orgId: string | null): Promise<RunSummary[]> {
+export async function toRunSummaries(records: RunSummarySource[], orgId: string | null): Promise<RunSummary[]> {
   const driverNames = await fetchDriverNames(records.map((r) => r.driverId), orgId);
   const scenarios = await fetchScenarios(records.map((r) => r.loadId), orgId);
   return records.map((r) => toRunSummary(r, driverNames, scenarios));
