@@ -1267,6 +1267,16 @@ model AiExperiment {
   model     String
   notes     String?
   createdAt DateTime           @default(now())
+
+  // status retires an experiment without deleting its decisions.
+  // createdById is a plain string, not a relation — like orgId/loadId/
+  // driverId on AiDecisionRecord below — so removing the dispatcher who
+  // created a run never blocks deleting or reading it.
+  status        String  @default("active") // active | archived
+  promptVersion String  @default("dispatch-v1")
+  config        Json    @default("{}")
+  createdById   String?
+
   decisions AiDecisionRecord[]
 }
 
@@ -1298,6 +1308,50 @@ model AiDecisionRecord {
   decidedAt  DateTime?
   outcomeAt  DateTime?
 
+  // Harness run lifecycle: status tracks a live run through the tool loop;
+  // terminationReason/error record how/why it stopped. stats/baseline/
+  // evidence/modelConfig are free-form JSON so the harness can evolve what it
+  // captures without another migration. promptVersion is copied from the
+  // experiment at run start so a later change to the experiment's own
+  // promptVersion never rewrites what an already-run decision used.
+  // parentRunId is a plain string, not a relation — a re-run references the
+  // run it followed without the two rows blocking each other's deletion.
+  status            String      @default("queued") // queued | running | proposed | incomplete | failed | cancelled
+  terminationReason String?
+  error             String?
+  stats             Json?
+  baseline          Json?
+  evidence          Json?
+  modelConfig       Json?
+  promptVersion     String?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  requestedById     String?
+  parentRunId       String?
+  steps             AiRunStep[]
+
   @@index([orgId, loadId])
   @@index([experimentId])
+  @@index([orgId, status])
+}
+
+/// One row per step inside an AiDecisionRecord's tool-calling loop — the full
+/// ordered transcript (system/user/assistant/thinking/tool_call/tool_result/
+/// final/error/nudge), kept even though context/toolCalls/toolResults on the
+/// record already summarize the same run, so a full replay never depends on
+/// how the harness chose to summarize it. No orgId: a step reaches its org
+/// through `decision`.
+model AiRunStep {
+  id         String           @id @default(uuid())
+  decisionId String
+  decision   AiDecisionRecord @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+  seq        Int
+  kind       String // system | user | assistant | thinking | tool_call | tool_result | final | error | nudge
+  name       String?
+  payload    Json
+  atMs       BigInt
+  durationMs Int?
+
+  @@unique([decisionId, seq])
+  @@index([decisionId])
 }

@@ -49,7 +49,9 @@ export async function resetDb() {
     // SimulationState/DriverAvailability/DriverPreference cascade with their
     // Driver/Org but are cleared explicitly anyway, same as loadChange/
     // loadLock above — clear all of them before driver (and, transitively,
-    // before org) below.
+    // before org) below. AiRunStep cascades with its AiDecisionRecord, but a
+    // child row must still be cleared before its parent in the same batch.
+    prisma.aiRunStep.deleteMany(),
     prisma.aiDecisionRecord.deleteMany(), prisma.aiExperiment.deleteMany(),
     prisma.simDriverState.deleteMany(), prisma.simulationState.deleteMany(),
     prisma.driverAvailability.deleteMany(), prisma.driverPreference.deleteMany(),
