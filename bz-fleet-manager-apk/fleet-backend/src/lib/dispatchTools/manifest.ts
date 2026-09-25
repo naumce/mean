@@ -120,6 +120,12 @@ const PARAMS: Record<ToolName, z.ZodObject<AnyParamsShape>> = {
   getDispatchCandidateDetails: z.object({ loadId: LOAD_ID, driverId: DRIVER_ID }),
 };
 
+/** `PARAMS`, published under its own name for `dispatchTools/invoke.ts`
+ *  (Qwen Harness v0.1, Task 2) to validate a model-supplied `params` object
+ *  against before ever calling a tool function — the only reason this was
+ *  private before is that nothing outside this file needed it yet. */
+export const TOOL_PARAMS = PARAMS;
+
 const DESCRIPTIONS: Record<ToolName, string> = {
   getLoad:
     "Returns one load with its ordered stops, appointments, linked customer, and current assignment; use when you already know the load's id and need its full detail. Returns null if the load does not exist.",

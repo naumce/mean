@@ -147,7 +147,7 @@ describe("no file under src/lib/dispatchTools/ writes to the database", () => {
   // empty `offenders` list.
   const EXPECTED_FILES = [
     "customers.ts", "dispatch.ts", "drivers.ts", "eta.ts", "events.ts",
-    "index.ts", "limit.ts", "loads.ts", "manifest.ts",
+    "index.ts", "invoke.ts", "limit.ts", "loads.ts", "manifest.ts",
   ];
 
   function tsFilesUnder(dir: string): string[] {
