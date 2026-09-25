@@ -94,4 +94,25 @@ describe('SuggestModal', () => {
     expect(row.find('[data-testid="candidate-context"]').exists()).toBe(false)
     expect(row.find('[data-testid="suggest-blocked-reason"]').text()).toBe('✗ needs 19h 5m drive; 11h remaining')
   })
+
+  // Qwen Harness v0.1 (Task 7): the AI Lab dev feature's entry point. This
+  // component stays purely presentational (no store import) — CockpitView
+  // owns `aiLab.status`/`askQwen`/`router.push`; see CockpitView.spec.ts for
+  // the actual navigation.
+  describe('Ask Qwen', () => {
+    it('is hidden when aiEnabled is false (the default)', () => {
+      const wrapper = mount(SuggestModal, { props: { ...BASE_PROPS, result: result() } })
+      expect(wrapper.find('[data-testid="suggest-ask-qwen"]').exists()).toBe(false)
+    })
+
+    it('is shown when aiEnabled is true, and clicking it emits ask-qwen', async () => {
+      const wrapper = mount(SuggestModal, { props: { ...BASE_PROPS, result: result(), aiEnabled: true } })
+      const button = wrapper.find('[data-testid="suggest-ask-qwen"]')
+      expect(button.exists()).toBe(true)
+
+      await button.trigger('click')
+
+      expect(wrapper.emitted('ask-qwen')).toHaveLength(1)
+    })
+  })
 })

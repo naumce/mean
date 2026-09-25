@@ -2,6 +2,9 @@ import type { RouteLocationRaw } from 'vue-router'
 import { createRouter, createWebHistory } from 'vue-router'
 import AppShell from '../layouts/AppShell.vue'
 import ApprovalsView from '../views/ApprovalsView.vue'
+import AiLabView from '../views/ai/AiLabView.vue'
+import AiExperimentView from '../views/ai/AiExperimentView.vue'
+import AiRunView from '../views/ai/AiRunView.vue'
 import BoardView from '../views/BoardView.vue'
 import BrokerBoardView from '../views/BrokerBoardView.vue'
 import BrokersView from '../views/BrokersView.vue'
@@ -79,6 +82,11 @@ export const routes = [
       // AI Dispatch Foundation (Task 9): Driver Supply — every driver's
       // status, location, load, HOS, equipment and preferences.
       { path: 'supply', name: 'driver-supply', component: DriverSupplyView },
+      // Qwen Harness v0.1 (Task 7): the AI Lab developer console — read-only
+      // dispatch reasoning, tower tier only (see AppShell's TOWER_MORE).
+      { path: 'ai-lab', name: 'ai-lab', component: AiLabView },
+      { path: 'ai-lab/experiments/:id', name: 'ai-experiment', component: AiExperimentView, props: true },
+      { path: 'ai-lab/runs/:id', name: 'ai-run', component: AiRunView, props: true },
       { path: 'vehicles', name: 'vehicles', component: VehiclesView },
       { path: 'trips', name: 'trips', component: TripsView },
       { path: 'trips/:id', name: 'trip-detail', component: TripDetailView, props: true },

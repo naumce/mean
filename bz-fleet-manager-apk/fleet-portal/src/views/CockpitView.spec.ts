@@ -5,6 +5,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import GanttBoard from '../components/cockpit/GanttBoard.vue'
 import PlanVerdictModal from '../components/cockpit/PlanVerdictModal.vue'
 import { acquireLoadLock, acquireLock, api, createAssignment, fetchLoadLocks, heartbeatLoadLock, planAssignment, releaseLoadLock, type Lock, type LoadLock } from '../lib/api'
+import { useAiLabStore } from '../stores/aiLab'
 import { useAuthStore } from '../stores/auth'
 import { useCockpitStore } from '../stores/cockpit'
 import { useLoadboardStore } from '../stores/loadboard'
@@ -41,6 +42,11 @@ vi.mock('../lib/download', () => ({ triggerDownload: vi.fn() }))
 // decoupled from the Simulation feature's own store instead of relying on
 // the generic api.get catch-all below to happen to answer it safely.
 vi.mock('../stores/sim', () => ({ useSimStore: vi.fn() }))
+// Qwen Harness v0.1 (Task 7): CockpitView now reads `aiLab.status` (to gate
+// SuggestModal's "Ask Qwen" button) and calls `aiLab.askQwen` — module-mocked
+// for the same reason as sim above, so this view's specs never depend on the
+// AI Lab store's real probe()/askQwen() network calls.
+vi.mock('../stores/aiLab', () => ({ useAiLabStore: vi.fn() }))
 const mockedAcquireLock = vi.mocked(acquireLock)
 const mockedPlanAssignment = vi.mocked(planAssignment)
 const mockedCreateAssignment = vi.mocked(createAssignment)
@@ -49,6 +55,7 @@ const mockedReleaseLoadLock = vi.mocked(releaseLoadLock)
 const mockedHeartbeatLoadLock = vi.mocked(heartbeatLoadLock)
 const mockedFetchLoadLocks = vi.mocked(fetchLoadLocks)
 const mockedUseSimStore = vi.mocked(useSimStore)
+const mockedUseAiLabStore = vi.mocked(useAiLabStore)
 const lockFor = (laneId: string, over: Partial<Lock> = {}): Lock => ({
   laneId, orgId: 'org-1', dispatcherId: 'disp-1', name: 'Dana Dispatcher', since: 1000, expiresAt: 91000, ...over,
 })
@@ -86,6 +93,12 @@ function respond(url: string) {
   if (url.includes('/cost-model')) return { data: { mpg: 6.5, dieselCentsPerGal: 400, driverPayCentsPerMi: 60, fixedCentsPerMi: 45, allInCentsPerMi: 167 } }
   if (url.includes('/risk')) return { data: { risks: [] } }
   if (url.includes('/alerts')) return { data: { alerts: [] } }
+  // Qwen Harness v0.1 (Task 7): the "Ask Qwen" test opens SuggestModal, which
+  // renders off `lb.suggest` — a bare `{ data: [] }` from the catch-all below
+  // is not a SuggestResult (no `.candidates`) and SuggestModal's own
+  // `feasible`/`blocked` computeds would throw reading it. A real
+  // SuggestResult shape, even an empty one, is required here.
+  if (url.includes('/suggest')) return { data: { loadId: 'l2', requiredEquip: 'DryVan', tractorId: null, trailerId: null, candidates: [] } }
   return { data: [] }
 }
 
@@ -111,13 +124,27 @@ describe('CockpitView', () => {
       available: false, state: null, busy: false, error: null, lastTickAt: null,
       probe: vi.fn(), tick: vi.fn(), start: vi.fn(), stop: vi.fn(), reset: vi.fn(), setDriverMode: vi.fn(),
     } as unknown as ReturnType<typeof useSimStore>)
+    mockedUseAiLabStore.mockReset()
+    mockedUseAiLabStore.mockReturnValue({
+      status: null, askQwen: vi.fn(),
+    } as unknown as ReturnType<typeof useAiLabStore>)
     class FakeWs { onmessage: unknown = null; onclose: unknown = null; close() {} }
     vi.stubGlobal('WebSocket', FakeWs)
   })
   afterEach(() => vi.restoreAllMocks())
 
   async function mountView() {
-    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/cockpit', component: CockpitView }, { path: '/messages', component: { template: '<div/>' } }] })
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/cockpit', component: CockpitView },
+        { path: '/messages', component: { template: '<div/>' } },
+        // Qwen Harness v0.1 (Task 7): "Ask Qwen" navigates here — registered
+        // for every test so a stray navigation never rejects with "no match",
+        // even though only this file's Ask Qwen test actually uses it.
+        { path: '/ai-lab/runs/:id', name: 'ai-run', component: { template: '<div/>' } },
+      ],
+    })
     await router.push('/cockpit')
     await router.isReady()
     const w = mount(CockpitView, { global: { plugins: [router] } })
@@ -142,6 +169,31 @@ describe('CockpitView', () => {
     expect(w.find('[data-testid="drawer"]').text()).toContain('INSPECT: LEG L-51217')
     expect(w.find('[data-testid="drawer"]').text()).toContain('#1207')
     expect(w.find('[data-testid="drawer"]').text()).toContain('Chicago, IL')
+  })
+
+  // Qwen Harness v0.1 (Task 7): SuggestModal stays presentational; this view
+  // owns the aiLab store and the navigation. See SuggestModal.spec.ts for the
+  // button's own hidden/shown/emits coverage.
+  it('"Ask Qwen" is hidden when the harness is disabled, and starts + navigates to a run when enabled', async () => {
+    const disabledStore = { status: { enabled: false }, askQwen: vi.fn() }
+    mockedUseAiLabStore.mockReturnValue(disabledStore as unknown as ReturnType<typeof useAiLabStore>)
+    const disabledView = await mountView()
+    await disabledView.find('[data-testid="backlog-suggest-l2"]').trigger('click')
+    await flushPromises()
+    expect(disabledView.find('[data-testid="suggest-ask-qwen"]').exists()).toBe(false)
+
+    const store = { status: { enabled: true }, askQwen: vi.fn().mockResolvedValue('run-9') }
+    mockedUseAiLabStore.mockReturnValue(store as unknown as ReturnType<typeof useAiLabStore>)
+    const w = await mountView()
+    await w.find('[data-testid="backlog-suggest-l2"]').trigger('click')
+    await flushPromises()
+
+    await w.find('[data-testid="suggest-ask-qwen"]').trigger('click')
+    await flushPromises()
+
+    expect(store.askQwen).toHaveBeenCalledWith('l2')
+    expect(w.vm.$router.currentRoute.value.name).toBe('ai-run')
+    expect(w.vm.$router.currentRoute.value.params.id).toBe('run-9')
   })
 
   it('the radar is entered from the store (drawer "show on map"), never from a header tab; the header only offers the way back', async () => {

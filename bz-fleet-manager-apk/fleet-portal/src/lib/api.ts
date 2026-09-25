@@ -8,6 +8,18 @@ import type {
   PatchAvailabilityBody,
   PatchPreferenceBody,
 } from '../types/supply'
+import type {
+  AiExperiment,
+  AiStatus,
+  CreateExperimentBody,
+  Evaluation,
+  FetchAiRunsParams,
+  PostVerdictBody,
+  RunDetailResponse,
+  RunSummary,
+  UncoveredLoad,
+  UpdateExperimentBody,
+} from '../types/aiLab'
 
 export const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001/api'
 
@@ -790,6 +802,95 @@ export async function postSimReset(): Promise<{ started: boolean }> {
 
 export async function postSimDriverMode(driverId: string, body: SimDriverModeBody): Promise<SimDriverStateRow> {
   const { data } = await api.post<SimDriverStateRow>(`/dispatcher/sim/drivers/${driverId}/mode`, body)
+  return data
+}
+
+// ---------------------------------------------------------------------------
+// Qwen Harness v0.1 (AI Dispatch Foundation, Task 7): the AI Lab developer
+// console. Named functions (Convention 2) — stores/aiLab.ts, the run/
+// experiment views, and SuggestModal's "Ask Qwen" button all need the
+// identical request shapes. Every /ai/* route answers 404
+// `{ error: "Not found" }` when the harness is disabled (OLLAMA_URL unset) —
+// only stores/aiLab.ts's probe() is expected to see and swallow that.
+// ---------------------------------------------------------------------------
+
+export async function fetchAiStatus(): Promise<AiStatus> {
+  const { data } = await api.get<AiStatus>('/dispatcher/ai/status')
+  return data
+}
+
+export async function fetchAiExperiments(): Promise<{ experiments: AiExperiment[] }> {
+  const { data } = await api.get<{ experiments: AiExperiment[] }>('/dispatcher/ai/experiments')
+  return data
+}
+
+export async function createAiExperiment(body: CreateExperimentBody): Promise<{ experiment: AiExperiment }> {
+  const { data } = await api.post<{ experiment: AiExperiment }>('/dispatcher/ai/experiments', body)
+  return data
+}
+
+export async function fetchAiExperiment(id: string): Promise<{ experiment: AiExperiment; runs: RunSummary[] }> {
+  const { data } = await api.get<{ experiment: AiExperiment; runs: RunSummary[] }>(`/dispatcher/ai/experiments/${id}`)
+  return data
+}
+
+export async function updateAiExperiment(id: string, body: UpdateExperimentBody): Promise<{ experiment: AiExperiment }> {
+  const { data } = await api.patch<{ experiment: AiExperiment }>(`/dispatcher/ai/experiments/${id}`, body)
+  return data
+}
+
+/** 202 accepted — the run starts `queued`, not necessarily finished by the
+ *  time this resolves. A 429 `{ error: "QUEUE_FULL" }` (design §7: at most 10
+ *  pending runs per org) surfaces as a normal rejected promise; the store
+ *  gives it a friendlier message than the raw code. */
+export async function startAiRun(experimentId: string, loadId: string): Promise<{ runId: string }> {
+  const { data } = await api.post<{ runId: string }>(`/dispatcher/ai/experiments/${experimentId}/runs`, { loadId })
+  return data
+}
+
+export async function startAiBatch(experimentId: string, limit: number): Promise<{ runIds: string[] }> {
+  const { data } = await api.post<{ runIds: string[] }>(`/dispatcher/ai/experiments/${experimentId}/runs/batch`, { limit })
+  return data
+}
+
+export async function fetchAiRuns(params: FetchAiRunsParams = {}): Promise<{ runs: RunSummary[] }> {
+  const { data } = await api.get<{ runs: RunSummary[] }>('/dispatcher/ai/runs', { params })
+  return data
+}
+
+export async function fetchAiRun(id: string): Promise<RunDetailResponse> {
+  const { data } = await api.get<RunDetailResponse>(`/dispatcher/ai/runs/${id}`)
+  return data
+}
+
+export async function cancelAiRun(id: string): Promise<{ cancelled: boolean }> {
+  const { data } = await api.post<{ cancelled: boolean }>(`/dispatcher/ai/runs/${id}/cancel`)
+  return data
+}
+
+export async function postAiVerdict(id: string, body: PostVerdictBody): Promise<{ run: RunDetailResponse['run'] }> {
+  const { data } = await api.post<{ run: RunDetailResponse['run'] }>(`/dispatcher/ai/runs/${id}/decision`, body)
+  return data
+}
+
+/** 202 accepted — a new run row (same experiment/load, `parentRunId` set to
+ *  this one) against the world as it stands right now (design §6). */
+export async function replayAiRun(id: string): Promise<{ runId: string }> {
+  const { data } = await api.post<{ runId: string }>(`/dispatcher/ai/runs/${id}/replay`)
+  return data
+}
+
+export async function fetchAiEvaluation(experimentId: string): Promise<{ evaluation: Evaluation }> {
+  const { data } = await api.get<{ evaluation: Evaluation }>(`/dispatcher/ai/experiments/${experimentId}/evaluation`)
+  return data
+}
+
+/** GET /dispatcher/ai/uncovered-loads (fix round 1) — the dedicated route for
+ *  the AI Lab's load picker. The server defines "uncovered" (open, no active
+ *  assignment, pickup window not more than 24h past) and the ordering (by
+ *  pickup); this is a plain passthrough, no client-side filtering/params. */
+export async function fetchUncoveredLoads(): Promise<{ loads: UncoveredLoad[] }> {
+  const { data } = await api.get<{ loads: UncoveredLoad[] }>('/dispatcher/ai/uncovered-loads')
   return data
 }
 

@@ -30,12 +30,18 @@ const props = withDefaults(
      *  as a row's `context` below: it never changes ranking or styling. */
     scenario?: ScenarioHint | null
     tz?: string
+    /** Qwen Harness v0.1 (Task 7): whether the AI Lab harness is enabled on
+     *  this server (`aiLab.status?.enabled`). This component stays purely
+     *  presentational — the parent (CockpitView) owns the aiLab store and
+     *  the router, same convention as `dispatch`/`close` below. */
+    aiEnabled?: boolean
   }>(),
-  { scenario: null, tz: 'America/Chicago' },
+  { scenario: null, tz: 'America/Chicago', aiEnabled: false },
 )
 const emit = defineEmits<{
   (e: 'dispatch', payload: { driverId: string; tractorId: string; trailerId: string }): void
   (e: 'close'): void
+  (e: 'ask-qwen'): void
 }>()
 
 const feasible = computed<SuggestRow[]>(() => props.result?.candidates.filter((c) => c.feasible) ?? [])
@@ -71,7 +77,21 @@ function dispatch(row: SuggestRow): void {
             Scenario {{ scenario.code }}: {{ scenario.title }}
           </div>
         </div>
-        <button class="rounded px-2 text-ink-3 hover:text-ink" aria-label="Close" data-testid="suggest-close" @click="emit('close')">✕</button>
+        <div class="flex shrink-0 items-start gap-2">
+          <!-- Qwen Harness v0.1 (Task 7): read-only dispatch reasoning, dev
+               tower tier only — hidden entirely unless the backend harness
+               is enabled, never a disabled-but-visible affordance. -->
+          <button
+            v-if="aiEnabled"
+            type="button"
+            class="rounded border border-line px-2 py-1 font-mono text-[10px] font-bold text-ink-2 hover:bg-surface-2"
+            data-testid="suggest-ask-qwen"
+            @click="emit('ask-qwen')"
+          >
+            Ask Qwen
+          </button>
+          <button class="rounded px-2 text-ink-3 hover:text-ink" aria-label="Close" data-testid="suggest-close" @click="emit('close')">✕</button>
+        </div>
       </div>
 
       <div v-if="loading" class="px-4 py-8 text-center font-mono text-xs text-ink-3" data-testid="suggest-loading">

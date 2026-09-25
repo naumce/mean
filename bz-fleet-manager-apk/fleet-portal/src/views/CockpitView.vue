@@ -17,6 +17,7 @@ import ToastStack from '../components/cockpit/ToastStack.vue'
 import YardChips from '../components/cockpit/YardChips.vue'
 import RadarView from '../components/cockpit/views/RadarView.vue'
 import { timeToX } from '../lib/cockpit/geometry'
+import { useAiLabStore } from '../stores/aiLab'
 import { useAuthStore } from '../stores/auth'
 import { useCarriersStore } from '../stores/carriers'
 import { useCockpitStore } from '../stores/cockpit'
@@ -57,6 +58,21 @@ async function dispatchSuggested(p: { driverId: string; tractorId: string; trail
     suggestLoadId.value = null
   } finally {
     suggestDispatching.value = null
+  }
+}
+
+// Qwen Harness v0.1 (Task 7): "Ask Qwen" in the Suggest panel — starts a run
+// in the most recent active experiment (creating "Scratch" if none) and
+// opens it. `aiLab.status` is probed once per session by AppShell, not here;
+// this view only reads it to decide whether SuggestModal shows the button.
+const aiLab = useAiLabStore()
+async function onAskQwen(): Promise<void> {
+  const loadId = suggestLoadId.value
+  if (!loadId) return
+  const runId = await aiLab.askQwen(loadId)
+  if (runId) {
+    suggestLoadId.value = null
+    await router.push({ name: 'ai-run', params: { id: runId } })
   }
 }
 const carriers = useCarriersStore()
@@ -261,8 +277,10 @@ function clearCockpitScopedState(): void {
     :dispatching="suggestDispatching"
     :scenario="suggestLoad?.extras?.scenario ?? null"
     :tz="ck.tz"
+    :ai-enabled="aiLab.status?.enabled ?? false"
     @dispatch="dispatchSuggested"
     @close="suggestLoadId = null"
+    @ask-qwen="onAskQwen"
   />
 </template>
         <RadarView v-else-if="ck.view === 'radar'" :now-ms="nowMs" @open="jumpTo" />

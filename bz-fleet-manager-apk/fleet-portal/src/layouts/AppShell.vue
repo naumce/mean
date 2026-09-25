@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { subscribe } from '../lib/realtime'
+import { useAiLabStore } from '../stores/aiLab'
 import { useAuthStore } from '../stores/auth'
 import { useThemeStore } from '../stores/theme'
 import SidebarNavItem from './SidebarNavItem.vue'
@@ -9,6 +10,7 @@ import DemoTimeShift from '../components/demo/DemoTimeShift.vue'
 
 const auth = useAuthStore()
 const theme = useThemeStore()
+const aiLab = useAiLabStore()
 const router = useRouter()
 const route = useRoute()
 const moreOpen = ref(false)
@@ -28,7 +30,15 @@ const moreOpen = ref(false)
 // winning a race between an unmount and a mount instead of just not letting
 // the count reach zero in the first place.
 let releaseSession: (() => void) | null = null
-onMounted(() => { releaseSession = subscribe('$session', () => {}) })
+onMounted(() => {
+  releaseSession = subscribe('$session', () => {})
+  // Qwen Harness v0.1 (Task 7): probed once per signed-in session, here,
+  // rather than by every view that might want to show the "Ask Qwen" button
+  // or the AI Lab nav — a single source of truth for `aiLab.status` for as
+  // long as the shell is mounted. Silent (probe() itself swallows the
+  // expected 404) and auxiliary — never allowed to block the shell.
+  void aiLab.probe()
+})
 onUnmounted(() => { releaseSession?.(); releaseSession = null })
 
 const TOWER_PRIMARY = [
@@ -53,6 +63,9 @@ const TOWER_MORE = [
   { label: 'Trips', to: '/trips' },
   { label: 'Board', to: '/board' },
   { label: 'Overview', to: '/overview' },
+  // Qwen Harness v0.1 (Task 7): a developer console, not a dispatcher
+  // workflow — tower-only by construction, same as every other entry here.
+  { label: 'AI Lab (dev)', to: '/ai-lab' },
 ]
 // Sheet-tier nav (Night Shift packaged as a Google Sheet plugin, not the
 // full Cockpit product): exactly these four, in this order, nothing in

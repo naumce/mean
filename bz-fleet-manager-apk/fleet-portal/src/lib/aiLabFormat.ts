@@ -1,0 +1,86 @@
+import type { Baseline, RunStatus, RunStepKind } from '../types/aiLab'
+
+// AI Lab (Qwen Harness v0.1, Task 7): pure formatting/derivation helpers,
+// same "small dependency-free functions" convention as lib/cockpit/format.ts
+// and lib/money.ts — kept out of the store and components so ProposalCard's
+// rank computation and the timeline's labels are unit-testable on their own.
+
+/** 1-based rank of `driverId` within the baseline's own candidate order (the
+ *  order `suggestForLoad` returned — never re-sorted here). `null` when
+ *  there is no pick, or the pick never appeared in this run's baseline at
+ *  all (a driver the model found through a tool the baseline didn't rank). */
+export function rankOfDriver(baseline: Baseline | null, driverId: string | null): number | null {
+  if (!baseline || !driverId) return null
+  const index = baseline.candidates.findIndex((c) => c.driverId === driverId)
+  return index === -1 ? null : index + 1
+}
+
+/** The baseline's own top feasible candidate row, looked up by id rather
+ *  than assumed to be `candidates[0]` — `topFeasibleDriverId` is the
+ *  contract's authoritative pointer. */
+export function deterministicTopCandidate(baseline: Baseline | null) {
+  if (!baseline?.topFeasibleDriverId) return null
+  return baseline.candidates.find((c) => c.driverId === baseline.topFeasibleDriverId) ?? null
+}
+
+/** `ms == null` renders "—" (unknown), never `0s`. Sub-second durations show
+ *  as milliseconds so a fast tool call doesn't misleadingly read as "0s". */
+export function formatDurationMs(ms: number | null | undefined): string {
+  if (ms == null) return '—'
+  if (ms < 1000) return `${ms}ms`
+  const totalSeconds = Math.round(ms / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`
+}
+
+export function formatBytes(n: number | null | undefined): string {
+  if (n == null) return '—'
+  if (n < 1024) return `${n} B`
+  return `${(n / 1024).toFixed(1)} KB`
+}
+
+/** Wall time for a step card. Deliberately browser-local (same rationale as
+ *  AgentDrawer's inline `hhmm`) — this is a debug timestamp inside one run's
+ *  timeline, not an org-tz scheduling fact. */
+export function formatWallTime(atMs: number): string {
+  return new Date(atMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+
+/** The timeline's chain labels (design §8 / task-7 brief): USER REQUEST ->
+ *  MODEL -> TOOL REQUEST -> TOOL RESULT -> ... -> FINAL PROPOSAL, plus
+ *  THINKING/ERROR as their own distinct kinds. `system` isn't named in that
+ *  chain but still needs an unambiguous label rather than falling through. */
+export const STEP_KIND_LABELS: Record<RunStepKind, string> = {
+  system: 'SYSTEM',
+  user: 'USER REQUEST',
+  // Fix round 1: a nudge is the harness's own correction ("finish by calling
+  // propose_decision"), not a real user turn — sharing "USER REQUEST" made
+  // the two indistinguishable when scanning just the label column.
+  nudge: 'NUDGE',
+  assistant: 'MODEL',
+  thinking: 'THINKING',
+  tool_call: 'TOOL REQUEST',
+  tool_result: 'TOOL RESULT',
+  final: 'FINAL PROPOSAL',
+  error: 'ERROR',
+}
+
+const ACTIVE_RUN_STATUSES: readonly RunStatus[] = ['queued', 'running']
+
+export function isActiveRunStatus(status: RunStatus): boolean {
+  return ACTIVE_RUN_STATUSES.includes(status)
+}
+
+export function runStatusLabel(status: RunStatus): string {
+  return status.charAt(0).toUpperCase() + status.slice(1)
+}
+
+export const RUN_STATUS_CLASSES: Record<RunStatus, string> = {
+  queued: 'bg-gray-100 text-gray-700',
+  running: 'bg-blue-100 text-blue-800',
+  proposed: 'bg-emerald-100 text-emerald-800',
+  incomplete: 'bg-amber-100 text-amber-800',
+  failed: 'bg-red-100 text-red-800',
+  cancelled: 'bg-red-100 text-red-800',
+}

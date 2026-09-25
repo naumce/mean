@@ -4,10 +4,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { onMounted, onUnmounted } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { TOKEN_STORAGE_KEY } from '../lib/constants'
+import { useAiLabStore } from '../stores/aiLab'
 import { useAuthStore } from '../stores/auth'
 import { useThemeStore } from '../stores/theme'
 import AppShell from './AppShell.vue'
 import SidebarNavItem from './SidebarNavItem.vue'
+
+// AppShell now probes the AI Lab harness once per session (onMounted) — real
+// module-mocked here, same reasoning CockpitView.spec.ts already documents
+// for stores/sim: a child (here, AppShell itself) calling a real store's
+// probe() on mount must not fire a genuine network request in every one of
+// this file's tests.
+vi.mock('../stores/aiLab', () => ({ useAiLabStore: vi.fn() }))
+const mockedUseAiLabStore = vi.mocked(useAiLabStore)
+function aiLabStoreStub(overrides: Record<string, unknown> = {}) {
+  return { status: null, probe: vi.fn().mockResolvedValue(undefined), ...overrides }
+}
 
 const Stub = { template: '<div />' }
 
@@ -105,6 +117,7 @@ describe('AppShell', () => {
     setActivePinia(createPinia())
     localStorage.clear()
     document.documentElement.classList.remove('dark')
+    mockedUseAiLabStore.mockReturnValue(aiLabStoreStub() as unknown as ReturnType<typeof useAiLabStore>)
   })
 
   it('renders the theme toggle and flips the theme store', async () => {
@@ -140,6 +153,7 @@ describe('AppShell nav by plan tier', () => {
     setActivePinia(createPinia())
     localStorage.clear()
     document.documentElement.classList.remove('dark')
+    mockedUseAiLabStore.mockReturnValue(aiLabStoreStub() as unknown as ReturnType<typeof useAiLabStore>)
   })
 
   it('sheet tier shows Board, Night Shift, Usage, Settings and nothing else', async () => {
@@ -169,6 +183,26 @@ describe('AppShell nav by plan tier', () => {
     const sheet = await mountShellWithTier('sheet')
     const sheetLabels = sheet.findAllComponents(SidebarNavItem).map((c) => c.props('label'))
     expect(sheetLabels).not.toContain('Driver Supply')
+  })
+
+  // Qwen Harness v0.1 (Task 7): a developer console, tower-only, tucked into
+  // "More" like the rest of TOWER_MORE (Messages, Tracking, ...) rather than
+  // the always-visible Operate section.
+  it('shows "AI Lab (dev)" in the More section for tower tier, and not at all for sheet tier', async () => {
+    const tower = await mountShellWithTier('tower')
+    await tower.find('[data-testid="nav-more-toggle"]').trigger('click')
+    const towerLabels = tower.findAllComponents(SidebarNavItem).map((c) => c.props('label'))
+    expect(towerLabels).toContain('AI Lab (dev)')
+
+    const sheet = await mountShellWithTier('sheet')
+    expect(sheet.text()).not.toContain('AI Lab (dev)')
+  })
+
+  it('probes the AI Lab harness status once on mount', async () => {
+    const store = aiLabStoreStub()
+    mockedUseAiLabStore.mockReturnValue(store as unknown as ReturnType<typeof useAiLabStore>)
+    await mountShellWithTier('tower')
+    expect(store.probe).toHaveBeenCalledTimes(1)
   })
 
   it('tower tier highlights the "More" toggle when the current route is one of its items', async () => {
@@ -214,6 +248,7 @@ describe('AppShell realtime session (M5)', () => {
     FakeSocket.instances = []
     vi.stubGlobal('WebSocket', FakeSocket)
     localStorage.setItem(TOKEN_STORAGE_KEY, 'tok')
+    mockedUseAiLabStore.mockReturnValue(aiLabStoreStub() as unknown as ReturnType<typeof useAiLabStore>)
   })
   afterEach(() => {
     vi.unstubAllGlobals()
