@@ -106,7 +106,7 @@ export function startedAtIso(record: { startedAt: Date | null; proposedAt: Date 
  *  dispatcherAlerts.ts already uses for its own driverName lookup. Ids that
  *  are null/undefined (no driver referenced) are dropped before the query;
  *  an empty result skips the query entirely. `orgId` is defense in depth
- *  (fix round 1): every id passed in today already came from an org-checked
+ *  : every id passed in today already came from an org-checked
  *  source, so this never changes a correct caller's result — it just stops
  *  a future bug (a bad id slipping into one of these lists some other way)
  *  from resolving a name that belongs to a different tenant. `null` means
@@ -141,7 +141,7 @@ export async function fetchScenarios(loadIds: readonly (string | null | undefine
  * Exactly the `AiDecisionRecord` columns `toRunSummary` below reads — nothing
  * from the heavy JSON columns (`baseline`, `evidence`, `context` is the only
  * JSON field here and it is tiny, `toolCalls`, `toolResults`,
- * `proposedDecision`). I5: a run list route selects only this, rather than
+ * `proposedDecision`). a run list route selects only this, rather than
  * `findMany` with no `select` at all pulling every column (baseline/evidence
  * alone run tens of KB per row) just to build a summary that was always
  * going to discard them. `Pick<AiDecisionRecord, ...>` rather than a

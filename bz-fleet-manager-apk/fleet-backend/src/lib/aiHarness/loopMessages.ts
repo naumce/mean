@@ -67,7 +67,7 @@ export interface FeasibilityRow {
  * Every candidate row out of a `findFeasibleDrivers` call's MODEL-FACING
  * result (`dispatchTools/invoke.ts`'s `projectForModel` compact shape) —
  * feasible AND blocked, unlike `baseline.ts`'s `feasibleIdsFromToolResult`,
- * which keeps only feasible ids for seeding the run's feasible set. I2: this
+ * which keeps only feasible ids for seeding the run's feasible set. this
  * reads the PROJECTED `{ feasible: [...], blocked: [...] }` shape (already
  * capped at 25 rows each), not the engine's raw, unbounded `candidates` array
  * — the loop attaches whatever comes back onto that tool's own `tool_result`
@@ -112,7 +112,7 @@ export function sumTokens(current: number | null, addition: number | null): numb
   return (current ?? 0) + addition;
 }
 
-/** Tracks the HIGHEST single-call value seen so far (I3: `stats.maxPromptTokens`
+/** Tracks the HIGHEST single-call value seen so far (`stats.maxPromptTokens`
  *  is a per-call watermark, not the `sumTokens` running total) — same `null`
  *  convention as `sumTokens`: "no call so far reported this field" stays
  *  `null` rather than losing to a guessed `0`, and a later `null` never

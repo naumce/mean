@@ -57,7 +57,7 @@ export function setAdapterFactory(factory: (config: HarnessConfig) => ModelAdapt
   adapterFactory = factory;
 }
 
-// loop.ts's own TerminationReason carries "internal_error" (fix round 1) for
+// loop.ts's own TerminationReason carries "internal_error"  for
 // exactly this situation there (an unexpected throw inside
 // runDispatchDecision itself); this runner reuses the same literal for ITS
 // OWN catch-all below (a thrown adapter factory, a missing experiment, or any
@@ -88,7 +88,7 @@ export async function enqueueRun(args: {
   });
   if (!load || load.orgId !== args.orgId) return { error: "LOAD_NOT_FOUND" };
 
-  // Fix round 1 ruling: MAX_QUEUED_PER_ORG counts QUEUED runs only — the
+  // MAX_QUEUED_PER_ORG counts QUEUED runs only — the
   // spec's "refuses more than 10 pending runs" means the wait line, not the
   // one already running. 10 already queued refuses the next enqueue
   // regardless of whether something is running; 9 queued + 1 running still
@@ -148,7 +148,7 @@ export async function cancelRun(orgId: string, runId: string): Promise<boolean> 
     return true;
   }
 
-  // I1: this process's own in-memory state knows nothing about `runId` —
+  // this process's own in-memory state knows nothing about `runId` —
   // either it was queued/started by a process that has since restarted, or
   // the id is simply wrong. Only the former is this function's to fix: read
   // the row directly, and if the database still says `queued`/`running` (an

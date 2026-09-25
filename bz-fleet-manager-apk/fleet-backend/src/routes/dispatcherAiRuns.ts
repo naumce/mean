@@ -113,7 +113,7 @@ dispatcherAiRunsRouter.get("/runs", asyncRoute(async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: "Invalid query" });
   const { experimentId, loadId, status, limit } = parsed.data;
 
-  // I5: same reasoning as GET /ai/experiments/:id — this list only ever
+  // same reasoning as GET /ai/experiments/:id — this list only ever
   // renders RunSummary fields, so it only ever selects those.
   const records = await prisma.aiDecisionRecord.findMany({
     where: {
@@ -127,7 +127,7 @@ dispatcherAiRunsRouter.get("/runs", asyncRoute(async (req, res) => {
     select: RUN_SUMMARY_SELECT,
   });
 
-  // Defense in depth (fix round 1): scope the name/scenario lookups to the
+  // Defense in depth : scope the name/scenario lookups to the
   // caller's own org. `req.orgScope` is null only for an unscoped (legacy/
   // dev) dispatcher, whose `orgWhere(req)` above already returned {} — the
   // existing "sees everything" convention this codebase already applies

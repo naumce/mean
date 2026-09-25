@@ -41,7 +41,7 @@ export function checkCaps(counters: CapCounters, config: HarnessConfig): Termina
 /** `incomplete` covers every non-proposed termination except the ones called
  *  out by name: `model_error`/`timeout`/`internal_error` are `failed` (the
  *  run broke on its own), `cancelled` is its own status (the caller stopped
- *  it — not a failure of the run itself). `internal_error` (fix round 1) is
+ *  it — not a failure of the run itself). `internal_error`  is
  *  a `failed` run for the same reason `model_error` is: something outside
  *  the model's own answer broke the run. */
 export function statusForTermination(reason: TerminationReason): RunStatus {

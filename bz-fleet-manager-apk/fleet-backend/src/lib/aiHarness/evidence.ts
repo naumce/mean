@@ -36,7 +36,7 @@ export interface Evidence {
   historyInspected: string[];
   factsCited: FactCited[];
   supportingSteps: number[];
-  /** Round 2: every `propose_decision` `tool_call` step (I4 persists one for
+  /** every `propose_decision` `tool_call` step (I4 persists one for
    *  each attempt, accepted or rejected) — kept as its own count rather than
    *  folded into `toolsCalled`, since a proposal is the model's OUTPUT, not a
    *  registry tool it called to gather evidence (adjustment #1). */
@@ -60,7 +60,7 @@ interface FeasibilityRowLike {
   blockedReason?: unknown;
 }
 
-/** Round 2: excludes `propose_decision`'s own `tool_call` steps — every
+/** excludes `propose_decision`'s own `tool_call` steps — every
  *  reader of this list (`toolsCalled`, `candidatesInspected`'s
  *  argument-derived ids, the `getDriverMetrics`/`getDriverHistory` readers)
  *  is about tools the model called to gather evidence; a proposal attempt is
@@ -117,7 +117,7 @@ function driverIdsFromCallsNamed(steps: StoredStep[], toolName: string): string[
 /**
  * The `findFeasibleDrivers` rows loop.ts recorded onto its own `tool_result`
  * step payload (the `feasibility` field it adds for that one tool — see
- * loopMessages.ts's `feasibilityRowsFromRawResult`). NOT sourced from the
+ * loopMessages.ts's `feasibilityRowsFromProjectedResult`). NOT sourced from the
  * step's `preview`: that string is cut to 512 chars for compact display and
  * cannot be trusted to contain every row a real candidate list would have.
  */

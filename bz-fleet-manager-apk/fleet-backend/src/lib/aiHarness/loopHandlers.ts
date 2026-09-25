@@ -11,7 +11,7 @@ import { statusForTermination, callModel } from "./loopGuards.js";
 import { toolResultMessage, failureContent, failuresContent, feasibilityRowsFromProjectedResult, sumTokens, maxToken, KEEP_ALIVE } from "./loopMessages.js";
 import type { RunStatus, TerminationReason, RunStats, RunOutcome } from "./loop.js";
 
-// aiHarness/loopHandlers.ts (Qwen Harness v0.1, Task 5, fix round 1): the
+// aiHarness/loopHandlers.ts (Qwen Harness v0.1): the
 // per-concern pieces of the agent loop — one model turn, one propose_decision
 // attempt, one other tool call, and ending the run — extracted out of
 // loop.ts's `runDispatchDecision` so that function reads as orchestration
@@ -209,7 +209,7 @@ export async function handleProposeCall(
   ctx: RunContext,
   persistStep: PersistStepFn,
 ): Promise<ProposeCallResult> {
-  // I4: every propose_decision ATTEMPT — accepted or rejected — gets its own
+  // every propose_decision ATTEMPT — accepted or rejected — gets its own
   // `tool_call` step first, stamped at request time. Before this, a rejected
   // attempt's own arguments (the reason/confidence/alternatives actually
   // being turned down) existed nowhere on the timeline except inside the
@@ -245,7 +245,7 @@ export async function handleProposeCall(
  * checks the deadline and the caps after this returns.
  */
 export async function handleToolCall(call: ToolCall, state: RunState, ctx: RunContext, persistStep: PersistStepFn): Promise<void> {
-  // I4: the `tool_call` step is persisted for EVERY call the model makes —
+  // the `tool_call` step is persisted for EVERY call the model makes —
   // unknown tool, invalid params, and an identical repeat included — stamped
   // BEFORE the repeated-call check or invokeTool ever runs (request wall
   // time, not the time the result happened to come back). Before this, only
@@ -347,7 +347,7 @@ export async function finalizeRun(
   errorMessage: string | null = null,
 ): Promise<RunOutcome> {
   const finishedAtMs = ctx.now();
-  // I3: 85% of this run's OWN numCtx (not a fixed byte count) — a smaller
+  // 85% of this run's OWN numCtx (not a fixed byte count) — a smaller
   // experiment config has a proportionally smaller cushion before Ollama
   // starts silently dropping history, so the pressure threshold has to scale
   // with it too.

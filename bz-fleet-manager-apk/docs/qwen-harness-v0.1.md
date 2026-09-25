@@ -131,7 +131,7 @@ row (`kind`, `name`, `payload`, `atMs`, `durationMs`):
 
 `findFeasibleDrivers`'s `tool_result` also carries a `feasibility` array of
 parsed candidate rows — exactly the rows the model-facing compact projection
-(see Tool registry) actually delivered (up to 25 feasible + 25 blocked), never
+(see Tool registry) actually delivered (up to 20 feasible + 15 blocked), never
 the engine's full candidate list — so evidence reconstruction (see Evaluation
 methodology) reports what the model saw and never depends on the
 512-character display `preview`.
@@ -512,7 +512,7 @@ needed). It never prints `AI_EVAL_PASSWORD`, the login token, or any
 - **`findFeasibleDrivers` is projected, never sent raw.** A large fleet's full
   ranked list (165 drivers ≈ 263 KB) is never handed to the model —
   `dispatchTools/invoke.ts`'s `projectForModel` reduces it to a compact shape (up to 25
-  feasible rows and 25 blocked rows, engine order, plus a `counts` block
+  feasible rows and 15 blocked rows, engine order, plus a `counts` block
   naming how many of each actually exist) before the per-result 8192-byte cap
   (see Tool registry) ever applies. The persisted `feasibility` array and the
   evidence it feeds mirror exactly those delivered rows, not the engine's full
@@ -554,4 +554,28 @@ needed). It never prints `AI_EVAL_PASSWORD`, the login token, or any
 
 ## First run
 
-Re-run pending after the scenario-hint fix — see the evaluation file for the superseded run.
+Second run, 2026-09-25, after the model-facing projection removed the seeded scenario hints from tool results (the first run could read them and is kept in the evaluation file's history as superseded). Seeded world `Great Lakes Freight Co` (165 drivers), local Ollama 0.34.3, `qwen3:8b`, prompt `dispatch-v1`, default config (think on, temperature 0.2, num_ctx 16384, maxTurns 12). Every run is in the AI Lab, experiment "Scenarios A–H · dispatch-v1 · qwen3:8b", with its complete step history.
+
+| Scenario | Load ref | Deterministic top | Pick | Confidence | Rank of pick | Human verdict | Turns | Tool calls | Unique/Repeated/Invalid | Latency (s) | Tokens (prompt+completion) | Termination |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| A | W-A-RELIABLE | Charlotte Petrovski | Dwayne Okafor | 0.95 | 4 | — | 4 | 3 | 3/0/0 | 30.8 | 18866+2850 | proposed |
+| B | W-B-CLOSER | Eric Davis | Dwayne Okafor | 0.95 | 4 | — | 4 | 3 | 3/0/0 | 35.9 | 18007+3399 | proposed |
+| C | W-C-SOON | Ana Kovacs | Dwayne Okafor | 0.95 | 3 | — | 5 | 4 | 4/0/0 | 38.1 | 22074+3752 | proposed |
+| D | W-D-HOS | Dwayne Okafor | Dwayne Okafor | 0.95 | 1 | — | 5 | 4 | 4/0/0 | 36.0 | 25040+3472 | proposed |
+| E | W-E-EQUIP | Femi Okafor | — | — | — | — | 9 | 6 | 4/1/3 | 129.5 | 59536+12879 | consecutive_invalid |
+| F | W-F-LANE | — | — | 1.00 | — | — | 3 | 2 | 2/0/0 | 23.0 | 9487+2162 | proposed |
+| G | W-G-HOME | Ava Li | Marcus Webb | 0.95 | 5 | — | 4 | 3 | 3/0/0 | 35.9 | 18040+3477 | proposed |
+| H | W-H-PRIORITY | Ava Li | Marcus Webb | 0.95 | 6 | — | 5 | 4 | 4/0/0 | 57.1 | 24659+5567 | proposed |
+
+8 runs (proposed=7, consecutive_invalid=1) — 1/8 matched the deterministic top — mean turns 4.3, mean latency 36.7s
+
+Observations (reference data, not verdicts):
+
+- Seven of eight runs ended with a validated `propose_decision`; scenario E (a Reefer load whose nearest driver is flatbed-only) ended `consecutive_invalid` after three rejected proposals in a row — the model kept proposing drivers that were not in the feasible set it had been shown, and the terminal guard held.
+- Two to four tool calls per run in the proposed cases; `findFeasibleDrivers` first every time, then one or two driver-detail calls. Metrics or history were requested in four of eight runs.
+- The model proposed the same driver, Dwayne Okafor, in scenarios A–D. In scenario B his seeded evidence (three unanswered check-ins, 61 % reply rate) argues against him; whether that evidence was requested is visible in each run's step history.
+- Confidence was 0.95–1.00 in every proposed run regardless of how much evidence was gathered — it is self-reported and not calibrated.
+- One in eight picks matched the deterministic engine's top candidate; the pick's rank in the engine's order ranged from 1 to 6.
+- Mean latency 36.7 s per run on this machine; prompt tokens 9–25 k per run for proposed cases (59 k for the nine-turn scenario E), now without thinking replayed into the history.
+
+What to try next with this data: a `dispatch-v2` prompt that requires metrics for the top two feasible drivers before proposing; the same eight scenarios on a larger model via a second experiment config; human verdicts on these eight runs so the evaluation columns fill in.

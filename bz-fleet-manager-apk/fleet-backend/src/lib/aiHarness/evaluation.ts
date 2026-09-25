@@ -43,7 +43,7 @@ export interface EvaluationRow {
   latencyMs: number | null;
   promptTokens: number | null;
   completionTokens: number | null;
-  /** I3: `true` once some call in this run pushed `promptTokens` past 85% of
+  /** `true` once some call in this run pushed `promptTokens` past 85% of
    *  the run's own `numCtx` — the evaluation table's one place to notice a
    *  run that plausibly lost history to Ollama's own silent context
    *  trimming. `false` (never `null`) for a run whose `stats` predates this
@@ -185,7 +185,7 @@ export async function evaluateExperiment(orgId: string, experimentId: string): P
   const experiment = await prisma.aiExperiment.findUnique({ where: { id: experimentId } });
   if (!experiment || experiment.orgId !== orgId) return null;
 
-  // I5: `toRow` below reads exactly these columns — `baseline` is needed for
+  // `toRow` below reads exactly these columns — `baseline` is needed for
   // rank-of-pick, but the bigger `evidence`/`toolCalls`/`toolResults` columns
   // are not, so an experiment with many runs no longer pulls every JSON
   // column of every row just to compute this table.

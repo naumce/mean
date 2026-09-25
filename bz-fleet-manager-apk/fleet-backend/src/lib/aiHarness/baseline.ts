@@ -91,7 +91,7 @@ interface FeasibleRowLike {
  * The feasible driver ids out of a `findFeasibleDrivers` tool call's
  * MODEL-FACING result — `dispatchTools/invoke.ts`'s `projectForModel` compact
  * shape (`{ feasible: [{ driverId, ... }], blocked: [...], ... }`), the same
- * value the harness loop's `ctx.invoke` actually returns (I2: the loop must
+ * value the harness loop's `ctx.invoke` actually returns (the loop must
  * seed its feasible set from what the model was shown, never from the
  * engine's full result — `captureBaseline` above is the one place that still
  * reads the latter, for the baseline snapshot). Every row already in

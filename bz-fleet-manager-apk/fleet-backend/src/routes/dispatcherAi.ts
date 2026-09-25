@@ -89,7 +89,7 @@ aiRouter.get("/status", asyncRoute(async (req, res) => {
     defaults: DEFAULT_HARNESS_CONFIG,
     promptVersions: [DISPATCH_PROMPT_V1.version],
     queue: orgId ? runnerState(orgId) : { running: null, queued: [] },
-    // I1: rows the database still calls queued/running that this process's
+    // rows the database still calls queued/running that this process's
     // in-memory queue does not own — the residue a restart leaves behind.
     // `POST /ai/runs/:id/cancel` reclaims one by id; this is what tells a
     // dispatcher there is something to reclaim at all.
@@ -184,7 +184,7 @@ aiRouter.get("/experiments/:id", asyncRoute(async (req, res) => {
       orderBy: { proposedAt: "desc" },
       select: { proposedAt: true },
     }),
-    // I5: this list only ever renders RunSummary fields — select exactly
+    // this list only ever renders RunSummary fields — select exactly
     // those instead of every column (a big `baseline`/`evidence` pair alone
     // was tens of KB per row, discarded the moment toRunSummary ran).
     prisma.aiDecisionRecord.findMany({

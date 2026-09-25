@@ -21,7 +21,7 @@ import {
 // orchestration — system/user -> [assistant (+thinking) -> tool calls -> tool
 // results]* -> final. The per-turn/per-call algorithm itself lives in
 // loopHandlers.ts (handleAssistantTurn/handleProposeCall/handleToolCall/
-// finalizeRun, fix round 1's extraction out of what was one 300-line
+// finalizeRun — an extraction out of what was one 300-line
 // function); this file is the state machine deciding WHICH of those runs
 // next, plus the closures (persistStep/abortRun/stopIfNeeded) that need
 // `onStep`/the store's decisionId directly. Writes ONLY through `RunStore`
@@ -41,8 +41,8 @@ export type TerminationReason =
   | "timeout"
   | "model_error"
   | "cancelled"
-  // Added in fix round 1 — not in the original brief's list, amended by the
-  // controller: an unexpected throw from anywhere other than captureBaseline
+  // Amendment to the spec's original list:
+  // an unexpected throw from anywhere other than captureBaseline
   // (validateProposal's own DB call, the RunStore, or any other bug) is
   // caught so the run always ends with a real terminationReason instead of
   // staying "running" forever. A captureBaseline throw is handled separately
@@ -182,7 +182,7 @@ export async function runDispatchDecision(input: RunInput): Promise<RunOutcome> 
     return null;
   }
 
-  /** Fix round 1: the run must never stay "running" forever because
+  /** the run must never stay "running" forever because
    *  something OTHER than the model itself broke — validateProposal's DB
    *  call, the store, or any other bug. Best-effort: if even persisting the
    *  error step fails (the store itself is what's broken), the run still
