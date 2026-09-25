@@ -11,13 +11,20 @@ import type { EvaluationRow } from '../../types/aiLab'
 defineProps<{ rows: EvaluationRow[] }>()
 const emit = defineEmits<{ select: [runId: string] }>()
 
+// Fix round 2: `row.pick === null` (no decision reached at all) and a
+// non-null `row.pick` whose own `driverId`/`name` are both null (a decision
+// was reached, naming no driver) are different facts — "none" vs "no
+// driver" — and must not collapse into the same label.
 function pickLabel(row: EvaluationRow): string {
-  return row.pick?.name ?? row.pick?.driverId ?? 'none'
+  if (!row.pick) return 'none'
+  if (!row.pick.driverId) return 'no driver'
+  return row.pick.name ?? row.pick.driverId
 }
 function topLabel(row: EvaluationRow): string {
   if (!row.deterministicTop) return '—'
+  const name = row.deterministicTop.name ?? row.deterministicTop.driverId ?? '—'
   const rank = row.deterministicRankOfPick != null ? ` (pick #${row.deterministicRankOfPick})` : ''
-  return `${row.deterministicTop.name}${rank}`
+  return `${name}${rank}`
 }
 </script>
 
@@ -50,7 +57,7 @@ function topLabel(row: EvaluationRow): string {
           @click="emit('select', row.runId)"
         >
           <td class="px-2 py-2 text-ink">
-            <div>{{ row.loadRef ?? row.loadId }}</div>
+            <div>{{ row.loadRef ?? row.loadId ?? '—' }}</div>
             <div v-if="row.scenario" class="text-ink-3">{{ row.scenario.code }}: {{ row.scenario.title }}</div>
           </td>
           <td class="px-2 py-2">

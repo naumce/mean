@@ -52,4 +52,34 @@ describe('ExperimentRunsTable', () => {
     const wrapper = mount(ExperimentRunsTable, { props: { rows: [] } })
     expect(wrapper.find('[data-testid="runs-table-empty"]').exists()).toBe(true)
   })
+
+  // Fix round 2: the wire contract has `latencyMs`/`startedAt`/`loadId`
+  // nullable (a fresh experiment's still-queued rows) — a null must render as
+  // "—", never throw.
+  it('renders without throwing when latencyMs/startedAt/loadId/loadRef are null, showing a dash', () => {
+    const wrapper = mount(ExperimentRunsTable, {
+      props: { rows: [row({ latencyMs: null, startedAt: null, loadId: null, loadRef: null })] },
+    })
+    const cells = wrapper.findAll('[data-testid="runs-table-row"] td')
+    expect(cells[0]?.text()).toContain('—')
+    expect(cells[10]?.text()).toBe('—')
+  })
+
+  // Fix round 2: `pick: null` (no decision reached yet) and a non-null pick
+  // whose own driverId/name are null (a decision naming no driver) are
+  // different facts and must render differently.
+  it('a pick with driverId: null shows "no driver", distinct from no pick at all ("none")', () => {
+    const withNullDriverPick = mount(ExperimentRunsTable, { props: { rows: [row({ pick: { driverId: null, name: null } })] } })
+    expect(withNullDriverPick.findAll('[data-testid="runs-table-row"] td')[3]?.text()).toBe('no driver')
+
+    const withNoPick = mount(ExperimentRunsTable, { props: { rows: [row({ pick: null })] } })
+    expect(withNoPick.findAll('[data-testid="runs-table-row"] td')[3]?.text()).toBe('none')
+  })
+
+  it('a deterministic top with null name/driverId renders a dash instead of throwing', () => {
+    const wrapper = mount(ExperimentRunsTable, {
+      props: { rows: [row({ deterministicTop: { driverId: null, name: null }, deterministicRankOfPick: null })] },
+    })
+    expect(wrapper.findAll('[data-testid="runs-table-row"] td')[5]?.text()).toBe('—')
+  })
 })

@@ -85,6 +85,22 @@ describe('AiExperimentView', () => {
     expect(wrapper.find('[data-testid="evaluation-summary"]').text()).toContain('1 runs')
   })
 
+  // Fix round 2: the wire contract has these three means nullable (null when
+  // the experiment has no proposed runs yet) — must render "—", never throw
+  // on `.toFixed` of null, never fabricate a 0.
+  it('the evaluation summary strip shows "—" for null means on a fresh experiment', async () => {
+    const store = createStoreStub({
+      evaluation: {
+        ...evaluation(),
+        summary: { runs: 0, byTermination: {}, proposed: 0, matchedDeterministicTop: 0, accepted: 0, rejected: 0, meanTurns: null, meanToolCalls: null, meanLatencyMs: null },
+      },
+    })
+    const { wrapper } = await mountView(store)
+    const text = wrapper.find('[data-testid="evaluation-summary"]').text()
+    expect(text).toContain('mean — turns')
+    expect(text).toContain('mean latency —')
+  })
+
   it('saving the config card calls updateExperiment with the id and the edited config', async () => {
     const store = createStoreStub()
     const { wrapper } = await mountView(store)

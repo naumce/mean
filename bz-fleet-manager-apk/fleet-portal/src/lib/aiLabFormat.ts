@@ -40,6 +40,13 @@ export function formatBytes(n: number | null | undefined): string {
   return `${(n / 1024).toFixed(1)} KB`
 }
 
+/** Fix round 2: `EvaluationSummary`'s means are `null` when an experiment has
+ *  no proposed runs yet (a fresh experiment) — "—", never a fabricated
+ *  `0.0`, matching `formatDurationMs`/`formatBytes`'s own null convention. */
+export function formatMean(n: number | null | undefined, decimals = 1): string {
+  return n == null ? '—' : n.toFixed(decimals)
+}
+
 /** Wall time for a step card. Deliberately browser-local (same rationale as
  *  AgentDrawer's inline `hhmm`) — this is a debug timestamp inside one run's
  *  timeline, not an org-tz scheduling fact. */

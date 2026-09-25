@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import ExperimentConfigCard from '../../components/ai/ExperimentConfigCard.vue'
 import ExperimentRunsTable from '../../components/ai/ExperimentRunsTable.vue'
 import RunLoadPicker from '../../components/ai/RunLoadPicker.vue'
-import { formatDurationMs } from '../../lib/aiLabFormat'
+import { formatDurationMs, formatMean } from '../../lib/aiLabFormat'
 import { MAX_BATCH_RUNS, useAiLabStore } from '../../stores/aiLab'
 import type { HarnessConfig } from '../../types/aiLab'
 
@@ -88,7 +88,10 @@ watch(() => props.id, refresh)
       <span>{{ aiLab.evaluation.summary.matchedDeterministicTop }} matched top</span>
       <span>{{ aiLab.evaluation.summary.accepted }} accepted</span>
       <span>{{ aiLab.evaluation.summary.rejected }} rejected</span>
-      <span>mean {{ aiLab.evaluation.summary.meanTurns.toFixed(1) }} turns</span>
+      <!-- Fix round 2: the means are null on a fresh experiment (no proposed
+           runs yet) — formatMean/formatDurationMs both render "—", never a
+           fabricated 0. -->
+      <span>mean {{ formatMean(aiLab.evaluation.summary.meanTurns) }} turns</span>
       <span>mean latency {{ formatDurationMs(aiLab.evaluation.summary.meanLatencyMs) }}</span>
     </div>
 

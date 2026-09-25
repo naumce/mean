@@ -357,14 +357,22 @@ export interface FetchAiRunsParams {
   limit?: number
 }
 
+/** Fix round 2: `driverId`/`name` are nullable even when the row itself is
+ *  non-null — a pick (or a deterministic top) can exist as a fact ("this run
+ *  reached a decision") while explicitly naming no driver. Distinct from
+ *  `EvaluationRow.pick`/`.deterministicTop` themselves being `null` (no
+ *  decision reached at all yet). */
 export interface EvaluationRowPick {
-  driverId: string
-  name: string
+  driverId: string | null
+  name: string | null
 }
 
+/** Fix round 2: `loadId`/`latencyMs`/`startedAt` are nullable — the backend
+ *  contract allows a row with no known load or no completed timing yet (a
+ *  fresh experiment's still-queued/still-running rows). */
 export interface EvaluationRow {
   runId: string
-  loadId: string
+  loadId: string | null
   loadRef: string | null
   scenario: RunScenario | null
   status: RunStatus
@@ -381,12 +389,15 @@ export interface EvaluationRow {
   uniqueTools: number
   repeatedCalls: number
   invalidCalls: number
-  latencyMs: number
+  latencyMs: number | null
   promptTokens: number | null
   completionTokens: number | null
-  startedAt: string
+  startedAt: string | null
 }
 
+/** Fix round 2: the three means are `null` when the experiment has no
+ *  proposed runs yet to average over (a fresh experiment) — never a
+ *  fabricated `0`. */
 export interface EvaluationSummary {
   runs: number
   byTermination: Record<string, number>
@@ -394,9 +405,9 @@ export interface EvaluationSummary {
   matchedDeterministicTop: number
   accepted: number
   rejected: number
-  meanTurns: number
-  meanToolCalls: number
-  meanLatencyMs: number
+  meanTurns: number | null
+  meanToolCalls: number | null
+  meanLatencyMs: number | null
 }
 
 export interface Evaluation {
