@@ -3,11 +3,16 @@
 // `tool` message, bounded in size so one oversized result (a driver's full
 // location history, a load's full event trail) can never blow the model's
 // context window or an AiRunStep row's payload. `TOOL_RESULT_MAX_BYTES` is
-// this module's OWN default cap, used when a caller passes none; the harness
-// loop (a later task) instead passes the run's configured
-// `maxToolResultBytes` (aiHarness/config.ts, default 65536) — the two numbers
-// are deliberately independent knobs for two different callers, not one
-// value living in two places.
+// this module's own default cap, and is also the ONLY per-result truncation
+// threshold the harness loop (Task 5) uses — it always calls
+// `serializeToolResult(value)` with no second argument. `maxToolResultBytes`
+// (aiHarness/config.ts, default 65536) is a SEPARATE, unrelated knob: the
+// loop's own cumulative cap across every successful call in a run, checked
+// against the running total of `returnedSize`, never passed into this
+// function. The two numbers are deliberately independent (per-result vs.
+// accumulated), not one value living in two places — Task 5's review round 1
+// corrected an earlier drift where the loop passed `maxToolResultBytes` in
+// here too, which conflated the two.
 
 export const TOOL_RESULT_MAX_BYTES = 8192;
 
