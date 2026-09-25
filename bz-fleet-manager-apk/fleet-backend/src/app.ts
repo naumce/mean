@@ -54,6 +54,7 @@ import { dispatcherBrokerBoardRouter } from "./routes/dispatcherBrokerBoard.js";
 import { dispatcherLoadLocksRouter } from "./routes/dispatcherLoadLocks.js";
 import { dispatcherLoadTruthRouter } from "./routes/dispatcherLoadTruth.js";
 import { dispatcherToolsRouter } from "./routes/dispatcherTools.js";
+import { dispatcherAiRouter } from "./routes/dispatcherAi.js";
 import { requireAuth, requireDispatcher } from "./middleware/auth.js";
 import { apiKeyAllowList, apiKeyAuth } from "./middleware/apiKeyAuth.js";
 import { dispatcherApiKeysRouter } from "./routes/dispatcherApiKeys.js";
@@ -243,6 +244,12 @@ export function createApp() {
   // exists yet. A two-segment static path, no :id-route collision risk with
   // any router above it.
   app.use("/api/dispatcher", dispatcherToolsRouter);
+  // Qwen Harness v0.1 (Task 6): the AI Lab developer console — experiments,
+  // runs, evaluation. dispatcherAiRouter itself 404s its whole /ai/* surface
+  // unless harnessEnabled() (OLLAMA_URL set), on top of the structural gate
+  // above; never added to apiKeyAllowList — an MCP tool has no business
+  // driving the harness.
+  app.use("/api/dispatcher", dispatcherAiRouter);
   // Public push ingest — authenticated by x-api-key, not a Bearer token, so
   // it sits outside the /api/dispatcher middleware stack. Mounted before the
   // broad "/api" routers for the same reason dispatcherAuthRouter is.
