@@ -1,9 +1,10 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../db.js";
 import type { Actor } from "../loadWriter.js";
 import { applyAgentSwitch } from "../agentSwitch.js";
 import { cancelRun } from "../aiHarness/runner.js";
 import { stopRunner } from "../simulation/runner.js";
-import { DEMO_HIST_PREFIX } from "./fixtures.js";
+import { DEMO_HIST_PREFIX, DEMO_LOAD_REF, demoDriverEmail } from "./fixtures.js";
 
 // Demo Mode: tears down whatever the story left behind before fixtures.ts
 // rebuilds it, so Reset is total and idempotent from ANY prior state — a
@@ -42,19 +43,46 @@ async function purgeAssignmentFor(loadId: string): Promise<void> {
  *  would make the switch-off refuse (the writer's gate refuses system writes
  *  too), and a stale unapplied command from the previous run (a `reply`, a
  *  `send_customer_email`) must not be applied to the next run's trip. The
- *  switch-off then queues the one `stop` this reset means. */
+ *  switch-off then queues the one `stop` this reset means.
+ *
+ *  An unapplied `stop` is the ONE row this deletes NOTHING of (finding I1): a
+ *  Reset from a live demo queues that `stop` and leaves the load switched
+ *  off, so a second Reset moments later would see `agentEnabled: false` and
+ *  queue no replacement (`switchAgentOffIfOn` below is a no-op on an
+ *  already-off load) — deleting the pending `stop` here would leave the
+ *  worker's previous in-memory trip with nothing left to end it. Every OTHER
+ *  command row — every other kind, and every already-`stop`-but-applied row
+ *  too (finding M8: applied rows used to be the only ones that survived a
+ *  Reset) — is purged unconditionally, so Reset never grows a permanent
+ *  command-history leftover. */
 async function purgeLocksAndStaleCommands(loadId: string): Promise<void> {
   await prisma.$transaction([
     prisma.loadLock.deleteMany({ where: { loadId } }),
-    prisma.agentCommand.deleteMany({ where: { loadId, appliedAt: null } }),
+    prisma.agentCommand.deleteMany({ where: { loadId, NOT: { kind: "stop", appliedAt: null } } }),
   ]);
+}
+
+const TIMELINE_PURGE_MAX_ATTEMPTS = 3;
+
+function isForeignKeyViolation(err: unknown): boolean {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2003";
 }
 
 /** AiDecisionRecord/AgentEvent/AgentTrip/AgentUpdate/LoadChange — everything
  *  Night Shift and the AI harness wrote against this one load. AiRunStep
  *  cascades with its AiDecisionRecord; AgentEvent does NOT cascade with its
- *  AgentTrip (schema has no `onDelete`), so it is cleared first. */
-async function purgeLoadTimeline(loadId: string): Promise<void> {
+ *  AgentTrip (schema has no `onDelete`), so it is cleared first.
+ *
+ *  A live worker can still be appending `AgentEvent` rows (a ping every few
+ *  seconds during the demo) against a trip this same call is about to
+ *  delete — an insert landing between the two deletes below makes the
+ *  `AgentTrip` delete violate that FK and the transaction rejects with
+ *  Prisma's P2003 (finding M4). Retried a bounded number of times, re-reading
+ *  the trip ids fresh on each attempt (the worker's own insert already
+ *  committed by the time this retries, so the next attempt's read sees it);
+ *  a failure that outlives every attempt still throws — the caller (reset.ts,
+ *  via the route) already maps an unexpected error to a plain 500. */
+async function purgeLoadTimelineOnce(loadId: string): Promise<void> {
   const trips = await prisma.agentTrip.findMany({ where: { loadId }, select: { id: true } });
   const tripIds = trips.map((t) => t.id);
   await prisma.$transaction([
@@ -64,6 +92,17 @@ async function purgeLoadTimeline(loadId: string): Promise<void> {
     prisma.agentUpdate.deleteMany({ where: { loadId } }),
     prisma.loadChange.deleteMany({ where: { loadId } }),
   ]);
+}
+
+async function purgeLoadTimeline(loadId: string): Promise<void> {
+  for (let attempt = 1; attempt <= TIMELINE_PURGE_MAX_ATTEMPTS; attempt++) {
+    try {
+      await purgeLoadTimelineOnce(loadId);
+      return;
+    } catch (err) {
+      if (!isForeignKeyViolation(err) || attempt === TIMELINE_PURGE_MAX_ATTEMPTS) throw err;
+    }
+  }
 }
 
 async function purgeDriverSimTraces(driverId: string): Promise<void> {
@@ -110,6 +149,20 @@ async function switchAgentOffIfOn(orgId: string, loadId: string, actor: Actor): 
   }
 }
 
+/** The ids to purge: the story's own `loadId`/`driverId` when the row is
+ *  there, otherwise the same fixture identities `fixturesDemoLoad.ts` and
+ *  `fixtures.ts` upsert by — `orgId_externalId: DEMO_LOAD_REF` for the load,
+ *  `demoDriverEmail(orgId)` for the driver (finding M3). Keying the purge
+ *  off the `DemoStory` row alone meant a missing/deleted row (however that
+ *  happened) left `upsertDemoLoad` rebuilding the SAME load row in place
+ *  with the previous run's Assignment, Rate, trips and locks still attached
+ *  — exactly the P2002 → 409 class fix round 3 already chased down once. */
+async function idsToPurge(orgId: string, story: { loadId: string | null; driverId: string | null } | null): Promise<{ loadId: string | null; driverId: string | null }> {
+  const loadId = story?.loadId ?? (await prisma.load.findUnique({ where: { orgId_externalId: { orgId, externalId: DEMO_LOAD_REF } }, select: { id: true } }))?.id ?? null;
+  const driverId = story?.driverId ?? (await prisma.driver.findUnique({ where: { email: demoDriverEmail(orgId) }, select: { id: true } }))?.id ?? null;
+  return { loadId, driverId };
+}
+
 /**
  * Total, idempotent teardown. Safe to call for an org that has never had a
  * demo story at all — every step below is a no-op against rows that do not
@@ -126,13 +179,15 @@ export async function purgeDemoStory(orgId: string, actor: Actor): Promise<void>
     // a reset outage.
     await cancelRun(orgId, story.runId).catch((err: unknown) => console.warn(`demo reset: cancelRun failed for ${story.runId}`, err));
   }
-  if (story?.loadId) {
-    await purgeLocksAndStaleCommands(story.loadId);
-    await switchAgentOffIfOn(orgId, story.loadId, actor);
-    await purgeLoadTimeline(story.loadId);
-    await purgeAssignmentFor(story.loadId);
+
+  const { loadId, driverId } = await idsToPurge(orgId, story);
+  if (loadId) {
+    await purgeLocksAndStaleCommands(loadId);
+    await switchAgentOffIfOn(orgId, loadId, actor);
+    await purgeLoadTimeline(loadId);
+    await purgeAssignmentFor(loadId);
   }
-  if (story?.driverId) await purgeDriverSimTraces(story.driverId);
+  if (driverId) await purgeDriverSimTraces(driverId);
 
   await purgeHistoricalLoads(orgId);
 }

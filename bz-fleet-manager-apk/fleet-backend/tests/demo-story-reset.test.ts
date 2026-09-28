@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../src/db.js";
 import { resetDb } from "./helpers.js";
 import { resetDemo } from "../src/lib/demoStory/index.js";
@@ -5,6 +6,7 @@ import {
   DEMO_CUSTOMER_EMAIL, DEMO_CUSTOMER_NAME, DEMO_DRIVER_EXTERNAL_ID, DEMO_HIST_PREFIX,
   DEMO_LOAD_REF, DEMO_POLICY_NAME, DEMO_TRACTOR_UNIT, DEMO_TRAILER_UNIT, demoDriverEmail,
 } from "../src/lib/demoStory/fixtures.js";
+import { isNightShiftReleasing, switchAgentOn } from "../src/lib/demoStory/agentGate.js";
 import { startRunner, runnerState } from "../src/lib/simulation/runner.js";
 import { cancelRun } from "../src/lib/aiHarness/runner.js";
 
@@ -283,5 +285,133 @@ describe("resetDemo — recovers from any prior state", () => {
 
     expect(second.loadId).toBe(loadId); // the demo load keeps its row id across resets, by design
     expect(await prisma.rate.findUnique({ where: { loadId } })).toBeNull();
+  });
+
+  it("purges the previous run's Assignment/Rate on the rebuilt load even with the DemoStory row itself deleted (finding F3/M3)", async () => {
+    const { org, dispatcher } = await seedOrgWithDispatcher();
+    const first = await resetDemo(org.id, dispatcher.id);
+    const loadId = first.loadId!;
+    const driverId = first.driverId!;
+
+    const tractor = await prisma.tractor.findFirstOrThrow({ where: { orgId: org.id, unit: DEMO_TRACTOR_UNIT } });
+    const trailer = await prisma.trailer.findFirstOrThrow({ where: { orgId: org.id, unit: DEMO_TRAILER_UNIT } });
+    const assignment = await prisma.assignment.create({
+      data: {
+        orgId: org.id, loadId, driverId, tractorId: tractor.id, trailerId: trailer.id,
+        plannedStart: new Date(), plannedEnd: new Date(Date.now() + 60 * 60_000), status: "assigned",
+      },
+    });
+    await prisma.rate.create({
+      data: {
+        loadId, linehaulCents: 185_000, fscCents: 0, totalMi: 300, loadedMi: 280, deadheadMi: 20,
+        ratePerLoadedMiCents: 660, estCostCents: 50_000, marginCents: 30_000,
+      },
+    });
+
+    // The DemoStory row itself is gone — the purge must still find the same
+    // load/driver by their fixture identities (orgId_externalId, the
+    // deterministic driver email), not by a row that no longer exists.
+    await prisma.demoStory.delete({ where: { orgId: org.id } });
+
+    const second = await resetDemo(org.id, dispatcher.id);
+
+    expect(second.loadId).toBe(loadId); // the demo load keeps its row id even through this path
+    expect(await prisma.assignment.findUnique({ where: { id: assignment.id } })).toBeNull();
+    expect(await prisma.rate.findUnique({ where: { loadId } })).toBeNull();
+  });
+});
+
+describe("resetDemo — a second Reset inside the release window (finding F1/I1)", () => {
+  it("keeps the pending stop and still reports night_shift_releasing, purging every other command row (finding F1/M8)", async () => {
+    const { org, dispatcher } = await seedOrgWithDispatcher();
+    const first = await resetDemo(org.id, dispatcher.id);
+    const loadId = first.loadId!;
+    const driverId = first.driverId!;
+
+    // Put the load in a state with the agent on — an in-progress assignment
+    // plus the real switch, the same two things `recordApproval` does
+    // before a run starts.
+    const tractor = await prisma.tractor.findFirstOrThrow({ where: { orgId: org.id, unit: DEMO_TRACTOR_UNIT } });
+    const trailer = await prisma.trailer.findFirstOrThrow({ where: { orgId: org.id, unit: DEMO_TRAILER_UNIT } });
+    await prisma.assignment.create({
+      data: {
+        orgId: org.id, loadId, driverId, tractorId: tractor.id, trailerId: trailer.id,
+        plannedStart: new Date(), plannedEnd: new Date(Date.now() + 60 * 60_000), status: "in_progress", startedAt: new Date(),
+      },
+    });
+    await switchAgentOn(org.id, loadId, first.policyId);
+    expect((await prisma.load.findUniqueOrThrow({ where: { id: loadId } })).agentEnabled).toBe(true);
+
+    // Reset #1, from live: switches the agent off, leaving exactly one
+    // pending `stop` (the release fence).
+    await resetDemo(org.id, dispatcher.id);
+    const afterFirst = await prisma.agentCommand.findMany({ where: { loadId, appliedAt: null } });
+    expect(afterFirst.map((c) => c.kind)).toEqual(["stop"]);
+    expect(await isNightShiftReleasing(loadId, Date.now())).toBe(true);
+
+    // Reset #2, seconds later: the pending `stop` must survive, and the
+    // release gate must still report true.
+    const second = await resetDemo(org.id, dispatcher.id);
+    expect(second.stage).toBe("uncovered");
+
+    const pending = await prisma.agentCommand.findMany({ where: { loadId, appliedAt: null } });
+    expect(pending.map((c) => c.kind)).toEqual(["stop"]);
+    expect(await isNightShiftReleasing(loadId, Date.now())).toBe(true);
+
+    // No non-stop command rows survive the second reset either.
+    const nonStop = await prisma.agentCommand.count({ where: { loadId, NOT: { kind: "stop" } } });
+    expect(nonStop).toBe(0);
+  });
+
+  it("bumps the demo Load's version on every reset that rewrites it in place (finding F12/M12)", async () => {
+    const { org, dispatcher } = await seedOrgWithDispatcher();
+    const first = await resetDemo(org.id, dispatcher.id);
+    const afterFirst = await prisma.load.findUniqueOrThrow({ where: { id: first.loadId! }, select: { version: true } });
+
+    const second = await resetDemo(org.id, dispatcher.id);
+    const afterSecond = await prisma.load.findUniqueOrThrow({ where: { id: second.loadId! }, select: { version: true } });
+
+    expect(afterSecond.version).toBeGreaterThan(afterFirst.version);
+  });
+});
+
+describe("resetDemo — mid-flight FK race on the timeline purge (finding F4/M4)", () => {
+  let armed = false;
+  let attempts = 0;
+
+  beforeAll(() => {
+    prisma.$use(async (params, next) => {
+      if (armed && params.model === "AgentTrip" && params.action === "deleteMany") {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new Prisma.PrismaClientKnownRequestError(
+            "Foreign key constraint failed on the field: `AgentEvent_tripId_fkey (index)` (simulated worker race)",
+            { code: "P2003", clientVersion: "5.22.0" },
+          );
+        }
+        armed = false; // disarm once it has been allowed through once
+      }
+      return next(params);
+    });
+  });
+
+  it("retries once on a P2003 from a concurrent AgentEvent insert, and succeeds", async () => {
+    const { org, dispatcher } = await seedOrgWithDispatcher();
+    const first = await resetDemo(org.id, dispatcher.id);
+    const loadId = first.loadId!;
+
+    const trip = await prisma.agentTrip.create({
+      data: { id: "fk-race-trip", loadRef: DEMO_LOAD_REF, loadId, driverToken: "fk-race-token", brief: {}, status: "tracking" },
+    });
+    await prisma.agentEvent.create({ data: { tripId: trip.id, atMs: BigInt(Date.now()), kind: "anomaly", evidence: { kind: "unplanned_stop" } } });
+
+    attempts = 0;
+    armed = true;
+    const second = await resetDemo(org.id, dispatcher.id);
+
+    expect(second.stage).toBe("uncovered");
+    expect(attempts).toBe(2); // the delete was attempted twice — once rejected, once through
+    expect(await prisma.agentTrip.findUnique({ where: { id: trip.id } })).toBeNull();
+    expect(await prisma.agentEvent.count({ where: { tripId: trip.id } })).toBe(0);
   });
 });

@@ -92,6 +92,12 @@ describe('DemoStatusLine', () => {
 
   it('shows the generic waiting sentence for every other automatic stage', () => {
     expect(textOf('breakdown_detected', null)).toBe("Waiting for Night Shift's next check — up to 60 seconds")
-    expect(textOf('resolved', null)).toBe("Waiting for Night Shift's next check — up to 60 seconds")
+  })
+
+  // Fix round 4, P14: "resolved" is the truck driving to the dock, not the
+  // story waiting on a Night Shift check — it used to fall through to the
+  // generic sentence above, which was wrong for this stage.
+  it('says the truck is heading to the dock once resolved, not that it is waiting on a check', () => {
+    expect(textOf('resolved', null)).toBe('Truck is moving again — heading to the dock')
   })
 })

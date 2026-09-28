@@ -196,6 +196,20 @@ describe("POST /demo/story/action — approve", () => {
     expect(load).toMatchObject({ agentEnabled: true, agentPill: "watching" });
   });
 
+  it("refuses (never 200) and leaves the agent off when the demo policy is not shadow-only (finding F2/M2)", async () => {
+    const { auth, orgId, story } = await seedStory("awaiting_approval");
+    const assignment = await createAssignment(orgId, story);
+    await prisma.agentPolicy.update({ where: { id: story.policyId! }, data: { shadow: false } });
+
+    const res = await postAction(auth, { action: "approve", assignmentId: assignment.id, driverId: story.driverId });
+
+    expect(res.status).not.toBe(200);
+    const load = await prisma.load.findUniqueOrThrow({ where: { id: story.loadId! } });
+    expect(load.agentEnabled).toBe(false);
+    const reread = await prisma.demoStory.findUniqueOrThrow({ where: { orgId } });
+    expect(reread.stage).toBe("awaiting_approval"); // never advanced
+  });
+
   it("adopts whoever the assignment names as the story's driver", async () => {
     const { auth, orgId, story } = await seedStory("awaiting_approval");
     const other = await prisma.driver.create({ data: { email: `other-${orgId}@x.com`, passwordHash: "x", name: "Maria Lopez", orgId, phone: "+15550100002" } });
@@ -300,6 +314,24 @@ describe("POST /demo/story/action — driver_reply", () => {
     const res = await postAction(auth, { action: "driver_reply" });
     expect(res.status).toBe(400);
   });
+
+  it("encodes the driver token when building the worker proxy URL (finding F10/M10)", async () => {
+    process.env.WORKER_URL = "http://worker.invalid";
+    const { auth, story } = await seedStory("awaiting_driver_reply");
+    const token = "tok en/needs+encoding";
+    await createTrip(story.loadId!, "act-trip-encode");
+    await prisma.agentTrip.update({ where: { id: "act-trip-encode" }, data: { driverToken: token } });
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await postAction(auth, { action: "driver_reply", text: "hi" });
+
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `http://worker.invalid/d/${encodeURIComponent(token)}/reply`,
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
 });
 
 describe("POST /demo/story/action — customer_update_sent and resolve (the thaw)", () => {
@@ -366,6 +398,23 @@ describe("POST /demo/story/action — skip_arrival", () => {
     expect(await prisma.loadLock.findUnique({ where: { loadId: story.loadId! } })).toBeNull();
     const assignment = await prisma.assignment.findFirstOrThrow({ where: { loadId: story.loadId! } });
     expect(assignment.status).toBe("completed");
+  });
+
+  it("409s WRONG_STAGE when there is no assignment, leaving Night Shift switched ON (finding F11/M11)", async () => {
+    const { auth, story } = await seedStory("delivering", { holdStartedAt: new Date() });
+    // No assignment created — mirrors a story record with the assignment
+    // already removed some other way. The agent is left ON here so the test
+    // can tell "the guard never touched it" apart from "it happened to
+    // already be off".
+    await prisma.load.update({ where: { id: story.loadId! }, data: { agentEnabled: true, agentPill: "watching" } });
+
+    const res = await postAction(auth, { action: "skip_arrival" });
+
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: "WRONG_STAGE", stage: "delivering" });
+    const load = await prisma.load.findUniqueOrThrow({ where: { id: story.loadId! } });
+    expect(load.agentEnabled).toBe(true); // the assignment check ran BEFORE the switch-off
+    expect(load.agentPill).toBe("watching");
   });
 });
 

@@ -48,7 +48,13 @@ function nearestPlaceLabel(point: { lat: number; lng: number }): string {
   return ROUTE_WAYPOINTS.reduce((best, wp) => (haversineMi(point, wp) < haversineMi(point, best) ? wp : best)).name;
 }
 
-function afterBreakdown(story: DemoStory, e: AgentEvent): boolean {
+/** Exported for `waitingOn.ts` (finding F1a/M1): the trip-start invite, its
+ *  canned reply and its own escalation are all real rows too, stamped before
+ *  the scripted breakdown ever fired — none of them is the outreach/
+ *  escalation the story is narrating or waiting on, so every selector that
+ *  picks "the" event of a kind must agree on this same fence, not just the
+ *  narration half of it. */
+export function afterBreakdown(story: DemoStory, e: AgentEvent): boolean {
   const since = story.breakdownTriggeredAt?.getTime() ?? 0;
   return Number(e.atMs) > since;
 }

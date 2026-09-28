@@ -93,9 +93,11 @@ async function onReset(): Promise<void> {
         class="rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-600"
         data-testid="demo-error-banner"
       >
-        <p class="font-semibold">The demo story hit a problem.</p>
-        <p class="mt-1">{{ story.error }}</p>
-        <p class="mt-1 text-ink-3">Use Reset Demo above to start over.</p>
+        <p class="font-semibold" data-testid="demo-error-summary">The demo hit a problem. Press Reset Demo to start again.</p>
+        <details class="mt-2 text-ink-3" data-testid="demo-error-details">
+          <summary class="cursor-pointer text-sm">Technical details</summary>
+          <p class="mt-1 text-sm">{{ story.error }}</p>
+        </details>
       </div>
 
       <StageRail :stages="demo.presenterStages" />

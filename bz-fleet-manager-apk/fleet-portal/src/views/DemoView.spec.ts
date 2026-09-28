@@ -243,12 +243,27 @@ describe('DemoView', () => {
     })
   })
 
+  // Fix round 4, P6: the raw backend error string (a Prisma message, on a
+  // database failure) must never land on the unhidden main screen — only a
+  // plain sentence there, with the raw text behind a collapsed "Technical
+  // details" the presenter has to choose to open.
   describe('the error banner', () => {
-    it('shows the story error and a reset hint only on the error stage', async () => {
+    it('shows a plain sentence and a reset hint only on the error stage, never the raw message in the visible summary', async () => {
       const { wrapper } = await mountView({ data: demoData({ stage: 'error', error: 'The worker timed out.' }) })
       const banner = wrapper.find('[data-testid="demo-error-banner"]')
       expect(banner.exists()).toBe(true)
-      expect(banner.text()).toContain('The worker timed out.')
+      const summary = wrapper.find('[data-testid="demo-error-summary"]')
+      expect(summary.text()).toBe('The demo hit a problem. Press Reset Demo to start again.')
+      expect(summary.text()).not.toContain('The worker timed out.')
+    })
+
+    it('puts the raw message inside a collapsed "Technical details" element', async () => {
+      const { wrapper } = await mountView({ data: demoData({ stage: 'error', error: 'The worker timed out.' }) })
+      const details = wrapper.find('[data-testid="demo-error-details"]')
+      expect(details.exists()).toBe(true)
+      expect(details.attributes('open')).toBeUndefined() // collapsed by default
+      expect(details.text()).toContain('Technical details')
+      expect(details.text()).toContain('The worker timed out.')
     })
 
     it('does not show on a normal stage', async () => {

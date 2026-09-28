@@ -275,6 +275,13 @@ export const useDemoStore = defineStore('demo', {
      *  tell "next() is valid here" apart from "a human could click
      *  something here" — only the stage itself can. */
     async maybeAdvance(): Promise<void> {
+      // Fix round 4, P13: a slow in-flight action (e.g. ask_ai clicked by
+      // hand, or next() itself from a previous tick) sets `busy` for its own
+      // duration — skipping here while that is true is what stops the next
+      // 3-second poll from posting a SECOND next() before the first one has
+      // even resolved, which the backend's own stage guard would otherwise
+      // answer with a 409 the presenter briefly sees flash on screen.
+      if (this.busy) return
       const stage = this.data?.story?.stage
       if (stage === 'uncovered' || stage === 'customer_updated') await this.next()
     },

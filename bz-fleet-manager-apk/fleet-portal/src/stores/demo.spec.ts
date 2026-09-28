@@ -302,6 +302,22 @@ describe('useDemoStore', () => {
       expect(mockedPostDemoAction).not.toHaveBeenCalled()
     })
 
+    // Fix round 4, P13: a slow in-flight action (busy: true) must stop the
+    // 3-second poll from posting a second next() on top of it — the
+    // backend's own stage guard would 409 that second post.
+    it('does nothing when busy, even on an eligible stage', async () => {
+      vi.useFakeTimers()
+      const store = useDemoStore()
+      store.toggleAutoRun()
+      mockedFetchDemoStory.mockResolvedValue(response({ stage: 'uncovered' }, { waitingOn: 'ask_ai' }))
+      store.busy = true
+
+      store.startPolling(3000)
+      await vi.advanceTimersByTimeAsync(3000)
+
+      expect(mockedPostDemoAction).not.toHaveBeenCalled()
+    })
+
     it('does nothing when there is no story yet (never reset for this org)', async () => {
       vi.useFakeTimers()
       const store = useDemoStore()

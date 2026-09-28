@@ -38,7 +38,12 @@ export async function upsertDemoLoad(orgId: string, customerId: string, nowMs: n
 
   const existing = await prisma.load.findUnique({ where: { orgId_externalId: { orgId, externalId: DEMO_LOAD_REF } }, select: { id: true } });
   const load = existing
-    ? await prisma.load.update({ where: { id: existing.id }, data: fields })
+    // `version: { increment: 1 }` (finding F12/M12): this write bypasses the
+    // load writer (a wholesale fixture rebuild, not a dispatcher edit), so
+    // without it Load.version never moves and no LoadChange is recorded —
+    // a Cockpit tab left open across a Reset could then submit an edit
+    // against the rebuilt row and have it accepted as if nothing changed.
+    ? await prisma.load.update({ where: { id: existing.id }, data: { ...fields, version: { increment: 1 } } })
     : await prisma.load.create({ data: { orgId, externalId: DEMO_LOAD_REF, ...fields } });
 
   // Stops/appointments are rebuilt fresh every reset — cheaper and safer

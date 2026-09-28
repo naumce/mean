@@ -24,6 +24,28 @@ export const STOP_RELEASE_WINDOW_MS = 120_000;
 
 const STORY_ACTOR = SYSTEM_ACTOR("demo-story");
 
+/** Refused because the policy about to go live is not the shadow-only
+ *  configuration the whole feature's safety depends on (findings I(c)/M2):
+ *  a Demo Mode agent must never be able to send a real customer email,
+ *  place a real call, or run under anything but shadow evaluation. The
+ *  route maps this to a plain 500 (asyncRoute's terminal handler), never a
+ *  crash. */
+export class PolicyNotShadow extends Error {}
+
+/** `switchAgentOn`'s own guard, checked against the CURRENT row every time
+ *  (not the fixture's own upsert, which could drift or be hand-edited) —
+ *  the one binding constraint of the feature is worth re-reading, not just
+ *  trusting whoever set `policyId` earlier. */
+async function assertPolicyIsShadow(orgId: string, policyId: string | null): Promise<void> {
+  if (!policyId) throw new PolicyNotShadow("Demo Mode has no agent policy set for this load — reset the demo first.");
+  const policy = await prisma.agentPolicy.findFirst({ where: { id: policyId, orgId } });
+  if (!policy) throw new PolicyNotShadow(`Agent policy ${policyId} was not found for this org.`);
+  const isShadowSafe = policy.shadow === true && policy.customerEmailOn === false && policy.bossCallOn === false && policy.maxCalls === 0;
+  if (!isShadowSafe) {
+    throw new PolicyNotShadow("Demo Mode's agent policy is not shadow-only (shadow off, a real customer email/boss call enabled, or maxCalls above 0) — refusing to switch Night Shift on.");
+  }
+}
+
 export async function clearLoadLocks(loadId: string): Promise<void> {
   await prisma.loadLock.deleteMany({ where: { loadId } });
 }
@@ -43,6 +65,7 @@ export async function isNightShiftReleasing(loadId: string, nowMs: number): Prom
 }
 
 export async function switchAgentOn(orgId: string, loadId: string, policyId: string | null): Promise<void> {
+  await assertPolicyIsShadow(orgId, policyId);
   await clearLoadLocks(loadId);
   await prisma.$transaction((tx) =>
     applyAgentSwitch(tx, {

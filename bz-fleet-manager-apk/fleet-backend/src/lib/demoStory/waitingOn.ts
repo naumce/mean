@@ -1,5 +1,6 @@
 import type { DemoStory } from "@prisma/client";
 import { isNightShiftReleasing } from "./agentGate.js";
+import { afterBreakdown } from "./observeBreakdown.js";
 import { evidenceOf, latest, tripsAndEvents } from "./observeEvents.js";
 
 // Demo Mode: what GET /demo/story tells the presenter is the pending human
@@ -18,10 +19,15 @@ export async function waitingOnFor(story: DemoStory, nowMs: number = Date.now())
     case "awaiting_driver_reply": return "driver_reply";
     case "awaiting_customer_update": {
       // No draft attached leaves the story waiting on "Resolve" directly
-      // rather than on a send it cannot make.
+      // rather than on a send it cannot make. The escalation picked here
+      // must be the SAME one the narration named when it entered this stage
+      // (observeBreakdown.ts's `afterBreakdown` fence, finding F1a/M1) — an
+      // older escalation (from a previous run, or one that predates the
+      // scripted breakdown) must never flip this button against what the
+      // presenter was just told.
       if (!story.loadId) return "resolve";
       const { events } = await tripsAndEvents(story.loadId);
-      const escalation = latest(events, (e) => e.kind === "escalation");
+      const escalation = latest(events, (e) => e.kind === "escalation" && afterBreakdown(story, e));
       const draftAttached = escalation ? Boolean(evidenceOf(escalation).draftAttached) : false;
       return draftAttached ? "customer_update_sent" : "resolve";
     }

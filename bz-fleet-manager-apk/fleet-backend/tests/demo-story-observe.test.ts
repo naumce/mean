@@ -1,6 +1,6 @@
 import { prisma } from "../src/db.js";
 import { resetDb } from "./helpers.js";
-import { observeStory } from "../src/lib/demoStory/index.js";
+import { observeStory, waitingOnFor } from "../src/lib/demoStory/index.js";
 import { applyPatch } from "../src/lib/demoStory/patch.js";
 import { DEMO_CUSTOMER_EMAIL } from "../src/lib/demoStory/fixtures.js";
 import { runnerState, startRunner } from "../src/lib/simulation/runner.js";
@@ -329,6 +329,32 @@ describe("observeStory — awaiting_customer_update (the thaw)", () => {
 
     const result = await observeStory(orgId);
     expect(result?.stage).toBe("customer_updated");
+  });
+});
+
+describe("waitingOnFor — awaiting_customer_update picks the same escalation the narration used (finding F1a/M1)", () => {
+  it("an escalation dated BEFORE the breakdown must not decide customer_update_sent vs resolve", async () => {
+    const now = Date.now();
+    const { story } = await seedStory("awaiting_customer_update", { breakdownTriggeredAt: new Date(now) });
+    const trip = await createTrip(story.loadId!);
+    // Stale: an escalation from before THIS run's breakdown (a previous
+    // run's leftover, or a trip-start escalation) that happens to carry a
+    // draft. Without the `afterBreakdown` fence this is the "latest
+    // escalation of any age" and wrongly flips the button to "send".
+    await addEvent(trip.id, "escalation", { reason: "old", draftAttached: true }, now - 10 * MIN);
+
+    const result = await waitingOnFor(story, now);
+    expect(result).toBe("resolve"); // no escalation AFTER the breakdown exists yet
+  });
+
+  it("an escalation dated AFTER the breakdown correctly offers the send button", async () => {
+    const now = Date.now();
+    const { story } = await seedStory("awaiting_customer_update", { breakdownTriggeredAt: new Date(now - 5 * MIN) });
+    const trip = await createTrip(story.loadId!);
+    await addEvent(trip.id, "escalation", { reason: "current", draftAttached: true }, now - 1 * MIN);
+
+    const result = await waitingOnFor(story, now);
+    expect(result).toBe("customer_update_sent");
   });
 });
 

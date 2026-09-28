@@ -73,3 +73,5 @@ Presenter tips: open `/demo`, press **Reset Demo**, then follow the single butto
 - Great-circle simulated paths cross Lake Michigan; the Demo policy's `offRouteMi 25` keeps the off-route rule quiet.
 - Night Shift's trip-start hours check reads the driver's clocks after the assignment has already reserved this run's on-duty time, so its timeline opens with an "hours cannot carry this run" escalation (shadow). The story ignores it; it is a pre-existing double count between the dispatch engine and the agent, not a demo defect.
 - Because the load is hot from departure, the first question can read "about -4 minutes behind" (ahead of plan, past the customer deadline) — Night Shift's own wording, left untouched.
+- The simulation is org-wide: every other assignment in the demo org advances (and can complete) while the demo runs, and Reset rewinds only the demo load, the driver and the ten history loads. Use a dedicated demo org, or re-run the world seed when the rest of the board should look fresh.
+- One backend instance per org: the story's per-org mutex is in-process. With two backend instances both would tick and ping. Render runs one.

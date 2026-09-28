@@ -150,7 +150,7 @@ async function driverReplyUnlocked(orgId: string, text: string): Promise<DemoSto
 
   let res: Response;
   try {
-    res = await fetch(`${workerUrl}/d/${trip.driverToken}/reply`, {
+    res = await fetch(`${workerUrl}/d/${encodeURIComponent(trip.driverToken)}/reply`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ text }),
@@ -194,15 +194,18 @@ async function resolveUnlocked(orgId: string): Promise<DemoStory> {
 }
 
 /** `delivering -> delivered`, on the dispatcher's word rather than waiting
- *  for the arrival event or the 7-minute timeout. */
+ *  for the arrival event or the 7-minute timeout. The assignment is verified
+ *  BEFORE the agent is switched off (finding F11/M11): switching first and
+ *  then finding no assignment left Night Shift off (and a `stop` queued)
+ *  under a 409 the caller cannot recover cleanly from. */
 async function skipArrivalUnlocked(orgId: string): Promise<DemoStory> {
   const story = await requireStage(orgId, ["delivering"]);
   if (!story.loadId) throw new WrongStage(story.stage);
 
-  await switchAgentOff(orgId, story.loadId);
-
   const assignment = await prisma.assignment.findUnique({ where: { loadId: story.loadId } });
   if (!assignment) throw new WrongStage(story.stage);
+
+  await switchAgentOff(orgId, story.loadId);
 
   const wallNowMs = Date.now();
   const simNowMs = await currentSimNowMs(orgId, wallNowMs);
