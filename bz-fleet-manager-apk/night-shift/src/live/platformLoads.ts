@@ -38,6 +38,10 @@ interface HosRow {
   driveRemainingMin?: number;
   windowRemainingMin?: number;
   cycleRemainingMin?: number;
+  /** Real clock data (an import or an ELD read) touches this. The engine's
+   *  own commit-time reservation bookkeeping never does — see
+   *  `clocksAtRunStart` below. */
+  importedAt?: Date | null;
 }
 
 interface DriverRow {
@@ -49,6 +53,70 @@ interface DriverRow {
 
 interface AssignmentRow {
   driver: DriverRow;
+  /** Reservation bookkeeping the engine snapshots/debits at commit
+   *  (fleet-backend/src/routes/dispatcherAssignments.ts ~440-530): the
+   *  pre-commit snapshot of the driver's four clocks, plus the plan's own
+   *  drive/on-duty minutes and whether it took a break — everything
+   *  `clocksAtRunStart` needs to invert the debit back to what the driver's
+   *  clocks read at THIS run's start. All optional so older fixtures/tests,
+   *  and a sheet load with no Assignment row at all, still build a brief. */
+  createdAt?: Date;
+  driveMin?: number;
+  onDutyMin?: number;
+  tookBreak?: boolean;
+  hosDriveBefore?: number | null;
+  hosWindowBefore?: number | null;
+  hosCycleBefore?: number | null;
+  hosBreakBefore?: number | null;
+}
+
+/** The clocks `hos` would show at THIS run's start.
+ *
+ *  `Load.assignment.driver.hos` is `HosState`, and the engine debits it at
+ *  assignment-commit time by the plan's own minutes — after commit it means
+ *  "what's left of the driver's day AFTER this run" (that's what stops the
+ *  next assignment from double-booking the hours). Read as-is for the SAME
+ *  run's own itinerary check, it double-counts the very hours this run is
+ *  about to spend, which is why every trip opened `hos_infeasible`.
+ *
+ *  Mirrors fleet-backend's `restoredClocks` (src/lib/assignmentActions.ts)
+ *  exactly — re-implemented here, not imported, because this worker's rule
+ *  keeps TypeScript beyond `db.js` out of `night-shift/src`. */
+export function clocksAtRunStart(hos: HosRow | null, assignment: AssignmentRow): HosRow | null {
+  if (hos == null) return null;
+  // Real clock data landed after the commit — trust it over the bookkeeping.
+  if (hos.importedAt != null && assignment.createdAt != null && hos.importedAt.getTime() > assignment.createdAt.getTime()) {
+    return hos;
+  }
+  const hasSnapshot =
+    assignment.hosDriveBefore != null && assignment.hosWindowBefore != null &&
+    assignment.hosCycleBefore != null && assignment.hosBreakBefore != null;
+  if (hasSnapshot) {
+    // Exact pre-commit values — a perfect no-op restore, immune to the
+    // commit-time clamps and the break-counter reset.
+    return {
+      ...hos,
+      driveRemainingMin: assignment.hosDriveBefore!,
+      windowRemainingMin: assignment.hosWindowBefore!,
+      cycleRemainingMin: assignment.hosCycleBefore!,
+      minutesSinceBreak: assignment.hosBreakBefore!,
+    };
+  }
+  // No reservation metadata at all (older fixtures/rows) — nothing to invert.
+  if (assignment.driveMin == null || assignment.onDutyMin == null) return hos;
+  if (hos.driveRemainingMin == null || hos.windowRemainingMin == null || hos.cycleRemainingMin == null) return hos;
+  // Legacy rows without a snapshot: arithmetic restore (best effort). A leg
+  // that took a break consumed the counter irrecoverably, so it is left
+  // as-is rather than guessed at.
+  return {
+    ...hos,
+    driveRemainingMin: Math.min(660, hos.driveRemainingMin + assignment.driveMin),
+    windowRemainingMin: Math.min(840, hos.windowRemainingMin + assignment.onDutyMin),
+    cycleRemainingMin: Math.min(4200, hos.cycleRemainingMin + assignment.onDutyMin),
+    minutesSinceBreak: assignment.tookBreak
+      ? hos.minutesSinceBreak
+      : Math.max(0, hos.minutesSinceBreak - assignment.driveMin),
+  };
 }
 
 /** The columns and relations `buildBrief` and `policyFor` need. A row from
@@ -140,8 +208,13 @@ export function buildBrief(load: LoadForBrief): BriefResult {
   const origin: Place = { name: pickup.address, lat: pickup.lat, lng: pickup.lng };
   const destination: Place = { name: delivery.address, lat: delivery.lat, lng: delivery.lng };
   const loadRef = load.boardLoadNo ?? load.orderRef ?? load.id;
-  const minutesSinceBreakAtDepart = driver ? (driver.hos?.minutesSinceBreak ?? null) : null;
-  const context = buildContext(load, driver);
+  // The clocks at THIS run's start, not the assignment's post-commit debit —
+  // see clocksAtRunStart above (the traced root cause of hos_infeasible).
+  const runStartDriver: DriverRow | null = driver && load.assignment
+    ? { ...driver, hos: clocksAtRunStart(driver.hos, load.assignment) }
+    : driver;
+  const minutesSinceBreakAtDepart = runStartDriver ? (runStartDriver.hos?.minutesSinceBreak ?? null) : null;
+  const context = buildContext(load, runStartDriver);
 
   return {
     ok: true,

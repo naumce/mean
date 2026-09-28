@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AgentPolicyRow, LoadForBrief } from "../../src/live/platformLoads.js";
 import { buildBrief, buildContext, policyFor } from "../../src/live/platformLoads.js";
-import type { RouteAnswer } from "../../src/core/types.js";
+import { buildItinerary } from "../../src/core/itinerary.js";
+import type { Brief, RouteAnswer } from "../../src/core/types.js";
 import type { RouterPort } from "../../src/ports/index.js";
 import { Registry } from "../../src/live/registry.js";
 
@@ -128,6 +129,116 @@ describe("buildBrief", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.reason).toMatch(/missing a pickup or delivery stop/);
+  });
+});
+
+// Root-cause fix (2026-09-28): `Load.assignment.driver.hos` is the engine's
+// post-commit debit ("what's left AFTER this run"), not the driver's clocks
+// at THIS run's start — reading it as-is double-counted the run's own hours
+// and opened every trip with hos_infeasible. `clocksAtRunStart` (used inside
+// buildBrief) inverts the debit; these are its regression tests.
+describe("hours at run start — the engine's post-commit debit is not read as the driver's clocks", () => {
+  const ASSIGNMENT_CREATED = new Date("2026-09-19T00:00:00Z");
+  const IMPORTED_LATER = new Date("2026-09-19T06:00:00Z");
+  // The live numbers from the traced bug: snapshot 660/840/3600/0, debited
+  // (post-commit) 192/372/3132/468, for a 468-minute reservation.
+  const debitedHos = { minutesSinceBreak: 468, driveRemainingMin: 192, windowRemainingMin: 372, cycleRemainingMin: 3132 };
+
+  it("debited clocks + full snapshot, no importedAt: the brief carries the snapshot, not the debit", () => {
+    const load = geocodedStops({
+      assignment: {
+        driver: { id: "drv-1", name: "Jake", phone: "+15559998888", hos: debitedHos },
+        createdAt: ASSIGNMENT_CREATED,
+        driveMin: 468, onDutyMin: 468, tookBreak: false,
+        hosDriveBefore: 660, hosWindowBefore: 840, hosCycleBefore: 3600, hosBreakBefore: 0,
+      },
+    });
+    const result = buildBrief(load);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.brief.context?.hos).toEqual({ driveRemainingMin: 660, windowRemainingMin: 840, cycleRemainingMin: 3600, minutesSinceBreak: 0 });
+    expect(result.brief.minutesSinceBreakAtDepart).toBe(0);
+  });
+
+  it("importedAt later than the assignment's createdAt: real clock data wins, used as-is", () => {
+    const load = geocodedStops({
+      assignment: {
+        driver: { id: "drv-1", name: "Jake", phone: "+15559998888", hos: { ...debitedHos, importedAt: IMPORTED_LATER } },
+        createdAt: ASSIGNMENT_CREATED,
+        driveMin: 468, onDutyMin: 468, tookBreak: false,
+        hosDriveBefore: 660, hosWindowBefore: 840, hosCycleBefore: 3600, hosBreakBefore: 0,
+      },
+    });
+    const result = buildBrief(load);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.brief.context?.hos).toEqual({ driveRemainingMin: 192, windowRemainingMin: 372, cycleRemainingMin: 3132, minutesSinceBreak: 468 });
+    expect(result.brief.minutesSinceBreakAtDepart).toBe(468);
+  });
+
+  it("legacy rows without a snapshot: arithmetic add-back mirrors the engine's restoredClocks, capped at the window maximum", () => {
+    const load = geocodedStops({
+      assignment: {
+        driver: { id: "drv-1", name: "Jake", phone: "+15559998888", hos: { minutesSinceBreak: 200, driveRemainingMin: 500, windowRemainingMin: 800, cycleRemainingMin: 4000 } },
+        createdAt: ASSIGNMENT_CREATED,
+        driveMin: 100, onDutyMin: 100, tookBreak: false,
+      },
+    });
+    const result = buildBrief(load);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.brief.context?.hos).toEqual({
+      driveRemainingMin: 600, // 500 + 100
+      windowRemainingMin: 840, // min(840, 800 + 100) — capped
+      cycleRemainingMin: 4100, // 4000 + 100
+      minutesSinceBreak: 100, // 200 - 100 (no break taken)
+    });
+  });
+
+  it("legacy rows, tookBreak true: minutesSinceBreak is left as-is, not decremented", () => {
+    const load = geocodedStops({
+      assignment: {
+        driver: { id: "drv-1", name: "Jake", phone: "+15559998888", hos: { minutesSinceBreak: 200, driveRemainingMin: 500, windowRemainingMin: 800, cycleRemainingMin: 4000 } },
+        createdAt: ASSIGNMENT_CREATED,
+        driveMin: 100, onDutyMin: 100, tookBreak: true,
+      },
+    });
+    const result = buildBrief(load);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.brief.context?.hos?.minutesSinceBreak).toBe(200);
+  });
+
+  it("an assignment with no reservation metadata at all: clocks pass through unchanged", () => {
+    const hos = { minutesSinceBreak: 30, driveRemainingMin: 600, windowRemainingMin: 800, cycleRemainingMin: 3000 };
+    const load = geocodedStops({ assignment: { driver: { id: "drv-1", name: "Rico", phone: "+15550100200", hos } } });
+    const result = buildBrief(load);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.brief.context?.hos).toEqual(hos);
+  });
+
+  it("through the core: the corrected clocks carry a ~7h run; the raw debited clocks alone made it infeasible — the double count reproduced end to end", () => {
+    const load = geocodedStops({
+      assignment: {
+        driver: { id: "drv-1", name: "Jake", phone: "+15559998888", hos: debitedHos },
+        createdAt: ASSIGNMENT_CREATED,
+        driveMin: 468, onDutyMin: 468, tookBreak: false,
+        hosDriveBefore: 660, hosWindowBefore: 840, hosCycleBefore: 3600, hosBreakBefore: 0,
+      },
+    });
+    const route: RouteAnswer = { geometry: [[-94.58, 39.1], [-93.62, 41.59]], distanceMi: 420, driveMin: 420 };
+
+    const corrected = buildBrief(load);
+    expect(corrected.ok).toBe(true);
+    if (!corrected.ok) return;
+    expect(buildItinerary(corrected.brief, route, []).hos).toEqual({ feasible: true, reason: null });
+
+    // What the worker handed the itinerary before this fix: the debited row,
+    // read as-is — reproduces the double count that made every run infeasible.
+    const rawContext = buildContext(load, load.assignment!.driver);
+    const rawBrief: Brief = { ...corrected.brief, minutesSinceBreakAtDepart: debitedHos.minutesSinceBreak, context: rawContext };
+    expect(buildItinerary(rawBrief, route, []).hos?.feasible).toBe(false);
   });
 });
 
