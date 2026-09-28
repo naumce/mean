@@ -55,8 +55,15 @@ export function planAt(nowMs: number, fraction: number, spanMin: number): { plan
   return { plannedStart, plannedEnd: new Date(plannedStart.getTime() + spanMin * MIN) };
 }
 
-export async function createTrip(loadId: string, id = `trip-${Math.random().toString(36).slice(2)}`) {
-  return prisma.agentTrip.create({ data: { id, loadRef: "DEMO-CHI-DET", loadId, driverToken: `${id}-token`, brief: {}, status: "tracking" } });
+/** `createdAt` lets a test pin down exactly where "the trip's own start"
+ *  falls relative to its events (observeBreakdown.ts's `newestTripStartMs`
+ *  fence, contact-fix-brief.md) — the column defaults to the real insert
+ *  time otherwise, which is unrelated to a test's own simulated `now`. */
+export async function createTrip(loadId: string, opts: { id?: string; createdAt?: Date } = {}) {
+  const id = opts.id ?? `trip-${Math.random().toString(36).slice(2)}`;
+  return prisma.agentTrip.create({
+    data: { id, loadRef: "DEMO-CHI-DET", loadId, driverToken: `${id}-token`, brief: {}, status: "tracking", createdAt: opts.createdAt },
+  });
 }
 
 export async function addEvent(tripId: string, kind: string, evidence: Record<string, unknown>, atMs = Date.now()) {

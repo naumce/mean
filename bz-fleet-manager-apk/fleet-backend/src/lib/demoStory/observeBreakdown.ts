@@ -4,7 +4,7 @@ import { tick } from "../simulation/engine.js";
 import { positionAlong } from "../simulation/movement.js";
 import { haversineMi } from "../../domain/dispatch/distance.js";
 import { DEMO_CUSTOMER_EMAIL } from "./fixtures.js";
-import { evidenceOf, latest, tripsAndEvents } from "./observeEvents.js";
+import { evidenceOf, latest, newestTripStartMs, tripsAndEvents } from "./observeEvents.js";
 import { guardApproach } from "./observeDelivery.js";
 import { freezeTruck, holdPing, planFraction, releaseTruck } from "./truck.js";
 import type { Patch } from "./types.js";
@@ -26,6 +26,10 @@ import type { Patch } from "./types.js";
 // stamped after `breakdownTriggeredAt`: the trip-start invite and the canned
 // reply are `would_say` rows too, and a trip-start escalation is an
 // escalation too — none of them is the outreach the story is waiting for.
+// The one exception is the driver-contacted `action` message itself
+// (`isDriverOutreach` below): it is fenced against the trip's own start
+// instead, because rung 1 can fire before the breakdown does — see that
+// function's comment and contact-fix-brief.md.
 
 const DRIVER_MESSAGE_KINDS = new Set(["message", "message_again", "sms"]);
 const DRIVER_MESSAGE_CHANNELS = new Set(["chat", "sms"]);
@@ -66,11 +70,25 @@ function isUnplannedStopResolved(e: AgentEvent): boolean {
 
 /** Night Shift's rung-1 outreach to the driver: a live `action` of a message
  *  kind, or its shadow-mode `would_say` on a driver channel. Emails and calls
- *  travel as `would_say` too and are not outreach to the driver. */
-function isDriverOutreach(e: AgentEvent): boolean {
+ *  travel as `would_say` too and are not outreach to the driver.
+ *
+ *  The two kinds use DIFFERENT lower fences (contact-fix-brief.md, dry run
+ *  5, live). Night Shift keeps only one open question at a time, so on a hot
+ *  load its rung-1 `message` can fire at the very first ping — before the
+ *  scripted breakdown even trips — and the `breakdownTriggeredAt` fence
+ *  would then miss it and wait the full `RUNG1_COOLDOWN_MIN` for rung 2
+ *  while the real contact sits unread in the trail. A live `action` message
+ *  is real outreach the moment it exists, so it only needs to be stamped
+ *  at/after THIS run's own trip start (`sinceMs`) — not narrowed to after
+ *  the breakdown, but still fenced against a stale leftover trip from a
+ *  previous run that a purge missed. A shadow `would_say` keeps the
+ *  narrower `afterBreakdown` fence unchanged: unlike `action` it carries no
+ *  "invite" kind to exclude the trip-start invite by, so widening its fence
+ *  the same way would risk narrating the invite itself as the outreach. */
+function isDriverOutreach(story: DemoStory, sinceMs: number, e: AgentEvent): boolean {
   const evidence = evidenceOf(e);
-  if (e.kind === "action") return DRIVER_MESSAGE_KINDS.has(String(evidence.kind));
-  if (e.kind === "would_say") return DRIVER_MESSAGE_CHANNELS.has(String(evidence.channel));
+  if (e.kind === "action") return DRIVER_MESSAGE_KINDS.has(String(evidence.kind)) && Number(e.atMs) >= sinceMs;
+  if (e.kind === "would_say") return DRIVER_MESSAGE_CHANNELS.has(String(evidence.channel)) && afterBreakdown(story, e);
   return false;
 }
 
@@ -142,10 +160,19 @@ export async function handleInTransit(orgId: string, story: DemoStory, simNowMs:
 export async function handleBreakdownDetected(orgId: string, story: DemoStory, wallNowMs: number): Promise<Patch | null> {
   if (!story.loadId) return null;
   await holdPing(orgId, wallNowMs);
-  const { events } = await tripsAndEvents(story.loadId);
-  const contacted = latest(events, (e) => afterBreakdown(story, e) && isDriverOutreach(e));
+  const { events, trips } = await tripsAndEvents(story.loadId);
+  const sinceMs = newestTripStartMs(trips);
+  const contacted = latest(events, (e) => isDriverOutreach(story, sinceMs, e));
   if (!contacted) return null;
-  return { stage: "awaiting_driver_reply", logTexts: ["Night Shift messaged the driver and is waiting to hear back."] };
+
+  // The contact can predate the breakdown (the finding above) — narrate that
+  // honestly instead of implying Night Shift reacted to a stop it had not
+  // seen yet.
+  const predatesBreakdown = story.breakdownTriggeredAt != null && Number(contacted.atMs) < story.breakdownTriggeredAt.getTime();
+  const text = predatesBreakdown
+    ? "Night Shift had already asked the driver if everything was OK before the stop was flagged, and is waiting to hear back."
+    : "Night Shift messaged the driver and is waiting to hear back.";
+  return { stage: "awaiting_driver_reply", logTexts: [text] };
 }
 
 export async function handleAwaitingDriverReply(orgId: string, story: DemoStory, wallNowMs: number): Promise<Patch | null> {

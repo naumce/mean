@@ -219,12 +219,48 @@ describe("observeStory — breakdown_detected (driver contacted)", () => {
     const now = Date.now();
     const { orgId, story } = await seedStory("breakdown_detected", { breakdownTriggeredAt: new Date(now - 2 * MIN) });
     await createAssignment(orgId, story, planAt(now, 0.1, 600));
-    const trip = await createTrip(story.loadId!);
+    const trip = await createTrip(story.loadId!, { createdAt: new Date(now - 10 * MIN) });
     await addEvent(trip.id, "action", { anomalyKey: "unplanned_stop@x", rung: 1, kind: "message", channel: "chat", text: "Everything okay?" }, now);
 
     const result = await observeStory(orgId, now);
     expect(result?.stage).toBe("awaiting_driver_reply");
     expect(await prisma.driverLocation.count({ where: { driverId: story.driverId! } })).toBe(1); // the hold ping
+    expect(logTexts(result).at(-1)).toBe("Night Shift messaged the driver and is waiting to hear back.");
+  });
+
+  // contact-fix-brief.md, finding (dry run 5, live): Night Shift keeps one
+  // open question at a time, so on a hot load its rung-1 `message` can fire
+  // at the very first ping — before the scripted breakdown itself trips.
+  // The old `afterBreakdown` fence missed this and waited the full
+  // RUNG1_COOLDOWN_MIN for rung 2 while the real contact sat unread.
+  it("a message action stamped after the trip start but BEFORE the breakdown still counts, with the 'had already asked' narration", async () => {
+    const now = Date.now();
+    const { orgId, story } = await seedStory("breakdown_detected", { breakdownTriggeredAt: new Date(now) });
+    await createAssignment(orgId, story, planAt(now, 0.1, 600));
+    const trip = await createTrip(story.loadId!, { createdAt: new Date(now - 10 * MIN) });
+    await addEvent(trip.id, "action", { anomalyKey: "unplanned_stop@x", rung: 1, kind: "message", channel: "chat", text: "Everything okay?" }, now - 6_000);
+
+    const result = await observeStory(orgId, now);
+    expect(result?.stage).toBe("awaiting_driver_reply");
+    expect(logTexts(result).at(-1)).toBe(
+      "Night Shift had already asked the driver if everything was OK before the stop was flagged, and is waiting to hear back.",
+    );
+  });
+
+  // Guards the fence's floor, not just its removal: a purge miss could leave
+  // a stale trip (and its events) from a previous run sitting on the same
+  // load. That trip's own message must not count for THIS run just because
+  // it predates the current trip's start.
+  it("a message action stamped BEFORE the trip start (a leftover trip from a previous run) is not counted", async () => {
+    const now = Date.now();
+    const { orgId, story } = await seedStory("breakdown_detected", { breakdownTriggeredAt: new Date(now - 2 * MIN) });
+    await createAssignment(orgId, story, planAt(now, 0.1, 600));
+    const staleTrip = await createTrip(story.loadId!, { createdAt: new Date(now - 30 * MIN) });
+    await addEvent(staleTrip.id, "action", { anomalyKey: "unplanned_stop@x", rung: 1, kind: "message", channel: "chat", text: "Everything okay?" }, now - 25 * MIN);
+    await createTrip(story.loadId!, { createdAt: new Date(now - 5 * MIN) }); // this run's own trip
+
+    const result = await observeStory(orgId, now);
+    expect(result?.stage).toBe("breakdown_detected");
   });
 
   it("a shadow would_say on a driver channel after the breakdown also counts", async () => {
