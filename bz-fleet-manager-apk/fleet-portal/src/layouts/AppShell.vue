@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { subscribe } from '../lib/realtime'
 import { useAiLabStore } from '../stores/aiLab'
 import { useAuthStore } from '../stores/auth'
+import { useDemoStore } from '../stores/demo'
 import { useThemeStore } from '../stores/theme'
 import SidebarNavItem from './SidebarNavItem.vue'
 import DemoTimeShift from '../components/demo/DemoTimeShift.vue'
@@ -11,6 +12,7 @@ import DemoTimeShift from '../components/demo/DemoTimeShift.vue'
 const auth = useAuthStore()
 const theme = useThemeStore()
 const aiLab = useAiLabStore()
+const demo = useDemoStore()
 const router = useRouter()
 const route = useRoute()
 const moreOpen = ref(false)
@@ -38,10 +40,18 @@ onMounted(() => {
   // long as the shell is mounted. Silent (probe() itself swallows the
   // expected 404) and auxiliary — never allowed to block the shell.
   void aiLab.probe()
+  // Demo Mode (2026-09-28 plan): probed here too, not just from DemoView
+  // itself — the nav entry below needs to know availability before the
+  // dispatcher ever navigates to /demo. Silent (probe() swallows the
+  // expected 404) and auxiliary, same reasoning as aiLab.probe() above.
+  void demo.probe()
 })
 onUnmounted(() => { releaseSession?.(); releaseSession = null })
 
 const TOWER_PRIMARY = [
+  // Demo Mode: first in the list per spec, but filtered out of primaryNav
+  // below whenever the probe hasn't found a DEMO_MODE server.
+  { label: 'Demo', to: '/demo', icon: 'tower' },
   { label: 'Their Board', to: '/board/broker', icon: 'tower' },
   { label: 'Control Tower', to: '/cockpit', icon: 'tower' },
   // AI Dispatch Foundation (Task 9). TOWER_PRIMARY only renders for
@@ -79,7 +89,10 @@ const SHEET_NAV = [
   { label: 'Settings', to: '/night-shift?tab=settings' },
 ]
 
-const primaryNav = computed(() => (auth.tier === 'sheet' ? SHEET_NAV : TOWER_PRIMARY))
+const primaryNav = computed(() => {
+  if (auth.tier === 'sheet') return SHEET_NAV
+  return demo.available ? TOWER_PRIMARY : TOWER_PRIMARY.filter((item) => item.to !== '/demo')
+})
 const moreNav = computed(() => (auth.tier === 'sheet' ? [] : TOWER_MORE))
 
 const initials = computed(() => {

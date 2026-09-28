@@ -11,6 +11,7 @@ import BrokersView from '../views/BrokersView.vue'
 import CockpitView from '../views/CockpitView.vue'
 import ImportView from '../views/ImportView.vue'
 import DashboardView from '../views/DashboardView.vue'
+import DemoView from '../views/DemoView.vue'
 import DriversView from '../views/DriversView.vue'
 import DriverSupplyView from '../views/DriverSupplyView.vue'
 import LoginView from '../views/LoginView.vue'
@@ -68,6 +69,10 @@ export const routes = [
           (useAuthStore().tier === 'sheet' ? { name: 'broker-board' } : { name: 'cockpit' }),
       },
       { path: 'cockpit', name: 'cockpit', component: CockpitView },
+      // Demo Mode (2026-09-28 plan): the presenter screen — 404s server-side
+      // unless DEMO_MODE is on; the nav entry (AppShell's TOWER_PRIMARY)
+      // hides itself the same way, off stores/demo.ts's probe().
+      { path: 'demo', name: 'demo', component: DemoView },
       { path: 'overview', name: 'dashboard', component: DashboardView },
       { path: 'board/broker', name: 'broker-board', component: BrokerBoardView },
       { path: 'board', name: 'board', component: BoardView },

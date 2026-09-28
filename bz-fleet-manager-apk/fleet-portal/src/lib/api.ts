@@ -19,6 +19,7 @@ import type {
   UncoveredLoad,
   UpdateExperimentBody,
 } from '../types/aiLab'
+import type { DemoActionBody, DemoStoryActionResponse, DemoStoryResponse } from '../types/demo'
 
 export const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001/api'
 
@@ -885,6 +886,52 @@ export async function fetchAiEvaluation(experimentId: string): Promise<{ evaluat
  *  pickup); this is a plain passthrough, no client-side filtering/params. */
 export async function fetchUncoveredLoads(): Promise<{ loads: UncoveredLoad[] }> {
   const { data } = await api.get<{ loads: UncoveredLoad[] }>('/dispatcher/ai/uncovered-loads')
+  return data
+}
+
+// ---------------------------------------------------------------------------
+// Demo Mode (2026-09-28 plan, Task 1 backend / Task 2 portal): the `/demo`
+// presenter screen's routes. Every /demo/story* route 404s unless the
+// server runs DEMO_MODE=true — same "the 404 itself is the answer" rule as
+// fetchDemoShiftPlan and the /sim/* block above; stores/demo.ts's probe()
+// is the only place that sees and swallows it.
+// ---------------------------------------------------------------------------
+
+export async function fetchDemoStory(): Promise<DemoStoryResponse> {
+  const { data } = await api.get<DemoStoryResponse>('/dispatcher/demo/story')
+  return data
+}
+
+export async function resetDemoStory(): Promise<DemoStoryActionResponse> {
+  const { data } = await api.post<DemoStoryActionResponse>('/dispatcher/demo/story/reset')
+  return data
+}
+
+/** A 409 answers `{ error: "WRONG_STAGE", stage }` when the action no
+ *  longer fits the story's current stage; a 503 answers
+ *  `{ error: "WORKER_UNAVAILABLE", message }` for `driver_reply` when the
+ *  Night Shift worker isn't reachable. Both are normal rejected promises
+ *  here — stores/demo.ts is where "don't throw to the caller" lives. */
+export async function postDemoAction(body: DemoActionBody): Promise<DemoStoryActionResponse> {
+  const { data } = await api.post<DemoStoryActionResponse>('/dispatcher/demo/story/action', body)
+  return data
+}
+
+/** The demo approve flow's narrow view onto the EXISTING
+ *  `GET /dispatcher/suggest?loadId=` endpoint — stores/loadboard.ts's
+ *  `suggestFor` already calls this same route for the board's Suggest
+ *  panel, but its full `SuggestResult` shape (and the `suggest`/
+ *  `suggestLoading` state that comes with importing that store) is more
+ *  than the demo store needs: only the pool-picked equipment ids, to pair
+ *  with the recommended driver before creating a real Assignment. Declared
+ *  here instead of importing from stores/loadboard.ts so lib/api.ts keeps
+ *  its existing rule of never depending on a store. */
+export interface SuggestEquipment {
+  tractorId: string | null
+  trailerId: string | null
+}
+export async function fetchSuggestEquipment(loadId: string): Promise<SuggestEquipment> {
+  const { data } = await api.get<SuggestEquipment>('/dispatcher/suggest', { params: { loadId } })
   return data
 }
 

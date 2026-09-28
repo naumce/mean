@@ -6,6 +6,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { TOKEN_STORAGE_KEY } from '../lib/constants'
 import { useAiLabStore } from '../stores/aiLab'
 import { useAuthStore } from '../stores/auth'
+import { useDemoStore } from '../stores/demo'
 import { useThemeStore } from '../stores/theme'
 import AppShell from './AppShell.vue'
 import SidebarNavItem from './SidebarNavItem.vue'
@@ -21,6 +22,17 @@ function aiLabStoreStub(overrides: Record<string, unknown> = {}) {
   return { status: null, probe: vi.fn().mockResolvedValue(undefined), ...overrides }
 }
 
+// Demo Mode (2026-09-28 plan): AppShell also probes stores/demo.ts once per
+// session, for the same reason and with the same real-network risk — mocked
+// the same way. `available: null` by default (the pre-probe state), which
+// primaryNav already treats as "hide the Demo item", matching what every
+// existing nav test below expects to see when it never opts in.
+vi.mock('../stores/demo', () => ({ useDemoStore: vi.fn() }))
+const mockedUseDemoStore = vi.mocked(useDemoStore)
+function demoStoreStub(overrides: Record<string, unknown> = {}) {
+  return { available: null, probe: vi.fn().mockResolvedValue(undefined), ...overrides }
+}
+
 const Stub = { template: '<div />' }
 
 // A superset of the real router's child paths, kept as plain (unnamed)
@@ -34,6 +46,7 @@ function shellRoutes() {
       component: AppShell,
       children: [
         { path: 'cockpit', name: 'cockpit', component: Stub },
+        { path: 'demo', component: Stub },
         { path: 'board/broker', component: Stub },
         { path: 'board', component: Stub },
         { path: 'supply', component: Stub },
@@ -81,6 +94,7 @@ function shellRoutesForDirectMount() {
       component: RouterViewPassthrough,
       children: [
         { path: 'cockpit', name: 'cockpit', component: Stub },
+        { path: 'demo', component: Stub },
         { path: 'board/broker', component: Stub },
         { path: 'night-shift', component: Stub },
         { path: 'messages', component: Stub },
@@ -118,6 +132,7 @@ describe('AppShell', () => {
     localStorage.clear()
     document.documentElement.classList.remove('dark')
     mockedUseAiLabStore.mockReturnValue(aiLabStoreStub() as unknown as ReturnType<typeof useAiLabStore>)
+    mockedUseDemoStore.mockReturnValue(demoStoreStub() as unknown as ReturnType<typeof useDemoStore>)
   })
 
   it('renders the theme toggle and flips the theme store', async () => {
@@ -154,6 +169,7 @@ describe('AppShell nav by plan tier', () => {
     localStorage.clear()
     document.documentElement.classList.remove('dark')
     mockedUseAiLabStore.mockReturnValue(aiLabStoreStub() as unknown as ReturnType<typeof useAiLabStore>)
+    mockedUseDemoStore.mockReturnValue(demoStoreStub() as unknown as ReturnType<typeof useDemoStore>)
   })
 
   it('sheet tier shows Board, Night Shift, Usage, Settings and nothing else', async () => {
@@ -183,6 +199,37 @@ describe('AppShell nav by plan tier', () => {
     const sheet = await mountShellWithTier('sheet')
     const sheetLabels = sheet.findAllComponents(SidebarNavItem).map((c) => c.props('label'))
     expect(sheetLabels).not.toContain('Driver Supply')
+  })
+
+  // Demo Mode (2026-09-28 plan): the nav item 404s server-side unless
+  // DEMO_MODE is on, so it must stay out of the DOM entirely — not just
+  // styled as disabled — whenever the probe hasn't confirmed a demo server.
+  it('hides "Demo" from the nav when the demo store has not found a demo server', async () => {
+    mockedUseDemoStore.mockReturnValue(demoStoreStub({ available: null }) as unknown as ReturnType<typeof useDemoStore>)
+    const notProbedYet = await mountShellWithTier('tower')
+    expect(notProbedYet.findAllComponents(SidebarNavItem).map((c) => c.props('label'))).not.toContain('Demo')
+
+    mockedUseDemoStore.mockReturnValue(demoStoreStub({ available: false }) as unknown as ReturnType<typeof useDemoStore>)
+    const notAvailable = await mountShellWithTier('tower')
+    expect(notAvailable.findAllComponents(SidebarNavItem).map((c) => c.props('label'))).not.toContain('Demo')
+  })
+
+  it('shows "Demo" first in the primary nav once the demo store confirms a demo server, but never for sheet tier', async () => {
+    mockedUseDemoStore.mockReturnValue(demoStoreStub({ available: true }) as unknown as ReturnType<typeof useDemoStore>)
+    const tower = await mountShellWithTier('tower')
+    const towerLabels = tower.findAllComponents(SidebarNavItem).map((c) => c.props('label'))
+    expect(towerLabels[0]).toBe('Demo')
+
+    const sheet = await mountShellWithTier('sheet')
+    const sheetLabels = sheet.findAllComponents(SidebarNavItem).map((c) => c.props('label'))
+    expect(sheetLabels).not.toContain('Demo')
+  })
+
+  it('probes the demo story once on mount', async () => {
+    const store = demoStoreStub()
+    mockedUseDemoStore.mockReturnValue(store as unknown as ReturnType<typeof useDemoStore>)
+    await mountShellWithTier('tower')
+    expect(store.probe).toHaveBeenCalledTimes(1)
   })
 
   // Qwen Harness v0.1 (Task 7): a developer console, tower-only, tucked into
@@ -249,6 +296,7 @@ describe('AppShell realtime session (M5)', () => {
     vi.stubGlobal('WebSocket', FakeSocket)
     localStorage.setItem(TOKEN_STORAGE_KEY, 'tok')
     mockedUseAiLabStore.mockReturnValue(aiLabStoreStub() as unknown as ReturnType<typeof useAiLabStore>)
+    mockedUseDemoStore.mockReturnValue(demoStoreStub() as unknown as ReturnType<typeof useDemoStore>)
   })
   afterEach(() => {
     vi.unstubAllGlobals()
