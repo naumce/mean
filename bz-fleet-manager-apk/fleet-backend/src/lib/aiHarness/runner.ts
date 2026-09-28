@@ -235,12 +235,20 @@ async function runOne(orgId: string, runId: string, signal: AbortSignal): Promis
     const config = resolveHarnessConfig(experiment.config);
     const adapter = adapterFactory(config);
     const loadRef = loadRefOfContext(record.context);
+    // The RUN's own snapshot (taken at enqueue time, runner.ts's own
+    // enqueueRun) wins over the experiment's current value — an experiment's
+    // promptVersion can change after a run was enqueued (dispatcherAi.ts's
+    // PATCH, gated to zero-run experiments, still leaves already-queued rows
+    // exactly as they were snapshotted); "dispatch-v1" is the last-resort
+    // fallback for a row that predates this column entirely.
+    const promptVersion = record.promptVersion ?? experiment.promptVersion ?? "dispatch-v1";
 
     await runDispatchDecision({
       orgId,
       decisionId: runId,
       loadId: record.loadId,
       loadRef,
+      promptVersion,
       config,
       adapter,
       store: prismaRunStore,

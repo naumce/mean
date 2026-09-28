@@ -33,6 +33,11 @@ export interface RunSummary {
   driverName: string | null;
   confidence: number | null;
   humanVerdict: string | null;
+  /** Snapshotted at enqueue from the experiment's own value (runner.ts) — an
+   *  experiment whose promptVersion later changes (dispatcherAi.ts's PATCH,
+   *  gated to zero runs) never rewrites an already-queued/finished row, so a
+   *  run list can show a mix of prompts across one experiment's history. */
+  promptVersion: string | null;
   stats: RunStats | null;
   startedAt: string;
   completedAt: string | null;
@@ -157,6 +162,7 @@ export const RUN_SUMMARY_SELECT = {
   driverId: true,
   confidence: true,
   humanDecision: true,
+  promptVersion: true,
   stats: true,
   startedAt: true,
   proposedAt: true,
@@ -183,6 +189,7 @@ export function toRunSummary(
     driverName: record.driverId ? driverNames.get(record.driverId) ?? null : null,
     confidence: record.confidence,
     humanVerdict: human?.verdict ?? null,
+    promptVersion: record.promptVersion,
     stats: record.stats as unknown as RunStats | null,
     startedAt: startedAtIso(record),
     completedAt: record.completedAt ? record.completedAt.toISOString() : null,
@@ -231,6 +238,16 @@ export function allReferencedDriverIds(record: AiDecisionRecord): string[] {
   if (proposal) {
     if (proposal.driverId) ids.add(proposal.driverId);
     for (const alt of proposal.alternatives) ids.add(alt.driverId);
+    // dispatch-v2's own `comparison` field — not part of v1's `Proposal`
+    // type, so read defensively rather than widening that shared type for
+    // one v2-only field only this loop cares about.
+    const comparison = (proposal as { comparison?: unknown }).comparison;
+    if (Array.isArray(comparison)) {
+      for (const entry of comparison) {
+        const driverId = entry && typeof entry === "object" ? (entry as { driverId?: unknown }).driverId : undefined;
+        if (typeof driverId === "string") ids.add(driverId);
+      }
+    }
   }
 
   const baseline = record.baseline as unknown as Baseline | null;

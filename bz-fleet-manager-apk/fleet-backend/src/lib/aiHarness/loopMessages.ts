@@ -1,6 +1,10 @@
 import { toolDefinitionsForModel } from "../dispatchTools/invoke.js";
-import { PROPOSE_DECISION_DEFINITION } from "./decision.js";
 import type { ChatMessage, ToolDefinition } from "./types.js";
+// Type-only: RunState is DEFINED in loopHandlers.ts, which imports VALUES
+// from this file — a type-only import back never creates a runtime cycle
+// (erased at compile time), the same convention loop.ts/loopGuards.ts and
+// loop.ts/loopHandlers.ts already use for their own back-references.
+import type { RunState } from "./loopHandlers.js";
 
 // aiHarness/loopMessages.ts (Qwen Harness v0.1, Task 5): the small, pure
 // pieces of loop.ts that shape a `ChatMessage` or a raw tool value rather than
@@ -19,10 +23,11 @@ import type { ChatMessage, ToolDefinition } from "./types.js";
 export const KEEP_ALIVE = "10m";
 
 /** The tools every turn offers the model: the 17 read-only dispatch tools
- *  plus the one terminal tool, which is not part of that registry. The set
+ *  plus `terminalDefinition` (the resolved `PromptProfile`'s own terminal
+ *  schema — prompts/index.ts), which is not part of that registry. The set
  *  never changes turn to turn, so the loop builds it once per run. */
-export function harnessToolDefinitions(): ToolDefinition[] {
-  return [...toolDefinitionsForModel(), PROPOSE_DECISION_DEFINITION];
+export function harnessToolDefinitions(terminalDefinition: ToolDefinition): ToolDefinition[] {
+  return [...toolDefinitionsForModel(), terminalDefinition];
 }
 
 /** One handled tool call's answer, addressed back to the model by name — a
@@ -44,6 +49,22 @@ export function failureContent(error: string): string {
  *  (`validateProposal` can report several problems on one attempt). */
 export function failuresContent(errors: string[]): string {
   return JSON.stringify({ ok: false, errors });
+}
+
+/**
+ * The shared tail of every "this call did not succeed" branch in
+ * loopHandlers.ts's `handleToolCall`/`handleProposeCall` (a repeated call, an
+ * `invokeTool` failure, or a rejected `propose_decision`): key the failing
+ * content by this step's own seq (for `evidence.ts`'s later substring
+ * search), record the `ok: false` summary row, and replay the same content
+ * back to the model as its own `tool` message. Only `persistStep` itself
+ * (the actual write + its returned seq) stays in loopHandlers.ts — this is
+ * everything after it, shared by every failed-result path.
+ */
+export function recordFailedResult(state: RunState, seq: number, name: string, content: string): void {
+  state.contentsBySeq.set(seq, content);
+  state.toolResultSummaries = [...state.toolResultSummaries, { seq, name, ok: false, truncated: false }];
+  state.messages = [...state.messages, toolResultMessage(name, content)];
 }
 
 interface ProjectedFeasibleRowLike {

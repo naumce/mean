@@ -13,6 +13,14 @@
 //   AI_EVAL_EMAIL      dispatcher login email (default w@fleet.com)
 //   AI_EVAL_PASSWORD   dispatcher login password (default pass123)
 //   AI_EVAL_MODEL      Ollama model tag (default qwen3:8b)
+//   AI_EVAL_PROMPT     prompt version to run (default dispatch-v1) — must be
+//                      one GET /ai/status.promptVersions lists
+//   AI_EVAL_RUN_LABEL  distinguishes repeat runs of the same prompt/model
+//                      (default "1") — folded into the experiment name and
+//                      the output filename, never the experiment's identity
+//                      otherwise (two runs with the same label reuse one
+//                      experiment, same as before this label existed)
+//   AI_EVAL_EXPERIMENT_NAME  overrides the generated experiment name outright
 //   AI_EVAL_MAX_WAIT_MS  safety ceiling on the whole polling phase
 //                        (default 5400000 = 90 minutes; the 8 scenarios run
 //                        one at a time, so this is generous headroom over
@@ -38,6 +46,9 @@ const BASE_URL = process.env.BASE_URL ?? "http://localhost:3001";
 const EMAIL = process.env.AI_EVAL_EMAIL ?? "w@fleet.com";
 const PASSWORD = process.env.AI_EVAL_PASSWORD ?? "pass123";
 const MODEL = process.env.AI_EVAL_MODEL ?? "qwen3:8b";
+const PROMPT_VERSION = process.env.AI_EVAL_PROMPT ?? "dispatch-v1";
+const RUN_LABEL = process.env.AI_EVAL_RUN_LABEL ?? "1";
+const EXPERIMENT_NAME_OVERRIDE = process.env.AI_EVAL_EXPERIMENT_NAME;
 const MAX_WAIT_MS = Number(process.env.AI_EVAL_MAX_WAIT_MS ?? 90 * 60 * 1000);
 
 const POLL_INTERVAL_MS = 3000;
@@ -125,27 +136,53 @@ async function checkStatus(token) {
         `Continuing anyway — \`ollama pull ${MODEL}\` if the runs below fail with a model error.`,
     );
   }
+  const knownPromptVersions = Array.isArray(status.promptVersions) ? status.promptVersions : [];
+  if (!knownPromptVersions.includes(PROMPT_VERSION)) {
+    fail(`AI_EVAL_PROMPT "${PROMPT_VERSION}" is not one of this backend's promptVersions (${knownPromptVersions.join(", ") || "none"}).`);
+  }
   return status;
 }
 
 /** The one experiment this script always targets: found by exact name if it
  *  already exists (a prior run of this script), created otherwise. Naming the
- *  model into the experiment name means a different AI_EVAL_MODEL is always a
- *  different experiment — never a config mismatch hiding inside a shared one. */
+ *  model AND the run label into the experiment name means a different
+ *  AI_EVAL_MODEL or a repeat run under a new AI_EVAL_RUN_LABEL is always a
+ *  different experiment — never a config (or a previous run's own results)
+ *  hiding inside a shared one. AI_EVAL_EXPERIMENT_NAME overrides the
+ *  generated name outright, for a caller that wants to target/create a
+ *  specific experiment by name regardless of this naming scheme. */
 async function findOrCreateExperiment(token, promptVersion) {
-  const name = `Scenarios A–H · ${promptVersion} · ${MODEL}`;
+  const name = EXPERIMENT_NAME_OVERRIDE ?? `Scenarios A–H · ${promptVersion} · ${MODEL} · run ${RUN_LABEL}`;
 
   const list = await request("GET", "/api/dispatcher/ai/experiments", { token });
   if (!list.ok) throw new Error(`GET /api/dispatcher/ai/experiments failed (HTTP ${list.status}).`);
   const existing = (list.body?.experiments ?? []).find((e) => e.name === name);
   if (existing) {
+    // A found-by-name reuse (most likely via AI_EVAL_EXPERIMENT_NAME, which
+    // bypasses this script's own naming scheme) must still match what THIS
+    // invocation asked for — otherwise the output file/header would claim a
+    // prompt or model the runs never actually used.
+    if (existing.promptVersion !== promptVersion) {
+      fail(
+        `Experiment "${name}" (${existing.id}) already exists with promptVersion "${existing.promptVersion}", ` +
+          `not the requested "${promptVersion}". Use a different AI_EVAL_EXPERIMENT_NAME/AI_EVAL_RUN_LABEL or fix AI_EVAL_PROMPT.`,
+        EXIT_DISABLED_OR_UNREACHABLE,
+      );
+    }
+    if (existing.model !== MODEL) {
+      fail(
+        `Experiment "${name}" (${existing.id}) already exists with model "${existing.model}", not the requested ` +
+          `"${MODEL}" (AI_EVAL_MODEL). Use a different AI_EVAL_EXPERIMENT_NAME/AI_EVAL_RUN_LABEL or fix AI_EVAL_MODEL.`,
+        EXIT_DISABLED_OR_UNREACHABLE,
+      );
+    }
     console.log(`Using existing experiment "${name}" (${existing.id}).`);
     return existing;
   }
 
   const created = await request("POST", "/api/dispatcher/ai/experiments", {
     token,
-    body: { name, config: { model: MODEL } },
+    body: { name, promptVersion, config: { model: MODEL } },
   });
   if (!created.ok) {
     throw new Error(`POST /api/dispatcher/ai/experiments failed (HTTP ${created.status}): ${JSON.stringify(created.body)}`);
@@ -227,8 +264,8 @@ function fmtName(pick) {
 }
 
 const TABLE_HEADER = [
-  "Scenario", "Load ref", "Deterministic top", "Pick", "Confidence", "Rank of pick",
-  "Human verdict", "Turns", "Tool calls", "Unique/Repeated/Invalid", "Latency (s)",
+  "Scenario", "Load ref", "Prompt", "Deterministic top", "Pick", "Confidence", "Rank of pick",
+  "Investigated", "Human verdict", "Turns", "Tool calls", "Unique/Repeated/Invalid", "Latency (s)",
   "Tokens (prompt+completion)", "Termination",
 ];
 
@@ -236,10 +273,12 @@ function tableRow(code, row) {
   return [
     code,
     row.loadRef ?? "—",
+    row.promptVersion ?? "—",
     fmtName(row.deterministicTop),
     fmtName(row.pick),
     fmt(row.confidence, 2),
     fmt(row.deterministicRankOfPick),
+    fmt(row.candidatesInvestigated),
     row.humanVerdict ?? "—",
     fmt(row.turns),
     fmt(row.toolCalls),
@@ -288,8 +327,8 @@ async function main() {
   console.log(`Logging in as ${EMAIL} against ${BASE_URL}…`);
   const token = await login();
 
-  const status = await checkStatus(token);
-  const promptVersion = status.promptVersions?.[0] ?? "dispatch-v1";
+  await checkStatus(token);
+  const promptVersion = PROMPT_VERSION;
 
   const experiment = await findOrCreateExperiment(token, promptVersion);
 
@@ -343,6 +382,7 @@ async function main() {
     "",
     `- Model: ${MODEL}`,
     `- Prompt version: ${promptVersion}`,
+    `- Run label: ${RUN_LABEL}`,
     `- Experiment: ${experiment.name} (${experiment.id})`,
     "- Config:",
     "",
@@ -365,7 +405,7 @@ async function main() {
 
   const outDir = join(REPO_ROOT, "docs", "evaluations");
   await mkdir(outDir, { recursive: true });
-  const outPath = join(outDir, `${todayIso()}-scenarios-a-h.md`);
+  const outPath = join(outDir, `${todayIso()}-${promptVersion}-run${RUN_LABEL}.md`);
   await writeFile(outPath, doc, "utf8");
   console.log(`Wrote ${outPath}`);
 

@@ -208,6 +208,15 @@ describe("evaluateExperiment", () => {
       meanTurns: 5,
       meanToolCalls: 4,
       meanLatencyMs: 3000,
+      // Neither seeded stats blob carries candidatesInvestigated (both
+      // predate the field) — null, never a guessed 0.
+      meanCandidatesInvestigated: null,
+      // Over the same two proposed runs' own confidence (0.9, 0.4).
+      meanConfidence: 0.65,
+      confidenceBands: { "≥0.90": 1, "0.70–0.89": 0, "0.50–0.69": 0, "<0.50": 1 },
+      // Both proposed runs pick a DIFFERENT driver once each — a tie, broken
+      // by row order (newest first: mismatched before matching).
+      repeatedPick: { driverId: secondDriver.id, name: "Second Driver", share: 0.5 },
     });
   });
 
@@ -274,6 +283,67 @@ describe("evaluateExperiment", () => {
       meanTurns: null,
       meanToolCalls: null,
       meanLatencyMs: null,
+      meanCandidatesInvestigated: null,
+      meanConfidence: null,
+      confidenceBands: { "≥0.90": 0, "0.70–0.89": 0, "0.50–0.69": 0, "<0.50": 0 },
+      repeatedPick: null,
     });
+  });
+
+  it("promptVersion/candidatesInvestigated on rows, and the new summary fields over real numbers", async () => {
+    const org = await prisma.org.create({ data: { name: "New Fields Co" } });
+    const experiment = await prisma.aiExperiment.create({ data: { orgId: org.id, name: "New Fields Experiment", model: "qwen3:8b", promptVersion: "dispatch-v2" } });
+    const driverA = await prisma.driver.create({ data: { email: "a@newfields.example", passwordHash: "x", name: "Driver A", orgId: org.id } });
+    const driverB = await prisma.driver.create({ data: { email: "b@newfields.example", passwordHash: "x", name: "Driver B", orgId: org.id } });
+    const loadA = await prisma.load.create({ data: { orgId: org.id, requiredEquip: "Reefer", revenueCents: 0, status: "open" } });
+    const loadB = await prisma.load.create({ data: { orgId: org.id, requiredEquip: "Reefer", revenueCents: 0, status: "open" } });
+    const loadC = await prisma.load.create({ data: { orgId: org.id, requiredEquip: "Reefer", revenueCents: 0, status: "open" } });
+
+    // Three proposed runs, all picking driverA: two land in the ">=0.90" band
+    // (one with candidatesInvestigated), one lands in "<0.50".
+    await prisma.aiDecisionRecord.create({
+      data: {
+        experimentId: experiment.id, orgId: org.id, loadId: loadA.id, kind: "dispatch_candidate",
+        status: "proposed", terminationReason: "proposed", context: {}, toolCalls: [], toolResults: [],
+        promptVersion: "dispatch-v2",
+        proposedDecision: proposalFor(driverA.id, 0.95) as unknown as object, confidence: 0.95, driverId: driverA.id,
+        stats: { modelCalls: 3, toolCalls: 2, uniqueTools: 2, repeatedCalls: 0, invalidCalls: 0, promptTokens: 10, completionTokens: 10, durationMs: 100, candidatesInvestigated: 2 },
+        startedAt: new Date(NOW), completedAt: new Date(NOW + 100),
+      },
+    });
+    await prisma.aiDecisionRecord.create({
+      data: {
+        experimentId: experiment.id, orgId: org.id, loadId: loadB.id, kind: "dispatch_candidate",
+        status: "proposed", terminationReason: "proposed", context: {}, toolCalls: [], toolResults: [],
+        promptVersion: "dispatch-v2",
+        proposedDecision: proposalFor(driverA.id, 0.92) as unknown as object, confidence: 0.92, driverId: driverA.id,
+        stats: { modelCalls: 5, toolCalls: 4, uniqueTools: 2, repeatedCalls: 0, invalidCalls: 0, promptTokens: 10, completionTokens: 10, durationMs: 100, candidatesInvestigated: 1 },
+        startedAt: new Date(NOW), completedAt: new Date(NOW + 100),
+      },
+    });
+    await prisma.aiDecisionRecord.create({
+      data: {
+        experimentId: experiment.id, orgId: org.id, loadId: loadC.id, kind: "dispatch_candidate",
+        status: "proposed", terminationReason: "proposed", context: {}, toolCalls: [], toolResults: [],
+        promptVersion: "dispatch-v1", // this experiment's OWN promptVersion may have changed since; the RUN kept its own
+        proposedDecision: proposalFor(driverB.id, 0.2) as unknown as object, confidence: 0.2, driverId: driverB.id,
+        stats: { modelCalls: 2, toolCalls: 1, uniqueTools: 1, repeatedCalls: 0, invalidCalls: 0, promptTokens: 10, completionTokens: 10, durationMs: 100 },
+        startedAt: new Date(NOW), completedAt: new Date(NOW + 100),
+      },
+    });
+
+    const evaluation = await evaluateExperiment(org.id, experiment.id);
+    expect(evaluation).not.toBeNull();
+    if (!evaluation) return;
+
+    const rowV2WithCount = evaluation.rows.find((r) => r.confidence === 0.95)!;
+    expect(rowV2WithCount).toMatchObject({ promptVersion: "dispatch-v2", candidatesInvestigated: 2 });
+    const rowV1NoCount = evaluation.rows.find((r) => r.confidence === 0.2)!;
+    expect(rowV1NoCount).toMatchObject({ promptVersion: "dispatch-v1", candidatesInvestigated: null });
+
+    expect(evaluation.summary.meanCandidatesInvestigated).toBe(1.5); // mean of [2, 1] — the third row has none
+    expect(evaluation.summary.meanConfidence).toBeCloseTo((0.95 + 0.92 + 0.2) / 3, 10);
+    expect(evaluation.summary.confidenceBands).toEqual({ "≥0.90": 2, "0.70–0.89": 0, "0.50–0.69": 0, "<0.50": 1 });
+    expect(evaluation.summary.repeatedPick).toEqual({ driverId: driverA.id, name: "Driver A", share: 2 / 3 });
   });
 });

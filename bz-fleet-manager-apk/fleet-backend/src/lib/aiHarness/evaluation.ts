@@ -50,6 +50,15 @@ export interface EvaluationRow {
    *  field, same "missing reads as the safe default" rule `humanVerdict`
    *  etc. already use elsewhere in this row. */
   contextPressure: boolean;
+  /** Snapshotted at enqueue (runner.ts) — an experiment's own promptVersion
+   *  can change between runs (dispatcherAi.ts's PATCH, gated to zero runs),
+   *  so this is the version THIS run actually used, not the experiment's
+   *  current one. */
+  promptVersion: string | null;
+  /** How many of this run's own feasible candidates its tool calls actually
+   *  investigated (protocol.ts), read straight off `stats` — `null` (never a
+   *  guessed 0) for a run whose `stats` predates this field. */
+  candidatesInvestigated: number | null;
   startedAt: string | null;
 }
 
@@ -63,6 +72,20 @@ export interface EvaluationSummary {
   meanTurns: number | null;
   meanToolCalls: number | null;
   meanLatencyMs: number | null;
+  /** Over proposed runs whose stats carry the field (see `EvaluationRow`'s
+   *  own doc comment). */
+  meanCandidatesInvestigated: number | null;
+  /** Over proposed runs — every proposed run has its own proposal's
+   *  confidence, so this only reads `null` when there are no proposed runs
+   *  at all (`mean`'s own empty-array rule). */
+  meanConfidence: number | null;
+  /** Counts over proposed runs, by the same bands dispatch-v2's own prompt
+   *  states to the model (prompts/dispatch-v2.ts) — reported for every
+   *  prompt version, not just dispatch-v2's own runs. */
+  confidenceBands: { "≥0.90": number; "0.70–0.89": number; "0.50–0.69": number; "<0.50": number };
+  /** The most-picked non-null driver among proposed runs and its share of
+   *  them — `null` when no proposed run picked a driver at all. */
+  repeatedPick: { driverId: string; name: string | null; share: number } | null;
 }
 
 export interface Evaluation {
@@ -92,6 +115,7 @@ function toRow(
     proposedDecision: unknown;
     confidence: number | null;
     humanDecision: unknown;
+    promptVersion: string | null;
     stats: unknown;
     startedAt: Date | null;
   },
@@ -138,6 +162,8 @@ function toRow(
     promptTokens: stats?.promptTokens ?? null,
     completionTokens: stats?.completionTokens ?? null,
     contextPressure: stats?.contextPressure ?? false,
+    promptVersion: record.promptVersion,
+    candidatesInvestigated: stats?.candidatesInvestigated ?? null,
     startedAt: record.startedAt ? record.startedAt.toISOString() : null,
   };
 }
@@ -145,6 +171,45 @@ function toRow(
 function mean(values: readonly number[]): number | null {
   if (values.length === 0) return null;
   return values.reduce((sum, v) => sum + v, 0) / values.length;
+}
+
+function confidenceBandsOf(proposedRows: EvaluationRow[]): EvaluationSummary["confidenceBands"] {
+  const bands: EvaluationSummary["confidenceBands"] = { "≥0.90": 0, "0.70–0.89": 0, "0.50–0.69": 0, "<0.50": 0 };
+  for (const row of proposedRows) {
+    if (row.confidence === null) continue;
+    if (row.confidence >= 0.9) bands["≥0.90"] += 1;
+    else if (row.confidence >= 0.7) bands["0.70–0.89"] += 1;
+    else if (row.confidence >= 0.5) bands["0.50–0.69"] += 1;
+    else bands["<0.50"] += 1;
+  }
+  return bands;
+}
+
+/** The most-picked non-null driver's share of `proposedRows` (the
+ *  denominator is every proposed run, not just the ones with a pick — a run
+ *  that proposed `driverId: null` still counts against the share). Ties keep
+ *  whichever driver was picked first, by this row order (newest-first, the
+ *  same convention every other listing in this feature uses). */
+function repeatedPickOf(proposedRows: EvaluationRow[]): EvaluationSummary["repeatedPick"] {
+  const counts = new Map<string, number>();
+  for (const row of proposedRows) {
+    const id = row.pick?.driverId;
+    if (!id) continue;
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+
+  let bestId: string | null = null;
+  let bestCount = 0;
+  for (const [id, count] of counts) {
+    if (count > bestCount) {
+      bestId = id;
+      bestCount = count;
+    }
+  }
+  if (bestId === null || proposedRows.length === 0) return null;
+
+  const name = proposedRows.find((r) => r.pick?.driverId === bestId)?.pick?.name ?? null;
+  return { driverId: bestId, name, share: bestCount / proposedRows.length };
 }
 
 function summarize(rows: EvaluationRow[]): EvaluationSummary {
@@ -157,7 +222,8 @@ function summarize(rows: EvaluationRow[]): EvaluationSummary {
   // Effort/latency means are only meaningful over runs that actually reached
   // a proposal — an incomplete/failed/cancelled run's turn count reflects why
   // it stopped, not how much effort a normal run takes, and averaging it in
-  // would understate the real cost of the runs that succeeded.
+  // would understate the real cost of the runs that succeeded. The same rule
+  // applies to every mean/distribution added below.
   const proposedRows = rows.filter((r) => r.status === "proposed");
 
   return {
@@ -170,6 +236,10 @@ function summarize(rows: EvaluationRow[]): EvaluationSummary {
     meanTurns: mean(proposedRows.map((r) => r.turns)),
     meanToolCalls: mean(proposedRows.map((r) => r.toolCalls)),
     meanLatencyMs: mean(proposedRows.map((r) => r.latencyMs).filter((v): v is number => v !== null)),
+    meanCandidatesInvestigated: mean(proposedRows.map((r) => r.candidatesInvestigated).filter((v): v is number => v !== null)),
+    meanConfidence: mean(proposedRows.map((r) => r.confidence).filter((v): v is number => v !== null)),
+    confidenceBands: confidenceBandsOf(proposedRows),
+    repeatedPick: repeatedPickOf(proposedRows),
   };
 }
 
@@ -202,6 +272,7 @@ export async function evaluateExperiment(orgId: string, experimentId: string): P
       proposedDecision: true,
       confidence: true,
       humanDecision: true,
+      promptVersion: true,
       stats: true,
       startedAt: true,
     },

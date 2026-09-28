@@ -1,14 +1,15 @@
 import type { ChatMessage, ModelAdapter, ToolCall, ToolDefinition } from "./types.js";
 import type { HarnessConfig } from "./config.js";
 import { serializeToolResult, canonicalArgs } from "./serialize.js";
-import { PROPOSE_DECISION_NAME, validateProposal, type Proposal } from "./decision.js";
+import { PROPOSE_DECISION_NAME, type Proposal } from "./decision.js";
 import { feasibleIdsFromToolResult, type Baseline } from "./baseline.js";
-import { DISPATCH_PROMPT_V1 } from "./prompts/dispatch-v1.js";
+import type { PromptProfile } from "./prompts/index.js";
+import { countInvestigatedFeasible } from "./protocol.js";
 import type { invokeTool } from "../dispatchTools/invoke.js";
 import type { RunStore, StepKind, StoredStep, ToolCallSummary, ToolResultSummary } from "./runStore.js";
 import { collectEvidence } from "./evidence.js";
 import { statusForTermination, callModel } from "./loopGuards.js";
-import { toolResultMessage, failureContent, failuresContent, feasibilityRowsFromProjectedResult, sumTokens, maxToken, KEEP_ALIVE } from "./loopMessages.js";
+import { toolResultMessage, failureContent, failuresContent, feasibilityRowsFromProjectedResult, recordFailedResult, sumTokens, maxToken, KEEP_ALIVE } from "./loopMessages.js";
 import type { RunStatus, TerminationReason, RunStats, RunOutcome } from "./loop.js";
 
 // aiHarness/loopHandlers.ts (Qwen Harness v0.1): the
@@ -83,6 +84,11 @@ export interface RunContext {
   config: HarnessConfig;
   adapter: ModelAdapter;
   tools: ToolDefinition[];
+  /** The run's resolved prompt profile (prompts/index.ts) — its
+   *  `terminalDefinition` is already reflected in `tools` above; handlers
+   *  read `profile` itself for `nudge` and for `validate` on a
+   *  propose_decision attempt. */
+  profile: PromptProfile;
   invoke: typeof invokeTool;
   now: () => number;
   deadlineAtMs: number;
@@ -186,8 +192,8 @@ export async function handleAssistantTurn(
   if (toolCalls.length === 0) {
     if (state.nudgeCount === 0) {
       state.nudgeCount += 1;
-      await persistStep("nudge", null, { content: DISPATCH_PROMPT_V1.nudge });
-      state.messages = [...state.messages, { role: "user", content: DISPATCH_PROMPT_V1.nudge }];
+      await persistStep("nudge", null, { content: ctx.profile.nudge });
+      state.messages = [...state.messages, { role: "user", content: ctx.profile.nudge }];
       return { kind: "nudged" };
     }
     return { kind: "no_decision" };
@@ -217,7 +223,12 @@ export async function handleProposeCall(
   // single place to see "this is the call that got rejected."
   await persistStep("tool_call", PROPOSE_DECISION_NAME, { name: PROPOSE_DECISION_NAME, arguments: call.arguments });
 
-  const check = await validateProposal(call.arguments, { orgId: ctx.orgId, feasibleDriverIds: state.feasibleSet });
+  const check = await ctx.profile.validate(call.arguments, {
+    orgId: ctx.orgId,
+    loadId: ctx.loadId,
+    feasibleDriverIds: state.feasibleSet,
+    steps: await ctx.store.listSteps(ctx.decisionId),
+  });
   if (check.ok) {
     await persistStep("final", PROPOSE_DECISION_NAME, {
       proposal: check.proposal,
@@ -230,9 +241,7 @@ export async function handleProposeCall(
   state.consecutiveInvalid += 1;
   const content = failuresContent(check.errors);
   const resultStep = await persistStep("tool_result", PROPOSE_DECISION_NAME, { name: PROPOSE_DECISION_NAME, ok: false, errors: check.errors });
-  state.contentsBySeq.set(resultStep.seq, content);
-  state.toolResultSummaries = [...state.toolResultSummaries, { seq: resultStep.seq, name: PROPOSE_DECISION_NAME, ok: false, truncated: false }];
-  state.messages = [...state.messages, toolResultMessage(PROPOSE_DECISION_NAME, content)];
+  recordFailedResult(state, resultStep.seq, PROPOSE_DECISION_NAME, content);
   return { kind: "rejected" };
 }
 
@@ -263,9 +272,7 @@ export async function handleToolCall(call: ToolCall, state: RunState, ctx: RunCo
     const error = `identical call already made; reuse the earlier result (step ${seenAtSeq})`;
     const content = failureContent(error);
     const resultStep = await persistStep("tool_result", call.name, { name: call.name, ok: false, error });
-    state.contentsBySeq.set(resultStep.seq, content);
-    state.toolResultSummaries = [...state.toolResultSummaries, { seq: resultStep.seq, name: call.name, ok: false, truncated: false }];
-    state.messages = [...state.messages, toolResultMessage(call.name, content)];
+    recordFailedResult(state, resultStep.seq, call.name, content);
     return;
   }
 
@@ -278,9 +285,7 @@ export async function handleToolCall(call: ToolCall, state: RunState, ctx: RunCo
     state.consecutiveInvalid += 1;
     const content = failureContent(invokeResult.error);
     const resultStep = await persistStep("tool_result", call.name, { name: call.name, ok: false, error: invokeResult.error }, invokeDurationMs);
-    state.contentsBySeq.set(resultStep.seq, content);
-    state.toolResultSummaries = [...state.toolResultSummaries, { seq: resultStep.seq, name: call.name, ok: false, truncated: false }];
-    state.messages = [...state.messages, toolResultMessage(call.name, content)];
+    recordFailedResult(state, resultStep.seq, call.name, content);
     return;
   }
 
@@ -352,6 +357,11 @@ export async function finalizeRun(
   // starts silently dropping history, so the pressure threshold has to scale
   // with it too.
   const contextPressure = state.maxPromptTokens !== null && state.maxPromptTokens > ctx.config.numCtx * 0.85;
+  // Additive to every prompt version (not just dispatch-v2's own protocol
+  // check): how many of the run's OWN feasible candidates its tool calls
+  // actually investigated, per protocol.ts's shared coverage table — computed
+  // once, here, from the same persisted steps every other stat already reads.
+  const candidatesInvestigated = countInvestigatedFeasible(state.stepLog, ctx.loadId, state.feasibleSet);
   const stats: RunStats = {
     modelCalls: state.modelCalls,
     toolCalls: state.toolCallsCount,
@@ -362,6 +372,7 @@ export async function finalizeRun(
     completionTokens: state.completionTokens,
     maxPromptTokens: state.maxPromptTokens,
     contextPressure,
+    candidatesInvestigated,
     durationMs: finishedAtMs - ctx.startedAtMs,
   };
   const status = statusForTermination(terminationReason);

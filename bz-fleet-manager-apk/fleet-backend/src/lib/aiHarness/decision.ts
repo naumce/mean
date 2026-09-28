@@ -92,8 +92,11 @@ const FIELD_MESSAGES: Record<string, string> = {
   alternatives: "alternatives must be an array of at most 3 entries",
 };
 
-/** One zod issue -> a short, model-readable sentence. */
-function issueSentence(issue: z.ZodIssue): string {
+/** One zod issue -> a short, model-readable sentence. Exported so
+ *  prompts/dispatch-v2.ts's own issue mapper can fall back to this for the
+ *  fields dispatch-v2's terminal schema shares with v1 (driverId/reason/
+ *  confidence/alternatives), rather than repeating these messages. */
+export function issueSentence(issue: z.ZodIssue): string {
   const path = issue.path.map(String).join(".");
   if (path === "") return "the proposal must be a JSON object";
   if (path in FIELD_MESSAGES) return FIELD_MESSAGES[path];
@@ -132,6 +135,60 @@ function selfConsistencyErrors(proposal: Proposal): string[] {
 }
 
 /**
+ * Cross-field self-consistency plus the org-existence/feasibility check for
+ * `proposal.driverId`/`proposal.alternatives`, given a pre-fetched set of
+ * which of `referencedDriverIds(proposal)` actually exist — pure and DB-free
+ * so a caller that already has its own reason to query `Driver` (v2's
+ * `validate`, which also needs driver NAMES for the same id set) can run this
+ * exact check off that ONE query instead of this module issuing a second one.
+ * Exported (unlike `selfConsistencyErrors`/`referencedDriverIds` above) so
+ * prompts/dispatch-v2.ts can run it against a `ProposalV2`, which carries
+ * these same two fields; `Pick` rather than the full `Proposal` type is all
+ * this needs from either shape.
+ */
+export function driverReferenceErrors(
+  proposal: Pick<Proposal, "driverId" | "alternatives">,
+  ctx: { feasibleDriverIds: ReadonlySet<string> },
+  existingIds: ReadonlySet<string>,
+): string[] {
+  const errors = selfConsistencyErrors(proposal as Proposal);
+
+  for (const id of referencedDriverIds(proposal as Proposal)) {
+    if (!existingIds.has(id)) {
+      errors.push(`driver ${id} does not exist in this organization`);
+    } else if (!ctx.feasibleDriverIds.has(id)) {
+      errors.push(
+        `driver ${id} was not among the feasible candidates for this load — call findFeasibleDrivers and choose from its feasible rows`,
+      );
+    }
+  }
+
+  return errors;
+}
+
+/**
+ * `driverReferenceErrors` with its own `findMany` — v1's `validateProposal`
+ * below is the only caller that has no other reason to query `Driver` itself,
+ * so it keeps this one-call convenience wrapper; a caller that already needs
+ * a `Driver` query for something else (prompts/dispatch-v2.ts's `validate`)
+ * calls `driverReferenceErrors` directly against its own query's result
+ * instead of paying for a second one here.
+ */
+export async function checkDriverReferences(
+  proposal: Pick<Proposal, "driverId" | "alternatives">,
+  ctx: { orgId: string; feasibleDriverIds: ReadonlySet<string> },
+): Promise<string[]> {
+  const ids = referencedDriverIds(proposal as Proposal);
+  if (ids.length === 0) return selfConsistencyErrors(proposal as Proposal);
+
+  const rows = await prisma.driver.findMany({
+    where: { id: { in: ids }, orgId: ctx.orgId },
+    select: { id: true },
+  });
+  return driverReferenceErrors(proposal, ctx, new Set(rows.map((d) => d.id)));
+}
+
+/**
  * `raw` as a validated `Proposal`: schema shape first, then every referenced
  * driver id checked against the org (one `findMany`) and against
  * `ctx.feasibleDriverIds`. Every problem found is returned — a model correcting
@@ -147,26 +204,7 @@ export async function validateProposal(
   }
   const proposal = parsed.data;
 
-  const errors = selfConsistencyErrors(proposal);
-
-  const ids = referencedDriverIds(proposal);
-  if (ids.length > 0) {
-    const rows = await prisma.driver.findMany({
-      where: { id: { in: ids }, orgId: ctx.orgId },
-      select: { id: true },
-    });
-    const existingIds = new Set(rows.map((d) => d.id));
-
-    for (const id of ids) {
-      if (!existingIds.has(id)) {
-        errors.push(`driver ${id} does not exist in this organization`);
-      } else if (!ctx.feasibleDriverIds.has(id)) {
-        errors.push(
-          `driver ${id} was not among the feasible candidates for this load — call findFeasibleDrivers and choose from its feasible rows`,
-        );
-      }
-    }
-  }
+  const errors = await checkDriverReferences(proposal, ctx);
 
   return errors.length > 0 ? { ok: false, errors } : { ok: true, proposal };
 }

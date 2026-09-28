@@ -16,7 +16,7 @@ import {
 } from "../lib/aiHarness/config.js";
 import { checkOllama } from "../lib/aiHarness/ollamaAdapter.js";
 import { runnerState, orphanedCount } from "../lib/aiHarness/runner.js";
-import { DISPATCH_PROMPT_V1 } from "../lib/aiHarness/prompts/dispatch-v1.js";
+import { PROMPT_VERSIONS } from "../lib/aiHarness/prompts/index.js";
 import { getUncoveredLoads, type LoadDetail } from "../lib/dispatchTools/loads.js";
 import { cityStateFromAddress } from "../lib/driverAvailability.js";
 import { scenarioOf, toRunSummaries, RUN_SUMMARY_SELECT } from "../lib/aiHarness/runView.js";
@@ -87,7 +87,7 @@ aiRouter.get("/status", asyncRoute(async (req, res) => {
     enabled: true,
     ollama,
     defaults: DEFAULT_HARNESS_CONFIG,
-    promptVersions: [DISPATCH_PROMPT_V1.version],
+    promptVersions: PROMPT_VERSIONS,
     queue: orgId ? runnerState(orgId) : { running: null, queued: [] },
     // rows the database still calls queued/running that this process's
     // in-memory queue does not own — the residue a restart leaves behind.
@@ -141,9 +141,18 @@ aiRouter.get("/experiments", asyncRoute(async (req, res) => {
   });
 }));
 
+/** Both POST and PATCH validate an incoming `promptVersion` against the
+ *  registry the same way — a version this backend has no profile for is a
+ *  plain 400, never a 500 from `resolvePromptProfile` returning null deeper
+ *  in the loop. */
+const promptVersionSchema = z
+  .string()
+  .refine((v) => PROMPT_VERSIONS.includes(v), { message: `promptVersion must be one of: ${PROMPT_VERSIONS.join(", ")}` });
+
 const createExperimentSchema = z.object({
   name: z.string().trim().min(1).max(80),
   notes: z.string().max(2000).optional(),
+  promptVersion: promptVersionSchema.optional(),
   config: harnessConfigSchema.optional(),
 });
 
@@ -165,6 +174,7 @@ aiRouter.post("/experiments", validateBody(createExperimentSchema), asyncRoute(a
       name: body.name,
       notes: body.notes ?? null,
       model: resolved.model,
+      promptVersion: body.promptVersion ?? "dispatch-v1",
       config,
       createdById: req.auth?.dispatcherId ?? null,
     },
@@ -206,6 +216,7 @@ const updateExperimentSchema = z
     name: z.string().trim().min(1).max(80).optional(),
     notes: z.string().max(2000).optional(),
     status: z.enum(["active", "archived"]).optional(),
+    promptVersion: promptVersionSchema.optional(),
     config: harnessConfigSchema.optional(),
   })
   .refine((body) => Object.keys(body).length > 0, { message: "No fields to update" });
@@ -215,6 +226,18 @@ aiRouter.patch("/experiments/:id", validateBody(updateExperimentSchema), asyncRo
   if (!experiment) return res.status(404).json({ error: "Not found" });
 
   const body = req.body as z.infer<typeof updateExperimentSchema>;
+
+  // promptVersion may only CHANGE while the experiment has never been run —
+  // an already-queued/finished run snapshot its OWN promptVersion at enqueue
+  // time (runner.ts) and is never rewritten by this, but changing it out from
+  // under an experiment that already has runs would make its own run list a
+  // mix of prompts with no record of which was configured when. Re-sending
+  // the SAME value is not a change, so it never 409s even once runs exist.
+  if (body.promptVersion !== undefined && body.promptVersion !== experiment.promptVersion) {
+    const runCount = await prisma.aiDecisionRecord.count({ where: { experimentId: experiment.id } });
+    if (runCount > 0) return res.status(409).json({ error: "HAS_RUNS" });
+  }
+
   const storedConfig = experiment.config as unknown as Partial<HarnessConfig>;
   const mergedConfig = body.config ? { ...storedConfig, ...body.config } : storedConfig;
   const resolved = resolveHarnessConfig(mergedConfig);
@@ -225,6 +248,7 @@ aiRouter.patch("/experiments/:id", validateBody(updateExperimentSchema), asyncRo
       ...(body.name !== undefined ? { name: body.name } : {}),
       ...(body.notes !== undefined ? { notes: body.notes } : {}),
       ...(body.status !== undefined ? { status: body.status } : {}),
+      ...(body.promptVersion !== undefined ? { promptVersion: body.promptVersion } : {}),
       ...(body.config !== undefined ? { config: mergedConfig, model: resolved.model } : {}),
     },
   });

@@ -2,7 +2,7 @@ import type { ModelAdapter } from "./types.js";
 import type { HarnessConfig } from "./config.js";
 import { PROPOSE_DECISION_NAME, type Proposal } from "./decision.js";
 import { captureBaseline } from "./baseline.js";
-import { DISPATCH_PROMPT_V1 } from "./prompts/dispatch-v1.js";
+import { resolvePromptProfile } from "./prompts/index.js";
 import { invokeTool } from "../dispatchTools/invoke.js";
 import type { RunStore, StepKind, StoredStep } from "./runStore.js";
 import { checkCaps } from "./loopGuards.js";
@@ -72,6 +72,11 @@ export interface RunStats {
    *  the evaluation table rather than left for a reader to notice on their
    *  own. */
   contextPressure: boolean;
+  /** How many of the run's OWN feasible candidates its tool calls actually
+   *  investigated (protocol.ts's shared coverage table), for every prompt
+   *  version — dispatch-v2 additionally ENFORCES a minimum via its own
+   *  terminal-schema validator; this stat is just recorded for every run. */
+  candidatesInvestigated: number;
   durationMs: number;
 }
 
@@ -80,6 +85,13 @@ export interface RunInput {
   decisionId: string;
   loadId: string;
   loadRef: string | null;
+  /** Which `PromptProfile` (prompts/index.ts) drives this run — the
+   *  runner passes the run row's own persisted `promptVersion`, defaulting to
+   *  the experiment's. Defaults to `"dispatch-v1"` here too so every existing
+   *  caller/test that predates this field keeps behaving exactly as before;
+   *  a value not in the registry ends the run as `internal_error` before any
+   *  model call. */
+  promptVersion?: string;
   config: HarnessConfig;
   adapter: ModelAdapter;
   store: RunStore;
@@ -126,12 +138,50 @@ export async function runDispatchDecision(input: RunInput): Promise<RunOutcome> 
   const onStep = input.onStep ?? (() => {});
   const onStatus = input.onStatus ?? (() => {});
   const decisionId = input.decisionId;
+  const promptVersion = input.promptVersion ?? "dispatch-v1";
 
   const startedAtMs = now();
   const deadlineAtMs = startedAtMs + config.maxRunMs;
 
-  const systemContent = DISPATCH_PROMPT_V1.system;
-  const userContent = DISPATCH_PROMPT_V1.user({ loadId: input.loadId, loadRef: input.loadRef });
+  const profile = resolvePromptProfile(promptVersion);
+  if (!profile) {
+    // An unknown promptVersion ends the run before ANY model call (and before
+    // the run is even marked "running") — there is no `ctx`/`state` to run
+    // the usual abortRun/finalizeRun closures through yet, so this writes the
+    // same terminal shape they would have, by hand, for a run that never
+    // started at all.
+    const message = `unknown prompt version ${promptVersion}`;
+    const seq = await store.appendStep(decisionId, { kind: "error", name: null, payload: { kind: "internal", message }, atMs: now() });
+    onStep(seq, "error");
+    const finishedAtMs = now();
+    const stats: RunStats = {
+      modelCalls: 0,
+      toolCalls: 0,
+      uniqueTools: 0,
+      repeatedCalls: 0,
+      invalidCalls: 0,
+      promptTokens: null,
+      completionTokens: null,
+      maxPromptTokens: null,
+      contextPressure: false,
+      candidatesInvestigated: 0,
+      durationMs: finishedAtMs - startedAtMs,
+    };
+    await store.updateRun(decisionId, {
+      status: "failed",
+      terminationReason: "internal_error",
+      completedAt: new Date(finishedAtMs),
+      stats,
+      toolCalls: [],
+      toolResults: [],
+      error: message,
+    });
+    onStatus("failed");
+    return { status: "failed", terminationReason: "internal_error", proposal: null, stats };
+  }
+
+  const systemContent = profile.system;
+  const userContent = profile.user({ loadId: input.loadId, loadRef: input.loadRef });
   const state = createRunState([
     { role: "system", content: systemContent },
     { role: "user", content: userContent },
@@ -142,7 +192,8 @@ export async function runDispatchDecision(input: RunInput): Promise<RunOutcome> 
     decisionId,
     config,
     adapter: input.adapter,
-    tools: harnessToolDefinitions(),
+    tools: harnessToolDefinitions(profile.terminalDefinition),
+    profile,
     invoke,
     now,
     deadlineAtMs,
@@ -198,7 +249,7 @@ export async function runDispatchDecision(input: RunInput): Promise<RunOutcome> 
     status: "running",
     startedAt: new Date(startedAtMs),
     modelConfig: config,
-    promptVersion: DISPATCH_PROMPT_V1.version,
+    promptVersion: profile.version,
   });
   onStatus("running");
 

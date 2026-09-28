@@ -125,7 +125,7 @@ describe("GET /ai/status", () => {
       enabled: true,
       ollama: { reachable: true, version: "0.34.3", models: ["qwen3:8b"], modelPresent: true, error: null },
       defaults: expect.objectContaining({ adapter: "ollama", model: "qwen3:8b" }),
-      promptVersions: ["dispatch-v1"],
+      promptVersions: ["dispatch-v1", "dispatch-v2"],
       queue: { running: null, queued: [] },
       orphaned: 0,
     });
@@ -204,6 +204,50 @@ describe("experiments CRUD", () => {
 
     const badConfig = await request(app).post("/api/dispatcher/ai/experiments").set(auth).send({ name: "X", config: { temperature: 99 } });
     expect(badConfig.status).toBe(400);
+  });
+
+  it("POST accepts an explicit promptVersion, 400s one outside the registry", async () => {
+    const { auth } = await setupDispatcher("Create Exp Prompt Co");
+    const res = await request(app).post("/api/dispatcher/ai/experiments").set(auth).send({ name: "V2 Experiment", promptVersion: "dispatch-v2" });
+    expect(res.status).toBe(201);
+    expect(res.body.experiment.promptVersion).toBe("dispatch-v2");
+
+    const row = await prisma.aiExperiment.findUnique({ where: { id: res.body.experiment.id } });
+    expect(row?.promptVersion).toBe("dispatch-v2");
+
+    const bad = await request(app).post("/api/dispatcher/ai/experiments").set(auth).send({ name: "Bad Prompt", promptVersion: "dispatch-v9" });
+    expect(bad.status).toBe(400);
+  });
+
+  it("PATCH changes promptVersion while the experiment has zero runs, and 409s HAS_RUNS once it has any", async () => {
+    const { org, auth } = await setupDispatcher("Patch Prompt Co");
+    const experiment = await createExperiment(org.id, "Patchable");
+
+    const changed = await request(app).patch(`/api/dispatcher/ai/experiments/${experiment.id}`).set(auth).send({ promptVersion: "dispatch-v2" });
+    expect(changed.status).toBe(200);
+    expect(changed.body.experiment.promptVersion).toBe("dispatch-v2");
+
+    const badVersion = await request(app).patch(`/api/dispatcher/ai/experiments/${experiment.id}`).set(auth).send({ promptVersion: "dispatch-v9" });
+    expect(badVersion.status).toBe(400);
+
+    const load = await createReeferLoad(org.id, "L-PATCH-PROMPT");
+    await seedFinishedRun(org.id, experiment.id, load.id);
+
+    const blocked = await request(app).patch(`/api/dispatcher/ai/experiments/${experiment.id}`).set(auth).send({ promptVersion: "dispatch-v1" });
+    expect(blocked.status).toBe(409);
+    expect(blocked.body).toEqual({ error: "HAS_RUNS" });
+
+    // Re-sending the CURRENT value is not a change — it still 200s once the
+    // experiment has runs, unlike an actual change to a different version.
+    const resent = await request(app).patch(`/api/dispatcher/ai/experiments/${experiment.id}`).set(auth).send({ promptVersion: "dispatch-v2" });
+    expect(resent.status).toBe(200);
+    expect(resent.body.experiment.promptVersion).toBe("dispatch-v2");
+
+    // A field OTHER than promptVersion still patches fine once the experiment
+    // has runs — only a promptVersion change itself is blocked.
+    const renamed = await request(app).patch(`/api/dispatcher/ai/experiments/${experiment.id}`).set(auth).send({ name: "Renamed" });
+    expect(renamed.status).toBe(200);
+    expect(renamed.body.experiment.promptVersion).toBe("dispatch-v2"); // unchanged by the blocked attempt above
   });
 
   it("GET lists experiments for the org with runCount/lastRunAt", async () => {
@@ -492,6 +536,40 @@ describe("GET /ai/runs/:id", () => {
     expect(names[altDriver.id]).toBe("Alt Driver");
     expect(names[baselineOnlyDriver.id]).toBe("Baseline Driver");
     expect(names[evidenceOnlyDriver.id]).toBe("Evidence Driver");
+  });
+
+  it("driverNames also covers a dispatch-v2 proposal's comparison entries", async () => {
+    const { org, auth } = await setupDispatcher("Run Detail Comparison Co");
+    const experiment = await createExperiment(org.id);
+    const load = await createReeferLoad(org.id, "L-DETAIL-COMPARISON");
+
+    const [pickDriver, comparisonOnlyDriver] = await Promise.all([
+      prisma.driver.create({ data: { email: `pick2@${org.id}.example`, passwordHash: "x", name: "Pick Driver Two", orgId: org.id } }),
+      prisma.driver.create({ data: { email: `cmp@${org.id}.example`, passwordHash: "x", name: "Comparison-Only Driver", orgId: org.id } }),
+    ]);
+
+    const record = await seedFinishedRun(org.id, experiment.id, load.id, {
+      driverId: pickDriver.id,
+      promptVersion: "dispatch-v2",
+      proposedDecision: {
+        driverId: pickDriver.id,
+        reason: "Pick driver has the stronger evidence of the two feasible candidates.",
+        confidence: 0.7,
+        alternatives: [],
+        comparison: [
+          { driverId: pickDriver.id, strengths: ["Closer to pickup"], weaknesses: [], unknowns: [] },
+          { driverId: comparisonOnlyDriver.id, strengths: [], weaknesses: ["Farther from pickup"], unknowns: [] },
+        ],
+      },
+    });
+
+    const res = await request(app).get(`/api/dispatcher/ai/runs/${record.id}`).set(auth);
+    expect(res.status).toBe(200);
+    const names = res.body.driverNames as Record<string, string>;
+    expect(names[pickDriver.id]).toBe("Pick Driver Two");
+    // Only referenced from the comparison array, nowhere else on the record —
+    // still resolved, so the run page can render its name instead of a bare id.
+    expect(names[comparisonOnlyDriver.id]).toBe("Comparison-Only Driver");
   });
 
   it("404s a run belonging to another org", async () => {
