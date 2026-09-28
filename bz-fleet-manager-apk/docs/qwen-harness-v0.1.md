@@ -579,3 +579,39 @@ Observations (reference data, not verdicts):
 - Mean latency 36.7 s per run on this machine; prompt tokens 9–25 k per run for proposed cases (59 k for the nine-turn scenario E), now without thinking replayed into the history.
 
 What to try next with this data: a `dispatch-v2` prompt that requires metrics for the top two feasible drivers before proposing; the same eight scenarios on a larger model via a second experiment config; human verdicts on these eight runs so the evaluation columns fill in.
+
+## 13. dispatch-v2 and the A/B experiment (2026-09-28)
+
+`dispatch-v2` is a second prompt version selected per experiment (`promptVersion`); `dispatch-v1` is unchanged and hash-pinned by `tests/ai-harness-prompt-v1-pin.test.ts`. The harness gained one seam for it — a prompt-profile registry (`src/lib/aiHarness/prompts/index.ts`) that supplies the prompt text, the terminal schema and the validation per version. Model, temperature, context size, tools, projections, the deterministic ranking, seed data and scenarios are identical between the two.
+
+**What v2 requires** (enforced from persisted tool steps, never from the model's prose — `src/lib/aiHarness/protocol.ts`):
+
+| Rule | Check |
+| --- | --- |
+| Discover feasible candidates | `findFeasibleDrivers` for this load |
+| Investigate at least two feasible candidates when two exist | a candidate counts as investigated when its availability is covered AND its metrics or response history is covered — `getDispatchCandidateDetails` (same load) alone qualifies, as does `getDriverAvailability` + `getDriverMetrics`; failed calls and other-load details do not count |
+| Compare before deciding | the terminal output carries `comparison: [{ driverId, strengths[], weaknesses[], unknowns[] }]`; every entry must be feasible and investigated; the chosen driver must appear in it; at least `min(2, feasible)` entries |
+| Confidence measures evidence | ≥ 0.90 is rejected when the chosen entry lists unknowns; ≥ 0.70 is rejected with three or more unknowns; bands 0.90–1.00 / 0.70–0.89 / 0.50–0.69 / < 0.50 are in the prompt |
+| Zero feasible candidates | only `driverId: null` with an empty comparison validates |
+| No steering | a rejection names the next candidate to investigate from the model's own proposal, else in id order — never in the engine's order |
+
+A rejected proposal is returned to the model as an ordinary invalid call, so it can correct itself within the remaining turns or terminate `consecutive_invalid`.
+
+**Running the A/B:** `AI_EVAL_PROMPT=dispatch-v1|dispatch-v2 AI_EVAL_RUN_LABEL=<n> node scripts/ai-eval-scenarios.mjs` per arm (interleave arms in time; run them within hours of `node seed-world.mjs`), then `AI_COMPARE_V1_IDS=<ids> AI_COMPARE_V2_IDS=<ids> node scripts/ai-compare-prompts.mjs`, which refuses to compare arms whose model or config differ.
+
+**Result of the first A/B** (`docs/evaluations/2026-09-28-dispatch-v1-vs-v2.md`; per-arm tables in `2026-09-28-dispatch-v{1,2}-run{1,2}.md`; sixteen runs per prompt, same `qwen3:8b`, same config, interleaved within one hour on a world seeded that hour). Behavioural differences, not a verdict:
+
+| | dispatch-v1 | dispatch-v2 |
+| --- | --- | --- |
+| Completion (proposed / runs) | 16/16 | 14/16 (two `timeout`: a single model call exceeded 120 s) |
+| Engine agreement (matched top / proposed) | 13 % | 14 % |
+| Mean candidates investigated | 0.13 | 1.71 |
+| Mean turns / tool calls | 4.2 / 3.1 | 4.4 / 3.1 |
+| Mean confidence | 0.98 | 0.77 |
+| Confidence bands ≥0.90 / 0.70–0.89 / 0.50–0.69 / <0.50 | 16 / 0 / 0 / 0 | 5 / 5 / 4 / 0 |
+| Most-repeated pick | Dwayne Okafor, 38 % of proposed runs | Dwayne Okafor, 36 % |
+| Mean latency | ≈ 37 s | ≈ 54 s |
+
+Observations: v2 used the confidence bands and investigated the finalists it compared (2–4 per run where candidates existed) at the cost of longer runs and two per-call timeouts; its picks were largely the same drivers as v1 (Dwayne Okafor in A/B/D, Marcus Webb in H), so the extra evidence changed how the model justified and graded its choice more than which driver it chose; in scenario E v2 once proposed a flatbed driver for a Reefer load (rank 2, feasible per the engine) where v1 proposed nobody. v1 repeated itself almost exactly across its two runs at temperature 0.2.
+
+Caveats: on this seed scenarios C, F and G had no feasible candidate for either prompt (the seed anchors scenario appointment hours to fixed local times while driver availability derives from the seed hour, so feasibility depends on when the world was seeded — a seed follow-up, out of scope here); runs are on live world state, not frozen context; eight scenarios × two runs is a small sample.
