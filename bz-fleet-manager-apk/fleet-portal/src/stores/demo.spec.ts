@@ -607,6 +607,23 @@ describe('useDemoStore', () => {
       })
     })
 
+    it('awaiting_approval keeps Approve disabled with a plain reason while Night Shift is still releasing the previous demo', async () => {
+      const store = await withStage(
+        {
+          stage: 'awaiting_approval',
+          recommendationSource: 'ai',
+          log: [{ atMs: 1, stage: 'awaiting_approval', text: 'AI recommends John Carter (confidence 0.85).' }],
+        },
+        { waitingOn: 'night_shift_releasing' },
+      )
+      expect(store.actionForStage).toEqual({
+        kind: 'approve',
+        label: 'Approve John Carter',
+        subline: 'Night Shift is still releasing the previous demo — about a minute',
+        disabled: true,
+      })
+    })
+
     it('awaiting_approval credits the dispatch rules and still names the driver when the source is the engine', async () => {
       const store = await withStage({
         stage: 'awaiting_approval',

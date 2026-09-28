@@ -97,6 +97,17 @@ function computeStageAction(story: DemoStory, waitingOn: string | null): DemoSta
         story.recommendationSource === 'ai'
           ? `Recommended by AI${confidence ? ` (confidence ${confidence})` : ''}`
           : 'Recommended by the dispatch rules — AI unavailable'
+      // A reset a moment ago queued Night Shift's release of the previous
+      // load; approving before it has been applied would be refused, so the
+      // button waits with the reason instead of erroring.
+      if (waitingOn === 'night_shift_releasing') {
+        return {
+          kind: 'approve',
+          label: `Approve ${name}`,
+          subline: 'Night Shift is still releasing the previous demo — about a minute',
+          disabled: true,
+        }
+      }
       return { kind: 'approve', label: `Approve ${name}`, subline }
     }
     case 'awaiting_driver_reply':

@@ -154,4 +154,7 @@ export interface DemoStageAction {
   /** Secondary line under the button — the AI-vs-engine attribution, the
    *  "nothing leaves the system" sink notice, etc. */
   subline?: string
+  /** True while the backend says the action cannot be taken yet (for
+   *  example while Night Shift is still releasing the previous demo). */
+  disabled?: boolean
 }

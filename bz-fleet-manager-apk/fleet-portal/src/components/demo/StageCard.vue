@@ -37,7 +37,7 @@ watch(
 )
 
 function onAct(): void {
-  if (!props.action || props.busy) return
+  if (!props.action || props.busy || props.action.disabled) return
   if (props.action.kind === 'driver_reply') {
     emit('act', { kind: 'driver_reply', text: replyText.value })
     return
@@ -71,7 +71,7 @@ function onAct(): void {
       <button
         type="button"
         class="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-50"
-        :disabled="busy"
+        :disabled="busy || action.disabled"
         data-testid="stage-action-button"
         @click="onAct"
       >
