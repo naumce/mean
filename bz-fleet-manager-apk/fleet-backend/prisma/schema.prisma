@@ -409,6 +409,8 @@ model Org {
   customers           Customer[]
   simulationState     SimulationState?
   aiExperiments       AiExperiment[]
+  // Demo Mode
+  demoStory           DemoStory?
 }
 
 /// Night Shift's own API keys (spec §10/§12), separate from `Org.apiKey`
@@ -1354,4 +1356,62 @@ model AiRunStep {
 
   @@unique([decisionId, seq])
   @@index([decisionId])
+}
+
+// ============================================================================
+// Demo Mode (docs/superpowers/plans/2026-09-28-demo-mode.md). One row
+// per org: which stage the presenter's story currently sits at, and the
+// fixture ids observeStory/actions need to find its rows again. Nothing here
+// is read or written by Night Shift, the dispatch engine, the simulation
+// engine or the AI harness — this table only tracks the presenter's own view
+// of state those systems already own.
+// ============================================================================
+
+/// Singleton per org: the demo story's current stage plus the fixture ids it
+/// is watching. `log` is the presenter's plain-language narration, newest
+/// last: [{ atMs, stage, text }, ...].
+model DemoStory {
+  orgId String @id
+  org   Org    @relation(fields: [orgId], references: [id])
+
+  /// uncovered | ai_recommendation | awaiting_approval | in_transit |
+  /// breakdown_detected | driver_contacted | awaiting_driver_reply |
+  /// escalated | awaiting_customer_update | customer_updated | resolved |
+  /// delivering | delivered | error
+  stage String @default("uncovered")
+
+  loadId       String?
+  driverId     String?
+  assignmentId String?
+  runId        String?
+  experimentId String?
+  policyId     String?
+  customerId   String?
+
+  /// What observeStory last proposed for the load: recommendationSource is
+  /// "ai" once a harness run proposes a driver, "engine" for the
+  /// suggestForLoad fallback.
+  recommendedDriverId  String?
+  recommendationSource String?
+
+  /// The fraction of the plan (plannedStart..plannedEnd) at which the
+  /// scripted breakdown fires — a field, not a constant, so a variant story
+  /// can retune it without a migration. 0.05 stops the truck shortly after
+  /// departure, still hours of road from delivery when the worker checks its
+  /// wall-clock ETA against the tightened window; the further along the
+  /// frozen truck sat, the less often that ETA would miss it.
+  breakdownAtFraction Float     @default(0.05)
+  holdStartedAt        DateTime?
+  /// Wall-clock moment the scripted breakdown actually fired (SimDriverState
+  /// flipped to "stopped") — null until it does. `driver_contacted` compares
+  /// an event's `atMs` against this so a trip-start invite or canned reply
+  /// (both `would_say`, both before this timestamp) can never be mistaken
+  /// for Night Shift's own rung-1 outreach.
+  breakdownTriggeredAt DateTime?
+
+  log   Json    @default("[]")
+  error String?
+
+  startedAt DateTime?
+  updatedAt DateTime  @updatedAt
 }

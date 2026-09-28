@@ -23,6 +23,7 @@ import { dispatcherFuelPricesRouter } from "./routes/dispatcherFuelPrices.js";
 import { dispatcherDetentionRouter } from "./routes/dispatcherDetention.js";
 import { dispatcherDemoRouter } from "./routes/dispatcherDemo.js";
 import { dispatcherSimRouter } from "./routes/dispatcherSim.js";
+import { dispatcherDemoStoryRouter } from "./routes/dispatcherDemoStory.js";
 import { dispatcherTripsRouter } from "./routes/dispatcherTrips.js";
 import { dispatcherBoardRouter } from "./routes/dispatcherBoard.js";
 import { dispatcherAssignmentsRouter } from "./routes/dispatcherAssignments.js";
@@ -212,6 +213,9 @@ export function createApp() {
   // AI Dispatch Foundation (Task 8): /sim/* — gated by DEMO_MODE exactly
   // like dispatcherDemoRouter just above.
   app.use("/api/dispatcher", dispatcherSimRouter);
+  // Demo Mode: /demo/story* — gated by DEMO_MODE exactly like the two
+  // routers just above.
+  app.use("/api/dispatcher", dispatcherDemoStoryRouter);
   app.use("/api/dispatcher", dispatcherTripsRouter);
   app.use("/api/dispatcher", dispatcherBoardRouter);
   app.use("/api/dispatcher", dispatcherAssignmentsRouter);
