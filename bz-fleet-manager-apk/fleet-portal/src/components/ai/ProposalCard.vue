@@ -11,8 +11,8 @@ import type { Baseline, Proposal } from '../../types/aiLab'
 // "correct" (design §6) — it states the rank as a fact and leaves the
 // judgement to the dispatcher recording a verdict.
 const props = withDefaults(
-  defineProps<{ proposal: Proposal | null; baseline: Baseline | null; driverNames?: Record<string, string> }>(),
-  { driverNames: () => ({}) },
+  defineProps<{ proposal: Proposal | null; baseline: Baseline | null; driverNames?: Record<string, string>; promptVersion?: string | null }>(),
+  { driverNames: () => ({}), promptVersion: null },
 )
 
 function driverLabel(driverId: string | null): string {
@@ -26,6 +26,9 @@ const rank = computed(() => rankOfDriver(props.baseline, props.proposal?.driverI
 
 <template>
   <div class="rounded-lg border border-line bg-surface p-3 text-xs" data-testid="proposal-card">
+    <div v-if="promptVersion" class="mb-2 flex justify-end">
+      <span class="rounded-full bg-surface-3 px-2 py-0.5 font-mono text-[10px] text-ink-3" data-testid="proposal-prompt-version">{{ promptVersion }}</span>
+    </div>
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <div data-testid="proposal-qwen">
         <div class="font-mono text-[10px] font-bold uppercase tracking-wider text-ink-3">Qwen proposes</div>

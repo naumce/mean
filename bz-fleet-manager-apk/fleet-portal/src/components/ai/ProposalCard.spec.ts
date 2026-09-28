@@ -57,4 +57,14 @@ describe('ProposalCard', () => {
     const wrapper = mount(ProposalCard, { props: { proposal: proposal(), baseline: null } })
     expect(wrapper.find('[data-testid="baseline-none"]').exists()).toBe(true)
   })
+
+  // dispatch-v2 A/B experiment: the run's prompt version, shown as a plain
+  // chip — absent (not blank) when the run predates the registry.
+  it('shows the prompt version chip when provided, and omits it otherwise', () => {
+    const withVersion = mount(ProposalCard, { props: { proposal: proposal(), baseline: baseline(), promptVersion: 'dispatch-v2' } })
+    expect(withVersion.find('[data-testid="proposal-prompt-version"]').text()).toBe('dispatch-v2')
+
+    const withoutVersion = mount(ProposalCard, { props: { proposal: proposal(), baseline: baseline() } })
+    expect(withoutVersion.find('[data-testid="proposal-prompt-version"]').exists()).toBe(false)
+  })
 })

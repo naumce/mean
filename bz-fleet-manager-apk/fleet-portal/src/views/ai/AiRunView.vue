@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import ComparisonTable from '../../components/ai/ComparisonTable.vue'
 import EvidenceSummary from '../../components/ai/EvidenceSummary.vue'
 import ProposalCard from '../../components/ai/ProposalCard.vue'
 import RunTimeline from '../../components/ai/RunTimeline.vue'
@@ -150,7 +151,14 @@ function scrollToStep(seq: number): void {
         {{ run.reason }}
       </div>
 
-      <ProposalCard :proposal="run.proposedDecision" :baseline="run.baseline" :driver-names="aiLab.driverNames" />
+      <ProposalCard :proposal="run.proposedDecision" :baseline="run.baseline" :driver-names="aiLab.driverNames" :prompt-version="run.promptVersion" />
+
+      <ComparisonTable
+        v-if="run.proposedDecision?.comparison"
+        :comparison="run.proposedDecision.comparison"
+        :chosen-driver-id="run.proposedDecision.driverId"
+        :driver-names="aiLab.driverNames"
+      />
 
       <EvidenceSummary v-if="run.evidence" :evidence="run.evidence" :driver-names="aiLab.driverNames" @select-step="scrollToStep" />
 

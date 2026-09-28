@@ -6,11 +6,11 @@ import type { EvaluationRow } from '../../types/aiLab'
 function row(overrides: Partial<EvaluationRow> = {}): EvaluationRow {
   return {
     runId: 'run-1', loadId: 'l1', loadRef: 'L-1', scenario: { code: 'A', title: 'Reliable driver near an uncovered load', hint: 'Milan is close.' },
-    status: 'proposed', terminationReason: 'proposed',
+    status: 'proposed', terminationReason: 'proposed', promptVersion: 'dispatch-v1',
     deterministicTop: { driverId: 'd1', name: 'Alice' }, deterministicRankOfPick: 2,
     pick: { driverId: 'd2', name: 'Bob' }, confidence: 0.72,
     humanVerdict: null, humanDriverId: null, matchesDeterministicTop: false,
-    turns: 4, toolCalls: 6, uniqueTools: 3, repeatedCalls: 0, invalidCalls: 1,
+    turns: 4, toolCalls: 6, candidatesInvestigated: 5, uniqueTools: 3, repeatedCalls: 0, invalidCalls: 1,
     latencyMs: 8200, promptTokens: 512, completionTokens: 128, contextPressure: false, startedAt: '2026-09-25T00:00:00.000Z',
     ...overrides,
   }
@@ -22,7 +22,7 @@ describe('ExperimentRunsTable', () => {
     const headers = wrapper.findAll('th').map((h) => h.text())
     expect(headers).toEqual([
       'Load / scenario', 'Status', 'Termination', 'Pick', 'Confidence', 'Deterministic top',
-      'Verdict', 'Turns', 'Tool calls', 'Uniq/rep/inv', 'Latency', 'Tokens', 'Ctx',
+      'Verdict', 'Turns', 'Tool calls', 'Investigated', 'Uniq/rep/inv', 'Latency', 'Tokens', 'Ctx',
     ])
   })
 
@@ -38,8 +38,19 @@ describe('ExperimentRunsTable', () => {
     expect(cells[5]?.text()).toContain('#2')
     expect(cells[6]?.text()).toBe('pending')
     expect(cells[7]?.text()).toBe('4')
-    expect(cells[9]?.text()).toBe('3/0/1')
-    expect(cells[11]?.text()).toBe('512/128')
+    expect(cells[9]?.text()).toBe('5')
+    expect(cells[10]?.text()).toBe('3/0/1')
+    expect(cells[12]?.text()).toBe('512/128')
+  })
+
+  // dispatch-v2 A/B experiment: how many candidates the model investigated —
+  // "—" (never a fabricated 0) for a row whose stats predate the field.
+  it('shows the Investigated column value, and a dash when null', () => {
+    const withValue = mount(ExperimentRunsTable, { props: { rows: [row({ candidatesInvestigated: 7 })] } })
+    expect(withValue.findAll('[data-testid="runs-table-row"] td')[9]?.text()).toBe('7')
+
+    const withoutValue = mount(ExperimentRunsTable, { props: { rows: [row({ candidatesInvestigated: null })] } })
+    expect(withoutValue.findAll('[data-testid="runs-table-row"] td')[9]?.text()).toBe('—')
   })
 
   it('clicking a row emits select with the runId', async () => {
@@ -62,7 +73,7 @@ describe('ExperimentRunsTable', () => {
     })
     const cells = wrapper.findAll('[data-testid="runs-table-row"] td')
     expect(cells[0]?.text()).toContain('—')
-    expect(cells[10]?.text()).toBe('—')
+    expect(cells[11]?.text()).toBe('—')
   })
 
   // Fix round 2: `pick: null` (no decision reached yet) and a non-null pick

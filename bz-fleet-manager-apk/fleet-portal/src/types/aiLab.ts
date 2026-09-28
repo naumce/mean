@@ -41,6 +41,11 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
   modelCallTimeoutMs: 120000,
 }
 
+/** dispatch-v2 A/B experiment: the backend's own default when `promptVersion`
+ *  is omitted from `POST /ai/experiments` — mirrored here so the create
+ *  form's select starts on the same value the server would pick anyway. */
+export const DEFAULT_PROMPT_VERSION = 'dispatch-v1'
+
 export interface HarnessConfigRange {
   min: number
   max: number
@@ -106,6 +111,9 @@ export interface CreateExperimentBody {
   name: string
   notes?: string
   config?: Partial<HarnessConfig>
+  /** dispatch-v2 A/B experiment: server defaults to `DEFAULT_PROMPT_VERSION`
+   *  when omitted. */
+  promptVersion?: string
 }
 
 export interface UpdateExperimentBody {
@@ -113,6 +121,10 @@ export interface UpdateExperimentBody {
   notes?: string
   status?: ExperimentStatus
   config?: Partial<HarnessConfig>
+  /** dispatch-v2 A/B experiment: rejected 409 `{ error: "HAS_RUNS" }` once
+   *  the experiment already has runs — immutable after first use, same
+   *  rationale as `config` being freely editable but the prompt shape not. */
+  promptVersion?: string
 }
 
 export type RunStatus = 'queued' | 'running' | 'proposed' | 'incomplete' | 'failed' | 'cancelled'
@@ -145,6 +157,11 @@ export interface RunStats {
    *  `maxPromptTokens` above; `EvaluationRow.contextPressure` below is the
    *  one place this is always a real boolean (the server backfills it). */
   contextPressure?: boolean
+  /** dispatch-v2 A/B experiment: how many candidate drivers the model
+   *  actually looked at (evidence-derived, same source as
+   *  `Evidence.candidatesInspected.length`) — always present going forward,
+   *  unlike the two optional fields above. */
+  candidatesInvestigated: number
   durationMs: number
 }
 
@@ -170,6 +187,16 @@ export interface ProposalAlternative {
   reason: string
 }
 
+/** dispatch-v2 A/B experiment: one finalist's case in the model's own words —
+ *  neutral by construction (strengths/weaknesses/unknowns, never a verdict
+ *  like "better"/"correct"; ComparisonTable.vue must not editorialize either). */
+export interface ProposalComparisonEntry {
+  driverId: string
+  strengths: string[]
+  weaknesses: string[]
+  unknowns: string[]
+}
+
 /** The run's terminal structured output (design §2's `propose_decision`
  *  contract) — `driverId: null` is a deliberate "no feasible driver" answer,
  *  not a missing field. */
@@ -178,6 +205,9 @@ export interface Proposal {
   reason: string
   confidence: number
   alternatives: ProposalAlternative[]
+  /** dispatch-v2 A/B experiment: present only for dispatch-v2 runs — absent
+   *  (not an empty array) for dispatch-v1, which never produced this shape. */
+  comparison?: ProposalComparisonEntry[]
 }
 
 /** The narrow per-candidate context the baseline carries (distinct from, and
@@ -385,6 +415,9 @@ export interface EvaluationRow {
   scenario: RunScenario | null
   status: RunStatus
   terminationReason: string | null
+  /** dispatch-v2 A/B experiment: which prompt version produced this run —
+   *  `null` for a run persisted before the registry existed. */
+  promptVersion: string | null
   deterministicTop: EvaluationRowPick | null
   deterministicRankOfPick: number | null
   pick: EvaluationRowPick | null
@@ -397,6 +430,10 @@ export interface EvaluationRow {
   uniqueTools: number
   repeatedCalls: number
   invalidCalls: number
+  /** dispatch-v2 A/B experiment: mirrors `RunStats.candidatesInvestigated` —
+   *  nullable here (unlike the run-level field) because a still-queued row
+   *  has no stats snapshot to read it from yet. */
+  candidatesInvestigated: number | null
   latencyMs: number | null
   promptTokens: number | null
   completionTokens: number | null
@@ -408,9 +445,32 @@ export interface EvaluationRow {
   startedAt: string | null
 }
 
+/** dispatch-v2 A/B experiment: proposed-run counts bucketed by confidence —
+ *  plain counts (never null; a fresh experiment's bands are all legitimately
+ *  `0`, distinct from the nullable means below which mean "no runs to
+ *  average"). Keys are the band labels verbatim, not a coded enum. */
+export interface ConfidenceBands {
+  '≥0.90': number
+  '0.70–0.89': number
+  '0.50–0.69': number
+  '<0.50': number
+}
+
+/** dispatch-v2 A/B experiment: the most commonly proposed driver across this
+ *  experiment's proposed runs, and the share of those runs that picked it —
+ *  `null` when there are no proposed runs, or no driver was ever proposed
+ *  more than once (no meaningful "repeat" to report). Neutral by
+ *  construction: a factual tally, not a claim that the pick was right. */
+export interface RepeatedPick {
+  driverId: string
+  name: string | null
+  share: number
+}
+
 /** Fix round 2: the three means are `null` when the experiment has no
  *  proposed runs yet to average over (a fresh experiment) — never a
- *  fabricated `0`. */
+ *  fabricated `0`. dispatch-v2 A/B experiment: `meanCandidatesInvestigated`
+ *  and `meanConfidence` follow the same null convention. */
 export interface EvaluationSummary {
   runs: number
   byTermination: Record<string, number>
@@ -421,6 +481,10 @@ export interface EvaluationSummary {
   meanTurns: number | null
   meanToolCalls: number | null
   meanLatencyMs: number | null
+  meanCandidatesInvestigated: number | null
+  meanConfidence: number | null
+  confidenceBands: ConfidenceBands
+  repeatedPick: RepeatedPick | null
 }
 
 export interface Evaluation {

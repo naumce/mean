@@ -13,7 +13,7 @@ function statusOf(overrides: Partial<AiStatus> = {}): AiStatus {
     enabled: true,
     ollama: { reachable: true, version: '0.4.1', models: ['qwen3:8b'], modelPresent: true, error: null },
     defaults: DEFAULT_HARNESS_CONFIG,
-    promptVersions: ['dispatch-v1'],
+    promptVersions: ['dispatch-v1', 'dispatch-v2'],
     queue: { running: null, queued: [] },
     ...overrides,
   }
@@ -97,7 +97,7 @@ describe('AiLabView', () => {
     expect(router.currentRoute.value.params.id).toBe('exp-9')
   })
 
-  it('creating an experiment sends name/notes/config and clears the form on success', async () => {
+  it('creating an experiment sends name/notes/config/promptVersion and clears the form on success', async () => {
     const store = createStoreStub({ status: statusOf() })
     const { wrapper } = await mountWithRouter(store)
 
@@ -106,8 +106,24 @@ describe('AiLabView', () => {
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
 
-    expect(store.createExperiment).toHaveBeenCalledWith({ name: 'Scratch', notes: 'trying a hunch', config: DEFAULT_HARNESS_CONFIG })
+    expect(store.createExperiment).toHaveBeenCalledWith({
+      name: 'Scratch', notes: 'trying a hunch', config: DEFAULT_HARNESS_CONFIG, promptVersion: 'dispatch-v1',
+    })
     expect((wrapper.find('[data-testid="create-name"]').element as HTMLInputElement).value).toBe('')
+  })
+
+  it('defaults the prompt version select to dispatch-v1, and posts whichever version is picked', async () => {
+    const store = createStoreStub({ status: statusOf() })
+    const { wrapper } = await mountWithRouter(store)
+
+    expect((wrapper.find('[data-testid="config-prompt-version"]').element as HTMLSelectElement).value).toBe('dispatch-v1')
+
+    await wrapper.find('[data-testid="create-name"]').setValue('Scratch')
+    await wrapper.find('[data-testid="config-prompt-version"]').setValue('dispatch-v2')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(store.createExperiment).toHaveBeenCalledWith(expect.objectContaining({ promptVersion: 'dispatch-v2' }))
   })
 
   it('blocks creation and shows an error when the name is blank', async () => {

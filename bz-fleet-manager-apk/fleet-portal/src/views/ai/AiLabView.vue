@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import ExperimentConfigCard from '../../components/ai/ExperimentConfigCard.vue'
 import { useAiLabStore } from '../../stores/aiLab'
-import { DEFAULT_HARNESS_CONFIG, type HarnessConfig } from '../../types/aiLab'
+import { DEFAULT_HARNESS_CONFIG, DEFAULT_PROMPT_VERSION, type HarnessConfig } from '../../types/aiLab'
 
 // AI Lab (Qwen Harness v0.1, Task 7): the landing page — status banner,
 // experiments list, create form. A developer console, not a product screen:
@@ -27,14 +27,19 @@ function formatLastRun(iso: string | null): string {
   return iso ? new Date(iso).toLocaleString() : 'never'
 }
 
-async function onCreate(config: HarnessConfig): Promise<void> {
+async function onCreate(payload: { config: HarnessConfig; promptVersion?: string }): Promise<void> {
   nameError.value = null
   if (!draftName.value.trim()) {
     nameError.value = 'Name is required'
     return
   }
   creating.value = true
-  const created = await aiLab.createExperiment({ name: draftName.value.trim(), notes: draftNotes.value.trim() || undefined, config })
+  const created = await aiLab.createExperiment({
+    name: draftName.value.trim(),
+    notes: draftNotes.value.trim() || undefined,
+    config: payload.config,
+    promptVersion: payload.promptVersion,
+  })
   creating.value = false
   if (created) {
     draftName.value = ''
@@ -91,7 +96,15 @@ onMounted(async () => {
             <textarea v-model.trim="draftNotes" rows="1" class="rounded border border-line bg-surface-2 px-2 py-1 text-ink" data-testid="create-notes" />
           </label>
         </div>
-        <ExperimentConfigCard class="mt-3" :config="draftConfig" :saving="creating" save-label="Create experiment" @save="onCreate" />
+        <ExperimentConfigCard
+          class="mt-3"
+          :config="draftConfig"
+          :prompt-version="DEFAULT_PROMPT_VERSION"
+          :prompt-versions="aiLab.status?.promptVersions ?? []"
+          :saving="creating"
+          save-label="Create experiment"
+          @save="onCreate"
+        />
       </div>
 
       <div>

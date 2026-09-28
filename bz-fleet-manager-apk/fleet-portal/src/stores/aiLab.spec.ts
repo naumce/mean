@@ -1,3 +1,4 @@
+import { AxiosError } from 'axios'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -57,7 +58,7 @@ function status(overrides: Partial<AiStatus> = {}): AiStatus {
     enabled: true,
     ollama: { reachable: true, version: '0.4.1', models: ['qwen3:8b'], modelPresent: true, error: null },
     defaults: DEFAULT_HARNESS_CONFIG,
-    promptVersions: ['dispatch-v1'],
+    promptVersions: ['dispatch-v1', 'dispatch-v2'],
     queue: { running: null, queued: [] },
     ...overrides,
   }
@@ -277,12 +278,45 @@ describe('useAiLabStore', () => {
 
     it('loadEvaluation hits the evaluation endpoint', async () => {
       mockedFetchEvaluation.mockResolvedValueOnce({
-        evaluation: { experimentId: 'exp-1', rows: [], summary: { runs: 0, byTermination: {}, proposed: 0, matchedDeterministicTop: 0, accepted: 0, rejected: 0, meanTurns: 0, meanToolCalls: 0, meanLatencyMs: 0 } },
+        evaluation: {
+          experimentId: 'exp-1', rows: [],
+          summary: {
+            runs: 0, byTermination: {}, proposed: 0, matchedDeterministicTop: 0, accepted: 0, rejected: 0,
+            meanTurns: 0, meanToolCalls: 0, meanLatencyMs: 0,
+            meanCandidatesInvestigated: 0, meanConfidence: 0,
+            confidenceBands: { '≥0.90': 0, '0.70–0.89': 0, '0.50–0.69': 0, '<0.50': 0 },
+            repeatedPick: null,
+          },
+        },
       })
       const store = useAiLabStore()
       await store.loadEvaluation('exp-1')
       expect(mockedFetchEvaluation).toHaveBeenCalledWith('exp-1')
       expect(store.evaluation?.experimentId).toBe('exp-1')
+    })
+  })
+
+  describe('dispatch-v2 A/B experiment: promptVersion', () => {
+    // Unlike QUEUE_FULL (special-cased into a friendly message), HAS_RUNS
+    // gets no special-casing — extractApiErrorMessage's normal extraction is
+    // the whole story, so this pins that a REAL AxiosError's `data.error`
+    // reaches `store.error` verbatim (see lib/errors.ts; a plain
+    // `{isAxiosError, response}` object, this codebase's usual mock shape,
+    // does not exercise that `instanceof AxiosError` branch).
+    it('a 409 HAS_RUNS surfaces verbatim as the store error, with no special-casing', async () => {
+      mockedFetchExperiment.mockResolvedValueOnce({ experiment: experiment(), runs: [] })
+      const store = useAiLabStore()
+      await store.loadExperiment('exp-1')
+
+      mockedUpdateExperiment.mockRejectedValueOnce(
+        new AxiosError('409', '409', undefined, undefined, {
+          status: 409, statusText: '', headers: {}, config: {} as never, data: { error: 'HAS_RUNS' },
+        }),
+      )
+      const ok = await store.updateExperiment('exp-1', { promptVersion: 'dispatch-v2' })
+
+      expect(ok).toBe(false)
+      expect(store.error).toBe('HAS_RUNS')
     })
   })
 

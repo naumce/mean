@@ -1,4 +1,5 @@
-import type { Baseline, RunStatus, RunStepKind } from '../types/aiLab'
+import { formatPct } from './money'
+import type { Baseline, EvaluationSummary, RunStatus, RunStepKind } from '../types/aiLab'
 
 // AI Lab (Qwen Harness v0.1, Task 7): pure formatting/derivation helpers,
 // same "small dependency-free functions" convention as lib/cockpit/format.ts
@@ -45,6 +46,23 @@ export function formatBytes(n: number | null | undefined): string {
  *  `0.0`, matching `formatDurationMs`/`formatBytes`'s own null convention. */
 export function formatMean(n: number | null | undefined, decimals = 1): string {
   return n == null ? '—' : n.toFixed(decimals)
+}
+
+/** dispatch-v2 A/B experiment: same null convention as `formatMean`, for a
+ *  mean that is itself a 0–1 fraction (`EvaluationSummary.meanConfidence`) —
+ *  rendered as a whole-number percent like every other confidence value in
+ *  the AI Lab (ProposalCard, ExperimentRunsTable), never a raw decimal. */
+export function formatMeanPct(fraction: number | null | undefined): string {
+  return fraction == null ? '—' : formatPct(fraction)
+}
+
+/** dispatch-v2 A/B experiment: "most picked: <name> in N% of proposed runs",
+ *  or "—" when the experiment has no proposed runs yet, or no driver was
+ *  ever proposed more than once — same null-safe convention as
+ *  formatMean/formatDurationMs. Neutral wording: a tally, not a verdict. */
+export function repeatedPickLabel(repeatedPick: EvaluationSummary['repeatedPick']): string {
+  if (!repeatedPick) return '—'
+  return `most picked: ${repeatedPick.name ?? repeatedPick.driverId} in ${formatPct(repeatedPick.share)} of proposed runs`
 }
 
 /** Wall time for a step card. Deliberately browser-local (same rationale as

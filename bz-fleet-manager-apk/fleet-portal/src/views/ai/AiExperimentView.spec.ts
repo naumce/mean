@@ -22,12 +22,19 @@ function evaluation(): Evaluation {
     experimentId: 'exp-1',
     rows: [{
       runId: 'run-1', loadId: 'l1', loadRef: 'L-1', scenario: null, status: 'proposed', terminationReason: 'proposed',
+      promptVersion: 'dispatch-v1', candidatesInvestigated: 4,
       deterministicTop: null, deterministicRankOfPick: null, pick: null, confidence: null,
       humanVerdict: null, humanDriverId: null, matchesDeterministicTop: null,
       turns: 3, toolCalls: 5, uniqueTools: 2, repeatedCalls: 0, invalidCalls: 0,
       latencyMs: 4000, promptTokens: 100, completionTokens: 20, contextPressure: false, startedAt: '2026-09-25T00:00:00.000Z',
     }],
-    summary: { runs: 1, byTermination: { proposed: 1 }, proposed: 1, matchedDeterministicTop: 0, accepted: 0, rejected: 0, meanTurns: 3, meanToolCalls: 5, meanLatencyMs: 4000 },
+    summary: {
+      runs: 1, byTermination: { proposed: 1 }, proposed: 1, matchedDeterministicTop: 0, accepted: 0, rejected: 0,
+      meanTurns: 3, meanToolCalls: 5, meanLatencyMs: 4000,
+      meanCandidatesInvestigated: 4, meanConfidence: 0.72,
+      confidenceBands: { '≥0.90': 0, '0.70–0.89': 1, '0.50–0.69': 0, '<0.50': 0 },
+      repeatedPick: { driverId: 'd2', name: 'Bob', share: 1 },
+    },
   }
 }
 
@@ -85,28 +92,74 @@ describe('AiExperimentView', () => {
     expect(wrapper.find('[data-testid="evaluation-summary"]').text()).toContain('1 runs')
   })
 
-  // Fix round 2: the wire contract has these three means nullable (null when
-  // the experiment has no proposed runs yet) — must render "—", never throw
-  // on `.toFixed` of null, never fabricate a 0.
+  // dispatch-v2 A/B experiment: mean confidence, the four confidence bands,
+  // mean investigated, and the repeated pick — all neutral, factual tallies.
+  it('the evaluation summary strip shows mean confidence, confidence bands, mean investigated, and the repeated pick', async () => {
+    const store = createStoreStub()
+    const { wrapper } = await mountView(store)
+    const text = wrapper.find('[data-testid="evaluation-summary"]').text()
+    expect(text).toContain('mean confidence 72%')
+    expect(text).toContain('mean investigated 4.0')
+    expect(text).toContain('most picked: Bob in 100% of proposed runs')
+
+    const bands = wrapper.findAll('[data-testid="confidence-band"]').map((b) => b.text())
+    expect(bands).toEqual(['≥0.90: 0', '0.70–0.89: 1', '0.50–0.69: 0', '<0.50: 0'])
+  })
+
+  // Fix round 2: the wire contract has these means nullable (null when the
+  // experiment has no proposed runs yet) — must render "—", never throw on
+  // `.toFixed` of null, never fabricate a 0. dispatch-v2 A/B experiment:
+  // meanConfidence/meanCandidatesInvestigated/repeatedPick follow the same
+  // convention; the confidence bands themselves are plain (never-null) counts.
   it('the evaluation summary strip shows "—" for null means on a fresh experiment', async () => {
     const store = createStoreStub({
       evaluation: {
         ...evaluation(),
-        summary: { runs: 0, byTermination: {}, proposed: 0, matchedDeterministicTop: 0, accepted: 0, rejected: 0, meanTurns: null, meanToolCalls: null, meanLatencyMs: null },
+        summary: {
+          runs: 0, byTermination: {}, proposed: 0, matchedDeterministicTop: 0, accepted: 0, rejected: 0,
+          meanTurns: null, meanToolCalls: null, meanLatencyMs: null,
+          meanCandidatesInvestigated: null, meanConfidence: null,
+          confidenceBands: { '≥0.90': 0, '0.70–0.89': 0, '0.50–0.69': 0, '<0.50': 0 },
+          repeatedPick: null,
+        },
       },
     })
     const { wrapper } = await mountView(store)
     const text = wrapper.find('[data-testid="evaluation-summary"]').text()
     expect(text).toContain('mean — turns')
     expect(text).toContain('mean latency —')
+    expect(text).toContain('mean confidence —')
+    expect(text).toContain('mean investigated —')
+    expect(wrapper.find('[data-testid="repeated-pick"]').text()).toBe('—')
+    expect(wrapper.findAll('[data-testid="confidence-band"]').map((b) => b.text())).toEqual([
+      '≥0.90: 0', '0.70–0.89: 0', '0.50–0.69: 0', '<0.50: 0',
+    ])
   })
 
-  it('saving the config card calls updateExperiment with the id and the edited config', async () => {
+  // The fixture experiment has runCount: 1, so the prompt version select is
+  // locked (dispatch-v2 A/B experiment) — promptVersion must not appear in
+  // the PATCH body, or a routine config save could trip the backend's 409
+  // HAS_RUNS guard.
+  it('saving the config card calls updateExperiment with the id and the edited config, locking out promptVersion once runs exist', async () => {
     const store = createStoreStub()
     const { wrapper } = await mountView(store)
+    expect((wrapper.find('[data-testid="config-prompt-version"]').element as HTMLSelectElement).disabled).toBe(true)
+    expect(wrapper.find('[data-testid="config-prompt-version-hint"]').text()).toBe('fixed once runs exist')
+
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
     expect(store.updateExperiment).toHaveBeenCalledWith('exp-1', { config: DEFAULT_HARNESS_CONFIG })
+  })
+
+  it('leaves the prompt version select enabled, and includes it in the save payload, before any run exists', async () => {
+    const store = createStoreStub({ experiment: experiment({ runCount: 0 }) })
+    const { wrapper } = await mountView(store)
+    expect((wrapper.find('[data-testid="config-prompt-version"]').element as HTMLSelectElement).disabled).toBe(false)
+    expect(wrapper.find('[data-testid="config-prompt-version-hint"]').exists()).toBe(false)
+
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+    expect(store.updateExperiment).toHaveBeenCalledWith('exp-1', { config: DEFAULT_HARNESS_CONFIG, promptVersion: 'dispatch-v1' })
   })
 
   it('starting a run from the load picker calls startRun and refreshes the experiment + evaluation', async () => {

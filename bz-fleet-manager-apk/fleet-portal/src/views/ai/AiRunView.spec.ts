@@ -23,7 +23,8 @@ function runDetail(overrides: Partial<RunDetail> = {}): RunDetail {
   return {
     id: 'run-1', experimentId: 'exp-1', kind: 'dispatch_candidate', loadId: 'l1', loadRef: 'L-1', scenario: null,
     status: 'proposed', terminationReason: 'proposed', driverId: 'd2', driverName: 'Bob', confidence: 0.72,
-    humanVerdict: null, stats: { modelCalls: 3, toolCalls: 5, uniqueTools: 2, repeatedCalls: 0, invalidCalls: 0, promptTokens: 300, completionTokens: 60, durationMs: 8000 },
+    humanVerdict: null,
+    stats: { modelCalls: 3, toolCalls: 5, uniqueTools: 2, repeatedCalls: 0, invalidCalls: 0, candidatesInvestigated: 2, promptTokens: 300, completionTokens: 60, durationMs: 8000 },
     startedAt: '2026-09-25T00:00:00.000Z', completedAt: '2026-09-25T00:00:08.000Z', parentRunId: null,
     modelConfig: DEFAULT_HARNESS_CONFIG, promptVersion: 'dispatch-v1',
     baseline: baseline(),
@@ -141,6 +142,42 @@ describe('AiRunView', () => {
     const store = createStoreStub({ run: runDetail({ status: 'failed', terminationReason: 'model_error', error: 'Ollama timed out', proposedDecision: null }) })
     const { wrapper } = await mountView(store)
     expect(wrapper.find('[data-testid="run-error-panel"]').text()).toBe('Ollama timed out')
+  })
+
+  it('passes the run\'s prompt version to the proposal card', async () => {
+    const store = createStoreStub()
+    const { wrapper } = await mountView(store)
+    expect(wrapper.find('[data-testid="proposal-prompt-version"]').text()).toBe('dispatch-v1')
+  })
+
+  it('does not render the comparison table when the proposal has no comparison', async () => {
+    const store = createStoreStub()
+    const { wrapper } = await mountView(store)
+    expect(wrapper.find('[data-testid="comparison-table"]').exists()).toBe(false)
+  })
+
+  // dispatch-v2 A/B experiment: strengths/weaknesses/unknowns per finalist,
+  // mounted under the proposal card, driver names resolved via the store's
+  // driverNames (same source ProposalCard/EvidenceSummary already use).
+  it('renders the comparison table under the proposal when dispatch-v2 comparison data is present', async () => {
+    const store = createStoreStub({
+      run: runDetail({
+        promptVersion: 'dispatch-v2',
+        proposedDecision: {
+          driverId: 'd2', reason: 'closer and available sooner', confidence: 0.72, alternatives: [],
+          comparison: [
+            { driverId: 'd1', strengths: ['closer'], weaknesses: [], unknowns: [] },
+            { driverId: 'd2', strengths: ['available sooner'], weaknesses: ['longer deadhead'], unknowns: [] },
+          ],
+        },
+      }),
+    })
+    const { wrapper } = await mountView(store)
+    const table = wrapper.find('[data-testid="comparison-table"]')
+    expect(table.exists()).toBe(true)
+    expect(table.text()).toContain('Alice')
+    expect(table.text()).toContain('Bob')
+    expect(table.find('[data-testid="comparison-chosen-badge"]').exists()).toBe(true)
   })
 
   it('renders the proposal card and the full evidence summary (all seven fields)', async () => {

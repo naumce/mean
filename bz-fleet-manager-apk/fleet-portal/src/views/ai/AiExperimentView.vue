@@ -4,9 +4,14 @@ import { useRouter } from 'vue-router'
 import ExperimentConfigCard from '../../components/ai/ExperimentConfigCard.vue'
 import ExperimentRunsTable from '../../components/ai/ExperimentRunsTable.vue'
 import RunLoadPicker from '../../components/ai/RunLoadPicker.vue'
-import { formatDurationMs, formatMean } from '../../lib/aiLabFormat'
+import { formatDurationMs, formatMean, formatMeanPct, repeatedPickLabel } from '../../lib/aiLabFormat'
 import { MAX_BATCH_RUNS, useAiLabStore } from '../../stores/aiLab'
-import type { HarnessConfig } from '../../types/aiLab'
+import type { ConfidenceBands, HarnessConfig } from '../../types/aiLab'
+
+// dispatch-v2 A/B experiment: the four band labels are the object keys
+// verbatim (types/aiLab.ts's ConfidenceBands) — iterated here rather than
+// spelled out four times in the template.
+const CONFIDENCE_BAND_KEYS: (keyof ConfidenceBands)[] = ['≥0.90', '0.70–0.89', '0.50–0.69', '<0.50']
 
 // AI Lab (Qwen Harness v0.1, Task 7): one experiment — its editable config,
 // a picker to run it against a single uncovered load, "run all uncovered" in
@@ -22,8 +27,8 @@ async function refresh(): Promise<void> {
   await Promise.all([aiLab.loadExperiment(props.id), aiLab.loadEvaluation(props.id), aiLab.loadUncoveredLoads()])
 }
 
-async function onSaveConfig(config: HarnessConfig): Promise<void> {
-  await aiLab.updateExperiment(props.id, { config })
+async function onSaveConfig(payload: { config: HarnessConfig; promptVersion?: string }): Promise<void> {
+  await aiLab.updateExperiment(props.id, payload)
 }
 
 async function onStartRun(loadId: string): Promise<void> {
@@ -65,7 +70,14 @@ watch(() => props.id, refresh)
 
     <p v-if="aiLab.error" class="text-sm text-red-600" role="alert">{{ aiLab.error }}</p>
 
-    <ExperimentConfigCard v-if="aiLab.experiment" :config="aiLab.experiment.config" @save="onSaveConfig" />
+    <ExperimentConfigCard
+      v-if="aiLab.experiment"
+      :config="aiLab.experiment.config"
+      :prompt-version="aiLab.experiment.promptVersion"
+      :prompt-versions="aiLab.status?.promptVersions ?? []"
+      :run-count="aiLab.experiment.runCount"
+      @save="onSaveConfig"
+    />
 
     <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
       <RunLoadPicker :loads="aiLab.uncoveredLoads" :starting="startingLoadId" @select="onStartRun" />
@@ -93,6 +105,13 @@ watch(() => props.id, refresh)
            fabricated 0. -->
       <span>mean {{ formatMean(aiLab.evaluation.summary.meanTurns) }} turns</span>
       <span>mean latency {{ formatDurationMs(aiLab.evaluation.summary.meanLatencyMs) }}</span>
+      <!-- dispatch-v2 A/B experiment: confidence/investigated means and the
+           repeated-pick tally — all null-safe (see aiLabFormat.ts), never a
+           fabricated number on a fresh or dispatch-v1-only experiment. -->
+      <span data-testid="mean-confidence">mean confidence {{ formatMeanPct(aiLab.evaluation.summary.meanConfidence) }}</span>
+      <span v-for="band in CONFIDENCE_BAND_KEYS" :key="band" data-testid="confidence-band">{{ band }}: {{ aiLab.evaluation.summary.confidenceBands[band] }}</span>
+      <span data-testid="mean-investigated">mean investigated {{ formatMean(aiLab.evaluation.summary.meanCandidatesInvestigated) }}</span>
+      <span data-testid="repeated-pick">{{ repeatedPickLabel(aiLab.evaluation.summary.repeatedPick) }}</span>
     </div>
 
     <ExperimentRunsTable :rows="aiLab.evaluation?.rows ?? []" @select="openRun" />

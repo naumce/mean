@@ -42,6 +42,7 @@ function topLabel(row: EvaluationRow): string {
           <th class="px-2 py-2 text-left font-medium">Verdict</th>
           <th class="px-2 py-2 text-right font-medium">Turns</th>
           <th class="px-2 py-2 text-right font-medium">Tool calls</th>
+          <th class="px-2 py-2 text-right font-medium">Investigated</th>
           <th class="px-2 py-2 text-right font-medium">Uniq/rep/inv</th>
           <th class="px-2 py-2 text-right font-medium">Latency</th>
           <th class="px-2 py-2 text-right font-medium">Tokens</th>
@@ -71,6 +72,7 @@ function topLabel(row: EvaluationRow): string {
           <td class="px-2 py-2 text-ink-2">{{ row.humanVerdict ?? 'pending' }}</td>
           <td class="px-2 py-2 text-right text-ink-2">{{ row.turns }}</td>
           <td class="px-2 py-2 text-right text-ink-2">{{ row.toolCalls }}</td>
+          <td class="px-2 py-2 text-right text-ink-2">{{ row.candidatesInvestigated ?? '—' }}</td>
           <td class="px-2 py-2 text-right text-ink-2">{{ row.uniqueTools }}/{{ row.repeatedCalls }}/{{ row.invalidCalls }}</td>
           <td class="px-2 py-2 text-right text-ink-2">{{ formatDurationMs(row.latencyMs) }}</td>
           <td class="px-2 py-2 text-right text-ink-2">{{ row.promptTokens ?? '—' }}/{{ row.completionTokens ?? '—' }}</td>
