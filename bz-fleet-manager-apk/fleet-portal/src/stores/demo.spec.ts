@@ -167,6 +167,18 @@ describe('useDemoStore', () => {
       expect(store.available).toBe(false)
       expect(store.error).toBe('network down')
     })
+
+    // reachable-fix-brief.md #5: the AI Lab run is worth showing whenever it
+    // exists, even when the story fell back to the dispatch recommendation
+    // (e.g. the AI's own pick had no phone on file) — the link must not be
+    // withheld just because recommendationSource isn't 'ai'.
+    it('carries the AI Lab run link through even when the story fell back to the dispatch recommendation', async () => {
+      const store = await withStage(
+        { stage: 'awaiting_approval', recommendationSource: 'engine', runId: 'run-1' },
+        { links: { cockpitLoadId: null, aiRunId: 'run-1', driverId: null, agentTimelineLoadId: null } },
+      )
+      expect(store.data?.links.aiRunId).toBe('run-1')
+    })
   })
 
   describe('load', () => {
@@ -644,7 +656,7 @@ describe('useDemoStore', () => {
       const store = await withStage({
         stage: 'awaiting_approval',
         recommendationSource: 'engine',
-        log: [{ atMs: 1, stage: 'awaiting_approval', text: 'AI unavailable — using the deterministic recommendation: John Carter.' }],
+        log: [{ atMs: 1, stage: 'awaiting_approval', text: 'AI unavailable — using the dispatch recommendation: John Carter.' }],
       })
       expect(store.actionForStage).toEqual({
         kind: 'approve',
@@ -653,13 +665,60 @@ describe('useDemoStore', () => {
       })
     })
 
-    it('awaiting_approval falls back to a generic name when the log names no one (no feasible driver)', async () => {
+    // reachable-fix-brief.md: the AI's own pick had no phone on file, so
+    // observe.ts fell back to a reachable dispatch recommendation while
+    // still naming the AI's original (unreachable) pick — the presenter
+    // must name the driver actually being recommended (the fallback), not
+    // the one Night Shift cannot reach. reachable-fix-review.md #f: this
+    // blended shape must not say "AI unavailable" (it was available — its
+    // pick just wasn't reachable), so it gets its own subline.
+    it('awaiting_approval names the fallback driver, not the unreachable AI pick, when the AI recommendation had no phone', async () => {
       const store = await withStage({
         stage: 'awaiting_approval',
         recommendationSource: 'engine',
-        log: [{ atMs: 1, stage: 'awaiting_approval', text: 'AI unavailable — the deterministic recommendation found no feasible driver.' }],
+        log: [{
+          atMs: 1, stage: 'awaiting_approval',
+          text: 'AI recommends Marcus Webb (confidence 0.95), but Night Shift has no phone on file for them — using the dispatch recommendation instead: John Carter.',
+        }],
+      })
+      expect(store.actionForStage).toEqual({
+        kind: 'approve',
+        label: 'Approve John Carter',
+        subline: "Recommended by the dispatch rules — the AI's pick had no phone on file",
+      })
+    })
+
+    // reachable-fix-review.md HIGH: when the AI's pick is unreachable AND no
+    // reachable dispatch fallback exists either, observe.ts sets
+    // recommendedDriverId: null and names only the unreachable AI pick in
+    // the log. Naming Marcus Webb here would render "Approve Marcus Webb"
+    // while nothing is actually recommended — clicking it fails against
+    // approve()'s own "No recommended driver yet." guard. Must degrade to
+    // the same generic label the plain engine-only "no reachable driver"
+    // line already gets.
+    it('awaiting_approval falls back to a generic name (not the unreachable AI pick) when the AI recommendation had no phone and no fallback exists either', async () => {
+      const store = await withStage({
+        stage: 'awaiting_approval',
+        recommendationSource: 'engine',
+        log: [{
+          atMs: 1, stage: 'awaiting_approval',
+          text: 'AI recommends Marcus Webb (confidence 0.95), but Night Shift has no phone on file for them — no reachable driver is available.',
+        }],
       })
       expect(store.actionForStage?.label).toBe('Approve the recommended driver')
+    })
+
+    it('awaiting_approval falls back to a generic name when the log names no one (no reachable driver)', async () => {
+      const store = await withStage({
+        stage: 'awaiting_approval',
+        recommendationSource: 'engine',
+        log: [{ atMs: 1, stage: 'awaiting_approval', text: 'AI unavailable — no reachable driver is available.' }],
+      })
+      expect(store.actionForStage).toEqual({
+        kind: 'approve',
+        label: 'Approve the recommended driver',
+        subline: 'Recommended by the dispatch rules — AI unavailable',
+      })
     })
 
     it('awaiting_approval falls back to a generic name and no confidence when the log is empty', async () => {

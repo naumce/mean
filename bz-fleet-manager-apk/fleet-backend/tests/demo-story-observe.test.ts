@@ -6,7 +6,13 @@ import { DEMO_CUSTOMER_EMAIL } from "../src/lib/demoStory/fixtures.js";
 import { runnerState, startRunner } from "../src/lib/simulation/runner.js";
 import * as engineModule from "../src/lib/simulation/engine.js";
 import * as realtimeModule from "../src/realtime.js";
+import * as suggestForLoadModule from "../src/lib/suggestForLoad.js";
 import { MIN, addEvent, createAssignment, createTrip, logTexts, planAt, seedStory, simMinutes, stopSeededRunners } from "./demoStoryTestHelpers.js";
+
+// reachable-fix-brief.md: the same forbidden-word list demo-story-presenter-
+// copy.test.ts holds against STAGES — every dynamic log line this suite
+// asserts on must also read as plain business language.
+const FORBIDDEN = /\b(score|rank|ranking|engine|deterministic|scenario)\b/i;
 
 // Demo Mode — observeStory from "ai_recommendation" to "awaiting_customer_update":
 // every automatic transition, driven by inserting the exact rows/events
@@ -58,9 +64,69 @@ describe("observeStory — ai_recommendation", () => {
     expect(result?.recommendedDriverId).toBe(story.driverId);
     expect(result?.recommendationSource).toBe("ai");
     expect(logTexts(result).at(-1)).toBe("AI recommends John Carter (confidence 0.85).");
+    expect(logTexts(result).at(-1)).not.toMatch(FORBIDDEN);
   });
 
-  it("harness disabled (no run at all) falls back to the deterministic recommendation, source engine", async () => {
+  // reachable-fix-brief.md, finding (dry run 7, live): the AI proposed a
+  // driver Night Shift has no phone for, and the demo stalled forever on
+  // "In transit". A driver with no phone on file must never be recommended
+  // as-is — fall back to the dispatch recommendation, filtered to a
+  // reachable (phone-on-file) feasible candidate.
+  it("a proposed run whose driver has no phone falls back to the reachable dispatch recommendation, source engine", async () => {
+    const { orgId, story } = await seedStory("ai_recommendation");
+    const unreachable = await prisma.driver.create({
+      data: { orgId, email: `marcus-${orgId}@x.com`, passwordHash: "x", name: "Marcus Webb", phone: null, status: "available" },
+    });
+    const run = await prisma.aiDecisionRecord.create({
+      data: {
+        experimentId: story.experimentId!, orgId, loadId: story.loadId, driverId: unreachable.id,
+        kind: "dispatch_candidate", status: "proposed", context: {}, toolCalls: [], toolResults: [],
+        confidence: 0.95,
+      },
+    });
+    await prisma.demoStory.update({ where: { orgId }, data: { runId: run.id } });
+
+    const result = await observeStory(orgId);
+
+    expect(result?.stage).toBe("awaiting_approval");
+    expect(result?.recommendedDriverId).toBe(story.driverId); // John — the only reachable feasible driver
+    expect(result?.recommendationSource).toBe("engine");
+    expect(result?.runId).toBe(run.id); // the AI Lab link must still show this run
+    const lastLine = logTexts(result).at(-1);
+    expect(lastLine).toBe(
+      "AI recommends Marcus Webb (confidence 0.95), but Night Shift has no phone on file for them — using the dispatch recommendation instead: John Carter.",
+    );
+    expect(lastLine).not.toMatch(FORBIDDEN);
+  });
+
+  it("a proposed run whose driver has no phone, with no reachable feasible driver either, recommends no one", async () => {
+    const { orgId, story } = await seedStory("ai_recommendation");
+    const unreachable = await prisma.driver.create({
+      data: { orgId, email: `marcus-${orgId}@x.com`, passwordHash: "x", name: "Marcus Webb", phone: null, status: "available" },
+    });
+    const run = await prisma.aiDecisionRecord.create({
+      data: {
+        experimentId: story.experimentId!, orgId, loadId: story.loadId, driverId: unreachable.id,
+        kind: "dispatch_candidate", status: "proposed", context: {}, toolCalls: [], toolResults: [],
+        confidence: 0.95,
+      },
+    });
+    await prisma.demoStory.update({ where: { orgId }, data: { runId: run.id } });
+    vi.spyOn(suggestForLoadModule, "suggestForLoad").mockResolvedValue({
+      loadId: story.loadId!, requiredEquip: "DryVan", tractorId: "t1", trailerId: "tr1", candidates: [],
+    });
+
+    const result = await observeStory(orgId);
+
+    expect(result?.stage).toBe("awaiting_approval");
+    expect(result?.recommendedDriverId).toBeNull();
+    expect(result?.recommendationSource).toBe("engine");
+    const lastLine = logTexts(result).at(-1);
+    expect(lastLine).toBe("AI recommends Marcus Webb (confidence 0.95), but Night Shift has no phone on file for them — no reachable driver is available.");
+    expect(lastLine).not.toMatch(FORBIDDEN);
+  });
+
+  it("harness disabled (no run at all) falls back to the dispatch recommendation, source engine", async () => {
     delete process.env.OLLAMA_URL;
     const { orgId, story } = await seedStory("ai_recommendation");
 
@@ -69,10 +135,60 @@ describe("observeStory — ai_recommendation", () => {
     expect(result?.stage).toBe("awaiting_approval");
     expect(result?.recommendationSource).toBe("engine");
     expect(result?.recommendedDriverId).toBe(story.driverId); // John is the only driver in this org
-    expect(logTexts(result).at(-1)).toMatch(/^AI unavailable — using the deterministic recommendation: John Carter\.$/);
+    const lastLine = logTexts(result).at(-1);
+    expect(lastLine).toMatch(/^AI unavailable — using the dispatch recommendation: John Carter\.$/);
+    expect(lastLine).not.toMatch(FORBIDDEN);
   });
 
-  it("a failed run also falls back to the deterministic recommendation", async () => {
+  // reachable-fix-brief.md #3: the engine-fallback branch (harness disabled/
+  // failed/timed-out) must apply the same reachability filter — a feasible
+  // top candidate with no phone on file must be skipped in favour of the
+  // next reachable one.
+  it("engine fallback skips a feasible driver without a phone, source engine", async () => {
+    delete process.env.OLLAMA_URL;
+    const { orgId, story } = await seedStory("ai_recommendation");
+    const unreachable = await prisma.driver.create({
+      data: { orgId, email: `nophone-${orgId}@x.com`, passwordHash: "x", name: "No Phone Driver", phone: null, status: "available" },
+    });
+    vi.spyOn(suggestForLoadModule, "suggestForLoad").mockResolvedValue({
+      loadId: story.loadId!, requiredEquip: "DryVan", tractorId: "t1", trailerId: "tr1",
+      candidates: [
+        { driverId: unreachable.id, driverName: "No Phone Driver", feasible: true, score: 90, deadheadMi: 0, loadedMi: 0, etaMs: 0, marginCents: 0, marginPct: 0, warnings: [] },
+        { driverId: story.driverId!, driverName: "John Carter", feasible: true, score: 80, deadheadMi: 0, loadedMi: 0, etaMs: 0, marginCents: 0, marginPct: 0, warnings: [] },
+      ],
+    });
+
+    const result = await observeStory(orgId);
+
+    expect(result?.stage).toBe("awaiting_approval");
+    expect(result?.recommendationSource).toBe("engine");
+    expect(result?.recommendedDriverId).toBe(story.driverId); // John — the top candidate has no phone
+    const lastLine = logTexts(result).at(-1);
+    expect(lastLine).toBe("AI unavailable — using the dispatch recommendation: John Carter.");
+    expect(lastLine).not.toMatch(FORBIDDEN);
+  });
+
+  it("engine fallback with no reachable feasible driver at all says so", async () => {
+    delete process.env.OLLAMA_URL;
+    const { orgId } = await seedStory("ai_recommendation");
+    vi.spyOn(suggestForLoadModule, "suggestForLoad").mockResolvedValue({
+      loadId: "irrelevant", requiredEquip: "DryVan", tractorId: "t1", trailerId: "tr1",
+      candidates: [
+        { driverId: "ghost-driver", driverName: "Ghost Driver", feasible: true, score: 50, deadheadMi: 0, loadedMi: 0, etaMs: 0, marginCents: 0, marginPct: 0, warnings: [] },
+      ],
+    });
+
+    const result = await observeStory(orgId);
+
+    expect(result?.stage).toBe("awaiting_approval");
+    expect(result?.recommendationSource).toBe("engine");
+    expect(result?.recommendedDriverId).toBeNull();
+    const lastLine = logTexts(result).at(-1);
+    expect(lastLine).toBe("AI unavailable — no reachable driver is available.");
+    expect(lastLine).not.toMatch(FORBIDDEN);
+  });
+
+  it("a failed run also falls back to the dispatch recommendation", async () => {
     const { orgId, story } = await seedStory("ai_recommendation");
     const run = await prisma.aiDecisionRecord.create({
       data: { experimentId: story.experimentId!, orgId, loadId: story.loadId, kind: "dispatch_candidate", status: "failed", context: {}, toolCalls: [], toolResults: [] },
@@ -96,7 +212,7 @@ describe("observeStory — ai_recommendation", () => {
     expect(result?.recommendationSource).toBeNull();
   });
 
-  it("a queued run past 3 minutes falls back to the deterministic recommendation", async () => {
+  it("a queued run past 3 minutes falls back to the dispatch recommendation", async () => {
     const { orgId, story } = await seedStory("ai_recommendation");
     const run = await prisma.aiDecisionRecord.create({
       data: {

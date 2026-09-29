@@ -32,6 +32,37 @@ export async function currentSimNowMs(orgId: string, wallNowMs: number): Promise
   return wallNowMs + (state?.simMinutesAdvanced ?? 0) * 60_000;
 }
 
+function hasPhone(phone: string | null | undefined): boolean {
+  return phone != null && phone.trim() !== "";
+}
+
+/** reachable-fix-brief.md (2026-09-28): Night Shift cannot contact a driver
+ *  with no phone on file (`night-shift/src/live/platformLoads.ts`
+ *  `buildBrief`) — recommending one stalls the demo forever on "In transit".
+ *  The dispatch fallback (`suggestForLoad`) is filtered here to the first
+ *  FEASIBLE candidate whose driver also has a phone, via one `driver.
+ *  findMany` lookup rather than a lookup per candidate. Candidates are kept
+ *  in `suggestForLoad`'s own order — first feasible-and-reachable wins,
+ *  same "top of the list" rule the unfiltered fallback always used. */
+async function reachableCandidate(
+  orgId: string,
+  loadId: string,
+  nowMs: number,
+): Promise<{ driverId: string; driverName: string | null } | null> {
+  const result = await suggestForLoad(orgId, loadId, nowMs);
+  const feasible = result?.candidates.filter((c) => c.feasible) ?? [];
+  if (feasible.length === 0) return null;
+
+  const phoneRows = await prisma.driver.findMany({
+    where: { id: { in: feasible.map((c) => c.driverId) } },
+    select: { id: true, phone: true },
+  });
+  const phoneById = new Map(phoneRows.map((d) => [d.id, d.phone]));
+
+  const reachable = feasible.find((c) => hasPhone(phoneById.get(c.driverId)));
+  return reachable ? { driverId: reachable.driverId, driverName: reachable.driverName } : null;
+}
+
 async function handleAiRecommendation(orgId: string, story: DemoStory, nowMs: number): Promise<Patch | null> {
   if (!story.loadId) return null;
   const run = story.runId ? await prisma.aiDecisionRecord.findUnique({ where: { id: story.runId } }) : null;
@@ -39,27 +70,45 @@ async function handleAiRecommendation(orgId: string, story: DemoStory, nowMs: nu
   const timedOut = run != null && nowMs - run.proposedAt.getTime() > RUN_TIMEOUT_MS;
 
   if (run && terminal && run.status === "proposed" && run.driverId) {
-    const driver = await prisma.driver.findUnique({ where: { id: run.driverId }, select: { name: true } });
+    const driver = await prisma.driver.findUnique({ where: { id: run.driverId }, select: { name: true, phone: true } });
     const confidence = run.confidence != null ? run.confidence.toFixed(2) : "unknown";
+    const driverName = driver?.name ?? "a driver";
+
+    if (hasPhone(driver?.phone)) {
+      return {
+        stage: "awaiting_approval",
+        recommendedDriverId: run.driverId,
+        recommendationSource: "ai",
+        logTexts: [`AI recommends ${driverName} (confidence ${confidence}).`],
+      };
+    }
+
+    // The AI's pick has no phone on file — Night Shift could never reach
+    // them. Fall back to a reachable dispatch recommendation, but keep
+    // `runId` untouched so the AI Lab link still shows the run that fired.
+    const fallback = await reachableCandidate(orgId, story.loadId, nowMs);
     return {
       stage: "awaiting_approval",
-      recommendedDriverId: run.driverId,
-      recommendationSource: "ai",
-      logTexts: [`AI recommends ${driver?.name ?? "a driver"} (confidence ${confidence}).`],
+      recommendedDriverId: fallback?.driverId ?? null,
+      recommendationSource: "engine",
+      logTexts: [
+        fallback
+          ? `AI recommends ${driverName} (confidence ${confidence}), but Night Shift has no phone on file for them — using the dispatch recommendation instead: ${fallback.driverName ?? "a driver"}.`
+          : `AI recommends ${driverName} (confidence ${confidence}), but Night Shift has no phone on file for them — no reachable driver is available.`,
+      ],
     };
   }
 
   if (!harnessEnabled() || run == null || terminal || timedOut) {
-    const result = await suggestForLoad(orgId, story.loadId, nowMs);
-    const top = result?.candidates.find((c) => c.feasible) ?? null;
+    const fallback = await reachableCandidate(orgId, story.loadId, nowMs);
     return {
       stage: "awaiting_approval",
-      recommendedDriverId: top?.driverId ?? null,
+      recommendedDriverId: fallback?.driverId ?? null,
       recommendationSource: "engine",
       logTexts: [
-        top
-          ? `AI unavailable — using the deterministic recommendation: ${top.driverName ?? "a driver"}.`
-          : "AI unavailable — the deterministic recommendation found no feasible driver.",
+        fallback
+          ? `AI unavailable — using the dispatch recommendation: ${fallback.driverName ?? "a driver"}.`
+          : "AI unavailable — no reachable driver is available.",
       ],
     };
   }

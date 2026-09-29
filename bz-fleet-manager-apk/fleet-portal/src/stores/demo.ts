@@ -71,19 +71,39 @@ function extractConfidence(log: DemoStoryLogEntry[]): string | null {
 /** There is no `recommendedDriverName` field on the wire — observe.ts only
  *  ever names the driver inside the log line it writes on the SAME
  *  transition that sets `recommendedDriverId` ("AI recommends John Carter
- *  (confidence 0.85)." for the AI path, "AI unavailable — using the
- *  deterministic recommendation: John Carter." for the engine fallback; the
- *  no-feasible-driver fallback names no one). Missing/unparseable degrades
- *  to the generic fallback in computeStageAction below, never "undefined". */
+ *  (confidence 0.85)." for the AI path, "AI unavailable — using the dispatch
+ *  recommendation: John Carter." for the engine fallback, or, when the AI's
+ *  own pick has no phone on file, "AI recommends Marcus Webb (confidence
+ *  0.95), but Night Shift has no phone on file for them — using the dispatch
+ *  recommendation instead: John Carter." — reachable-fix-brief.md; the
+ *  no-reachable-driver fallback names no one, whether standalone ("AI
+ *  unavailable — no reachable driver is available.") or blended ("AI
+ *  recommends Marcus Webb …, but … — no reachable driver is available.") —
+ *  reachable-fix-review.md HIGH: the blended line still names the AI's
+ *  unreachable pick, but `recommendedDriverId` is null there, so it must be
+ *  checked BEFORE the generic AI-name pattern or Approve would name a driver
+ *  who isn't actually recommended). Missing/unparseable degrades to the
+ *  generic fallback in computeStageAction below, never "undefined". */
 function extractRecommendedDriverName(log: DemoStoryLogEntry[]): string | null {
   for (let i = log.length - 1; i >= 0; i -= 1) {
     const text = log[i].text
+    if (/no reachable driver is available\.$/.test(text)) return null
+    const fallbackMatch = /using the dispatch recommendation(?: instead)?: (.+?)\.$/.exec(text)
+    if (fallbackMatch) return fallbackMatch[1]
     const aiMatch = /^AI recommends (.+?) \(confidence/.exec(text)
     if (aiMatch) return aiMatch[1]
-    const engineMatch = /^AI unavailable — using the deterministic recommendation: (.+?)\.$/.exec(text)
-    if (engineMatch) return engineMatch[1]
   }
   return null
+}
+
+/** reachable-fix-review.md #f: the blended log line (the AI proposed a real
+ *  driver but Night Shift has no phone for them) must not read "AI
+ *  unavailable" in the Approve subline — the AI was available and did
+ *  propose someone; it just wasn't reachable. Detected the same way
+ *  `extractRecommendedDriverName` reads the log: last line wins. */
+function isUnreachableAiPick(log: DemoStoryLogEntry[]): boolean {
+  const last = log.at(-1)?.text
+  return last != null && /^AI recommends .* but Night Shift has no phone on file for them/.test(last)
 }
 
 function computeStageAction(story: DemoStory, waitingOn: string | null): DemoStageAction | null {
@@ -96,7 +116,9 @@ function computeStageAction(story: DemoStory, waitingOn: string | null): DemoSta
       const subline =
         story.recommendationSource === 'ai'
           ? `Recommended by AI${confidence ? ` (confidence ${confidence})` : ''}`
-          : 'Recommended by the dispatch rules — AI unavailable'
+          : isUnreachableAiPick(story.log)
+            ? "Recommended by the dispatch rules — the AI's pick had no phone on file"
+            : 'Recommended by the dispatch rules — AI unavailable'
       // A reset a moment ago queued Night Shift's release of the previous
       // load; approving before it has been applied would be refused, so the
       // button waits with the reason instead of erroring.
