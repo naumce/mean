@@ -294,4 +294,55 @@ describe('NightShiftView', () => {
       expect(wrapper.find('[data-testid="connect-sheet"]').exists()).toBe(true)
     })
   })
+
+  describe('Task 8: unenforced policy controls', () => {
+    const NOT_ENFORCED_TEXT =
+      'Not enforced yet — Night Shift does not read this setting. Messages are governed by Shadow/Live only.'
+
+    it('disables the customer-email switch and both quiet-hours inputs, each with a not-enforced note', async () => {
+      mockedUseNightShiftStore.mockReturnValue(createStoreStub() as unknown as ReturnType<typeof useNightShiftStore>)
+
+      const wrapper = mount(NightShiftView)
+      await flushPromises()
+
+      expect(wrapper.find('[data-testid="toggle-customer-email"]').attributes('disabled')).toBeDefined()
+      expect(wrapper.find('#policy-quiet-from').attributes('disabled')).toBeDefined()
+      expect(wrapper.find('#policy-quiet-to').attributes('disabled')).toBeDefined()
+
+      const notes = wrapper.findAll('[data-testid="not-enforced-note"]')
+      expect(notes.length).toBeGreaterThan(0)
+      for (const note of notes) {
+        expect(note.text()).toBe(NOT_ENFORCED_TEXT)
+      }
+
+      // Shadow/Live controls must be untouched by this task.
+      expect(wrapper.find('[data-testid="choose-shadow"]').attributes('disabled')).toBeUndefined()
+      expect(wrapper.find('[data-testid="choose-live"]').attributes('disabled')).toBeUndefined()
+    })
+
+    it('keeps customerEmailOn/quietFrom/quietTo unchanged in the save payload although their controls are disabled', async () => {
+      const policyWithUnenforcedSettings: AgentPolicy = {
+        ...standardPolicy,
+        customerEmailOn: true,
+        quietFrom: '22:00',
+        quietTo: '06:00',
+      }
+      const store = createStoreStub({ policies: [policyWithUnenforcedSettings], loadsByPolicy: {} })
+      mockedUseNightShiftStore.mockReturnValue(store as unknown as ReturnType<typeof useNightShiftStore>)
+
+      const wrapper = mount(NightShiftView)
+      await flushPromises()
+
+      await wrapper.find('form').trigger('submit.prevent')
+      await flushPromises()
+
+      expect(store.savePolicy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          customerEmailOn: true,
+          quietFrom: '22:00',
+          quietTo: '06:00',
+        }),
+      )
+    })
+  })
 })

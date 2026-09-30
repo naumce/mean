@@ -428,9 +428,11 @@ onMounted(async () => {
             <button
               type="button"
               role="switch"
+              disabled
               :aria-checked="form.customerEmailOn"
+              aria-describedby="not-enforced-note-customer-email"
               data-testid="toggle-customer-email"
-              class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors"
+              class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full opacity-50 transition-colors"
               :class="form.customerEmailOn ? 'bg-brand' : 'bg-surface-3'"
               @click="form.customerEmailOn = !form.customerEmailOn"
             >
@@ -438,6 +440,9 @@ onMounted(async () => {
             </button>
             <span class="text-ink-2">Also email the customer a status update</span>
           </label>
+          <p id="not-enforced-note-customer-email" class="text-xs text-ink-3" data-testid="not-enforced-note">
+            Not enforced yet — Night Shift does not read this setting. Messages are governed by Shadow/Live only.
+          </p>
         </fieldset>
 
         <!-- Permissions -->
@@ -489,7 +494,9 @@ onMounted(async () => {
                 id="policy-quiet-from"
                 v-model="form.quietFrom"
                 type="time"
-                class="rounded-md border border-line bg-surface-2 px-3 py-2 text-sm text-ink focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+                disabled
+                aria-describedby="not-enforced-note-quiet-hours"
+                class="rounded-md border border-line bg-surface-2 px-3 py-2 text-sm text-ink opacity-50 focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
               />
             </label>
             <label class="flex flex-col gap-1 text-sm">
@@ -498,11 +505,15 @@ onMounted(async () => {
                 id="policy-quiet-to"
                 v-model="form.quietTo"
                 type="time"
-                class="rounded-md border border-line bg-surface-2 px-3 py-2 text-sm text-ink focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+                disabled
+                aria-describedby="not-enforced-note-quiet-hours"
+                class="rounded-md border border-line bg-surface-2 px-3 py-2 text-sm text-ink opacity-50 focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
               />
             </label>
           </div>
-          <p class="text-xs text-ink-3">Leave both blank to allow calls and texts at any hour.</p>
+          <p id="not-enforced-note-quiet-hours" class="text-xs text-ink-3" data-testid="not-enforced-note">
+            Not enforced yet — Night Shift does not read this setting. Messages are governed by Shadow/Live only.
+          </p>
         </fieldset>
 
         <p v-if="formError" class="text-sm text-red-600" role="alert" data-testid="form-error">{{ formError }}</p>

@@ -227,7 +227,8 @@ Four deterministic rules run every tick, each returning named evidence or nothin
   `night-shift/src/core/agent.ts:521-589`; default in `night-shift/src/core/policy.ts:82`).
 - The customer — by email only, and only when the delivery deadline is actually computed to be at risk and a customer email address is on file for the load; the
   draft is attached to the dispatcher's escalation email and is sent only once the dispatcher explicitly instructs "send the customer email," never
-  automatically (source: `night-shift/src/core/agent.ts:540-559,209-236`). See Gap 6 on the `customerEmailOn` policy field.
+  automatically (source: `night-shift/src/core/agent.ts:540-559,209-236`). See Gap 6 on the `customerEmailOn` policy field; the portal marks that
+  control "Not enforced yet" (source: `fleet-portal/src/views/NightShiftView.vue:428-445`).
 - A customer draft is deliberately withheld (with the dispatcher told why) when the truck's last known position is more than 5 minutes old — a delay claim is
   never written from a stale fix (source: `night-shift/src/core/agent.ts:538-554`; threshold in `night-shift/src/core/constants.ts:38`).
 - In shadow mode, every one of `sendText`/`placeCall`/`sendMail` is replaced by a logged "would say" line instead — nobody hears or receives anything (source:
@@ -354,7 +355,7 @@ Four deterministic rules run every tick, each returning named evidence or nothin
    actual gate observed in the code is only "deadline at risk and a customer email address is on file" (source: `night-shift/src/core/policy.ts:38-39`;
    `night-shift/src/live/platformLoads.ts:168,274`; no read of this field found anywhere in `night-shift/src/core/agent.ts:521-559` or elsewhere in
    `night-shift/src`). The dispatcher's own explicit "send the customer email" step still gates the actual send either way, so no email escapes automatically as
-   a result of this gap.
+   a result of this gap. UI marks the control "Not enforced yet" (2026-09-30).
 
 7. **Shadow is per policy, not a global switch.** The worker serves every agent-enabled load in the org under whichever policy that load is assigned; two loads
    under different policies can run simultaneously, one in shadow and one live, on the same worker process (source: `night-shift/src/live/worker.ts:70-87`;
@@ -365,7 +366,7 @@ Four deterministic rules run every tick, each returning named evidence or nothin
    before sending a message, placing a call, or advancing the ladder — a repository-wide search found no consumer of these two fields anywhere outside their own
    definition, the database mapping, and the portal's settings form (source: `night-shift/src/core/policy.ts:49-52,83-84`;
    `night-shift/src/live/platformLoads.ts:171-172,275`; `fleet-portal/src/views/NightShiftView.vue:63-64,490-499`). This is the same "policy field exists but is
-   not read by the agent" pattern as Gap 6.
+   not read by the agent" pattern as Gap 6. UI marks the control "Not enforced yet" (2026-09-30).
 
 9. **The status vocabularies in Sections 3 and 4 are this document's own proposal, not existing UI copy.** No fixed set of these labels exists in the frontend
    today; they are derived from state the backend already exposes, to give a buyer a plain-language read-out.
