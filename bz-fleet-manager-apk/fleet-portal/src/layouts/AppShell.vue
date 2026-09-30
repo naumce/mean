@@ -54,6 +54,9 @@ const TOWER_PRIMARY = [
   { label: 'Demo', to: '/demo', icon: 'tower' },
   { label: 'Their Board', to: '/board/broker', icon: 'tower' },
   { label: 'Control Tower', to: '/cockpit', icon: 'tower' },
+  // AI Agents Surface (2026-09-30 plan, Task 4): right after Control Tower —
+  // what the Dispatch Assistant and Night Shift can each do right now.
+  { label: 'AI Agents', to: '/agents', icon: 'tower' },
   // AI Dispatch Foundation (Task 9). TOWER_PRIMARY only renders for
   // non-sheet tiers (see primaryNav below) — tower-only by construction,
   // same as every other entry in this array.

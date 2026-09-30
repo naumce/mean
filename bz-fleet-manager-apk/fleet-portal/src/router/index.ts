@@ -1,6 +1,7 @@
 import type { RouteLocationRaw } from 'vue-router'
 import { createRouter, createWebHistory } from 'vue-router'
 import AppShell from '../layouts/AppShell.vue'
+import AgentsView from '../views/AgentsView.vue'
 import ApprovalsView from '../views/ApprovalsView.vue'
 import AiLabView from '../views/ai/AiLabView.vue'
 import AiExperimentView from '../views/ai/AiExperimentView.vue'
@@ -69,6 +70,9 @@ export const routes = [
           (useAuthStore().tier === 'sheet' ? { name: 'broker-board' } : { name: 'cockpit' }),
       },
       { path: 'cockpit', name: 'cockpit', component: CockpitView },
+      // AI Agents Surface (2026-09-30 plan, Task 4): "AI Agents" — what the
+      // Dispatch Assistant and Night Shift can each do right now.
+      { path: 'agents', name: 'agents', component: AgentsView },
       // Demo Mode (2026-09-28 plan): the presenter screen — 404s server-side
       // unless DEMO_MODE is on; the nav entry (AppShell's TOWER_PRIMARY)
       // hides itself the same way, off stores/demo.ts's probe().

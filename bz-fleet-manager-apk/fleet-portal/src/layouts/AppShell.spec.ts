@@ -186,18 +186,22 @@ describe('AppShell nav by plan tier', () => {
   it('tower tier shows the full nav, unchanged, including "More"', async () => {
     const w = await mountShellWithTier('tower')
     const labels = w.findAllComponents(SidebarNavItem).map((c) => c.props('label'))
-    expect(labels.slice(0, 4)).toEqual(['Their Board', 'Control Tower', 'Driver Supply', 'Night Shift'])
+    expect(labels.slice(0, 5)).toEqual(['Their Board', 'Control Tower', 'AI Agents', 'Driver Supply', 'Night Shift'])
     expect(labels).toContain('Fleet')
     expect(w.find('[data-testid="nav-more-toggle"]').exists()).toBe(true)
   })
 
-  it('shows "Driver Supply" right after "Control Tower" for tower tier, and not at all for sheet tier', async () => {
+  // AI Agents Surface (2026-09-30 plan, Task 4): "AI Agents" now sits right
+  // after "Control Tower", pushing "Driver Supply" one slot over.
+  it('shows "AI Agents" right after "Control Tower", and "Driver Supply" right after that, for tower tier; neither for sheet tier', async () => {
     const tower = await mountShellWithTier('tower')
     const towerLabels = tower.findAllComponents(SidebarNavItem).map((c) => c.props('label'))
-    expect(towerLabels.indexOf('Driver Supply')).toBe(towerLabels.indexOf('Control Tower') + 1)
+    expect(towerLabels.indexOf('AI Agents')).toBe(towerLabels.indexOf('Control Tower') + 1)
+    expect(towerLabels.indexOf('Driver Supply')).toBe(towerLabels.indexOf('AI Agents') + 1)
 
     const sheet = await mountShellWithTier('sheet')
     const sheetLabels = sheet.findAllComponents(SidebarNavItem).map((c) => c.props('label'))
+    expect(sheetLabels).not.toContain('AI Agents')
     expect(sheetLabels).not.toContain('Driver Supply')
   })
 
