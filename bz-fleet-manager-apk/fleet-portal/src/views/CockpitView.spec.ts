@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import AgentDrawer from '../components/agent/AgentDrawer.vue'
 import GanttBoard from '../components/cockpit/GanttBoard.vue'
 import PlanVerdictModal from '../components/cockpit/PlanVerdictModal.vue'
 import { acquireLoadLock, acquireLock, api, createAssignment, fetchLoadLocks, heartbeatLoadLock, planAssignment, releaseLoadLock, type Lock, type LoadLock } from '../lib/api'
@@ -93,6 +94,22 @@ function respond(url: string) {
   if (url.includes('/cost-model')) return { data: { mpg: 6.5, dieselCentsPerGal: 400, driverPayCentsPerMi: 60, fixedCentsPerMi: 45, allInCentsPerMi: 167 } }
   if (url.includes('/risk')) return { data: { risks: [] } }
   if (url.includes('/alerts')) return { data: { alerts: [] } }
+  // Task 6 (?load= deep link): AgentDrawer fetches this the moment its
+  // loadId prop is non-null (nightShift store's agentFor) — a well-formed
+  // AgentForLoad fixture so opening it from the query param resolves
+  // cleanly instead of falling into the drawer's own error state.
+  if (url.includes('/agent')) {
+    return {
+      data: {
+        enabled: true, boardLoadNo: 'L-51217', pill: 'watching', line: null, timeline: [],
+        policy: {
+          id: 'p1', name: 'Default', stopMin: 5, delayMin: 10, darkMin: 5, darkAtStopMin: 5,
+          offRouteMi: 2, offRouteMin: 10, rungGapMin: 10, maxCalls: 3, dispatcherEmail: 'd@x.com',
+          dispatcherPhone: null, customerEmailOn: false, shadow: true, bossCallOn: false, quietFrom: null, quietTo: null,
+        },
+      },
+    }
+  }
   // Qwen Harness v0.1 (Task 7): the "Ask Qwen" test opens SuggestModal, which
   // renders off `lb.suggest` — a bare `{ data: [] }` from the catch-all below
   // is not a SuggestResult (no `.candidates`) and SuggestModal's own
@@ -133,8 +150,8 @@ describe('CockpitView', () => {
   })
   afterEach(() => vi.restoreAllMocks())
 
-  async function mountView() {
-    const router = createRouter({
+  function buildRouter() {
+    return createRouter({
       history: createMemoryHistory(),
       routes: [
         { path: '/cockpit', component: CockpitView },
@@ -145,7 +162,22 @@ describe('CockpitView', () => {
         { path: '/ai-lab/runs/:id', name: 'ai-run', component: { template: '<div/>' } },
       ],
     })
+  }
+
+  async function mountView() {
+    const router = buildRouter()
     await router.push('/cockpit')
+    await router.isReady()
+    const w = mount(CockpitView, { global: { plugins: [router] } })
+    await flushPromises()
+    return w
+  }
+
+  // Task 6: mounts at an arbitrary path (a `?load=` deep link) instead of the
+  // plain '/cockpit' every other test in this file uses.
+  async function mountViewAt(path: string) {
+    const router = buildRouter()
+    await router.push(path)
     await router.isReady()
     const w = mount(CockpitView, { global: { plugins: [router] } })
     await flushPromises()
@@ -404,6 +436,51 @@ describe('CockpitView', () => {
       await router.push('/elsewhere')
 
       expect(release).toHaveBeenCalled()
+    })
+  })
+
+  // Task 6: the Cockpit opens its AgentDrawer from `?load=` so Demo Mode and
+  // the "Night Shift timeline" link can deep-link into a specific load's
+  // supervision drawer, not just from an in-page brick/pill click.
+  describe('agent drawer ?load= deep link', () => {
+    it('opens the agent drawer for the load named by the query on mount', async () => {
+      const w = await mountViewAt('/cockpit?load=L1')
+      expect(w.getComponent(AgentDrawer).props('loadId')).toBe('L1')
+    })
+
+    // Fix round 1 (review MEDIUM): a bare `?load=` is an empty string, not a
+    // real load id — it must not open a blank drawer.
+    it('keeps the drawer closed for a bare ?load= with no value', async () => {
+      const w = await mountViewAt('/cockpit?load=')
+      expect(w.getComponent(AgentDrawer).props('loadId')).toBeNull()
+    })
+
+    // Fix round 1 (review MEDIUM): a repeated `?load=a&load=b` resolves to an
+    // array on route.query.load, not a string — ambiguous, so it must not
+    // open the drawer for either candidate.
+    it('keeps the drawer closed for a repeated ?load=a&load=b (array value)', async () => {
+      const w = await mountViewAt('/cockpit?load=a&load=b')
+      expect(w.getComponent(AgentDrawer).props('loadId')).toBeNull()
+    })
+
+    it('closes the drawer when the query no longer carries a load', async () => {
+      const w = await mountViewAt('/cockpit?load=L1')
+      expect(w.getComponent(AgentDrawer).props('loadId')).toBe('L1')
+
+      await w.vm.$router.push('/cockpit')
+      await flushPromises()
+
+      expect(w.getComponent(AgentDrawer).props('loadId')).toBeNull()
+    })
+
+    it('emitting close on the drawer removes load from the query', async () => {
+      const w = await mountViewAt('/cockpit?load=L1')
+
+      await w.getComponent(AgentDrawer).vm.$emit('close')
+      await flushPromises()
+
+      expect(w.getComponent(AgentDrawer).props('loadId')).toBeNull()
+      expect(w.vm.$router.currentRoute.value.query.load).toBeUndefined()
     })
   })
 })

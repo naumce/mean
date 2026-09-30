@@ -20,9 +20,9 @@ async function testRouter(): Promise<Router> {
   return router
 }
 
-async function mountLinks(props: { aiRunId: string | null; log: DemoStoryLogEntry[] }) {
+async function mountLinks(props: { aiRunId: string | null; log: DemoStoryLogEntry[]; agentTimelineLoadId?: string | null }) {
   const router = await testRouter()
-  return mount(HowItWorksLinks, { props, global: { plugins: [router] } })
+  return mount(HowItWorksLinks, { props: { agentTimelineLoadId: null, ...props }, global: { plugins: [router] } })
 }
 
 describe('HowItWorksLinks', () => {
@@ -49,6 +49,22 @@ describe('HowItWorksLinks', () => {
 
     expect(wrapper.find('[data-testid="how-it-works-ai-run"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="how-it-works-ai-run-pending"]').exists()).toBe(true)
+  })
+
+  // Task 6: the Cockpit now supports a `?load=` deep link into its
+  // AgentDrawer, so "Night Shift timeline" prefers it once a load is known.
+  it('links "Night Shift timeline" to the cockpit deep link once a load is known', async () => {
+    const wrapper = await mountLinks({ aiRunId: null, log: [], agentTimelineLoadId: 'L1' })
+    await wrapper.find('[data-testid="how-it-works-toggle"]').trigger('click')
+
+    expect(wrapper.find('[data-testid="how-it-works-timeline"]').attributes('href')).toBe('/cockpit?load=L1')
+  })
+
+  it('falls back to the plain /cockpit route when no load is known yet', async () => {
+    const wrapper = await mountLinks({ aiRunId: null, log: [], agentTimelineLoadId: null })
+    await wrapper.find('[data-testid="how-it-works-toggle"]').trigger('click')
+
+    expect(wrapper.find('[data-testid="how-it-works-timeline"]').attributes('href')).toBe('/cockpit')
   })
 
   it('keeps the technical log collapsed until its own toggle is clicked', async () => {

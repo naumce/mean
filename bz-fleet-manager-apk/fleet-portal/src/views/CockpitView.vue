@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { onBeforeRouteLeave, useRouter } from 'vue-router'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import AgentDrawer from '../components/agent/AgentDrawer.vue'
 import ActivityPanel from '../components/cockpit/ActivityPanel.vue'
 import BacklogPanel from '../components/cockpit/BacklogPanel.vue'
@@ -83,6 +83,7 @@ const auth = useAuthStore()
 const locks = useLocksStore()
 const loadLocks = useLoadLocksStore()
 const router = useRouter()
+const route = useRoute()
 
 const nowMs = ref(Date.now())
 const activityOpen = ref(false)
@@ -154,6 +155,27 @@ async function onGesturePair(e: GesturePairPayload): Promise<void> {
 // Header fields come straight off this board's own BoardLoad.
 const agentDrawerLoadId = ref<string | null>(null)
 const agentDrawerLoad = computed(() => lb.loads.find((l) => l.id === agentDrawerLoadId.value) ?? null)
+
+// Task 6 (Cockpit ?load= deep link): Demo Mode and "Night Shift timeline"
+// (HowItWorksLinks.vue) both need to open this drawer for a specific load
+// from outside the board — a plain URL, not an in-page brick/pill click.
+// `immediate: true` opens it on a direct visit to /cockpit?load=…, and every
+// later change to the query (a fresh push, or the query being cleared) keeps
+// the drawer in sync with it. Fix round 1: a bare `?load=` (empty string) or
+// a repeated `?load=a&load=b` (vue-router hands back an array) must not open
+// a blank/ambiguous drawer — only a genuine, non-empty single load id does.
+watch(
+  () => route.query.load,
+  (load) => {
+    agentDrawerLoadId.value = typeof load === 'string' && load.length > 0 ? load : null
+  },
+  { immediate: true },
+)
+
+function closeAgentDrawer(): void {
+  agentDrawerLoadId.value = null
+  router.replace({ query: { ...route.query, load: undefined } })
+}
 
 function jumpTo(loadId: string): void {
   // T2 "Map as Navigation", Task 4: this exact select+switch-view+scroll
@@ -300,7 +322,7 @@ function clearCockpitScopedState(): void {
       :customer-name="agentDrawerLoad?.customerName ?? null"
       :carrier-name="agentDrawerLoad?.carrierName ?? null"
       :carrier-mc="agentDrawerLoad?.carrierMc ?? null"
-      @close="agentDrawerLoadId = null"
+      @close="closeAgentDrawer"
     />
   </div>
 </template>

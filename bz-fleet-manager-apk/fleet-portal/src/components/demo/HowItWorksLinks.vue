@@ -10,11 +10,13 @@ import type { DemoStoryLogEntry } from '../../types/demo'
 // not a native <details> element, so this file's spec can drive it the same
 // way AppShell.spec.ts already drives that one.
 //
-// "Night Shift timeline" falls back to plain /cockpit: this codebase has no
-// existing deep link that opens the Cockpit's AgentDrawer for a specific
-// load from a URL (CockpitView only ever opens it from an in-page click), so
-// there is no "agent drawer link" to prefer over the plain route yet.
-defineProps<{ aiRunId: string | null; log: DemoStoryLogEntry[] }>()
+// "Night Shift timeline" links to the Cockpit's `?load=` deep link (Task 6)
+// once one is known — CockpitView watches `route.query.load` into its
+// AgentDrawer, so this opens that load's supervision drawer directly instead
+// of landing on the plain board. Before the demo has a load yet
+// (`agentTimelineLoadId` still null), it falls back to the plain /cockpit
+// route, same as before.
+defineProps<{ aiRunId: string | null; log: DemoStoryLogEntry[]; agentTimelineLoadId: string | null }>()
 
 const open = ref(false)
 const logOpen = ref(false)
@@ -47,7 +49,13 @@ function formatTime(atMs: number): string {
 
       <RouterLink to="/cockpit" class="text-brand-ink hover:underline" data-testid="how-it-works-cockpit">Control Tower</RouterLink>
       <RouterLink to="/supply" class="text-brand-ink hover:underline" data-testid="how-it-works-supply">Driver Supply map</RouterLink>
-      <RouterLink to="/cockpit" class="text-brand-ink hover:underline" data-testid="how-it-works-timeline">Night Shift timeline</RouterLink>
+      <RouterLink
+        :to="agentTimelineLoadId ? `/cockpit?load=${agentTimelineLoadId}` : '/cockpit'"
+        class="text-brand-ink hover:underline"
+        data-testid="how-it-works-timeline"
+      >
+        Night Shift timeline
+      </RouterLink>
 
       <div>
         <button

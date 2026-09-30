@@ -117,6 +117,46 @@ describe('DemoView', () => {
     expect(wrapper.find('[data-testid="stage-rail"]').exists()).toBe(false)
   })
 
+  it('shows the driver-recommendation stage by name in the intro copy', async () => {
+    const { wrapper } = await mountView()
+    expect(wrapper.text()).toContain('A single load, walked through driver recommendation, human approval, a breakdown, and delivery')
+  })
+
+  // Task 6: the "View agent activity" deep link into the Cockpit's
+  // AgentDrawer — visible once there is a Night Shift story to look at
+  // (post-approval stages only), always pointing at the same `?load=` target
+  // HowItWorksLinks' "Night Shift timeline" link uses.
+  describe('"View agent activity" button', () => {
+    const AGENT_ACTIVITY_STAGES: DemoStage[] = [
+      'in_transit', 'breakdown_detected', 'driver_contacted', 'awaiting_driver_reply',
+      'escalated', 'awaiting_customer_update', 'customer_updated', 'resolved', 'delivering', 'delivered',
+    ]
+    const HIDDEN_STAGES: DemoStage[] = ['uncovered', 'ai_recommendation', 'awaiting_approval', 'error']
+
+    for (const stage of AGENT_ACTIVITY_STAGES) {
+      it(`shows it and links to the deep link on the ${stage} stage`, async () => {
+        const { wrapper } = await mountView({ data: demoData({ stage, error: stage === 'error' ? 'x' : null }) })
+        const link = wrapper.find('[data-testid="demo-view-agent"]')
+        expect(link.exists()).toBe(true)
+        expect(link.attributes('href')).toBe('/cockpit?load=load-1')
+      })
+    }
+
+    for (const stage of HIDDEN_STAGES) {
+      it(`hides it on the ${stage} stage`, async () => {
+        const { wrapper } = await mountView({ data: demoData({ stage, error: stage === 'error' ? 'x' : null }) })
+        expect(wrapper.find('[data-testid="demo-view-agent"]').exists()).toBe(false)
+      })
+    }
+
+    it('falls back to the plain /cockpit route when the demo has no agentTimelineLoadId yet', async () => {
+      const { wrapper } = await mountView({
+        data: { ...demoData({ stage: 'in_transit' }), links: { cockpitLoadId: null, aiRunId: null, driverId: null, agentTimelineLoadId: null } },
+      })
+      expect(wrapper.find('[data-testid="demo-view-agent"]').attributes('href')).toBe('/cockpit')
+    })
+  })
+
   it('renders the rail exactly as the store computed it for a mid-story fixture', async () => {
     const { wrapper } = await mountView()
     const items = wrapper.findAll('[data-testid="stage-rail-item"]')
