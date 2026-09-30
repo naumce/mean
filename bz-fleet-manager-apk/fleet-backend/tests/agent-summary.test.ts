@@ -166,4 +166,15 @@ describe("deriveAgentSummary", () => {
     expect(s.activity).not.toBe("escalated");
     expect(s.activity).toBe("watching");
   });
+
+  // --- Fix round 2 ---
+
+  it("the pill's current attention outranks an older unresolved escalation, but the escalation fact is still reported", () => {
+    const s = deriveAgentSummary(base({ pill: "attention", attentionLine: "ATTENTION — no driver or carrier phone on file", events: [
+      ev(NOW - 10 * 60_000, "escalation", { reason: "driver reports: Driver reports a breakdown.", draftAttached: false }),
+    ] }));
+    expect(s.activity).toBe("attention");
+    expect(s.next).toBe("ATTENTION — no driver or carrier phone on file");
+    expect(s.recommends).toBe("driver reports: Driver reports a breakdown.");
+  });
 });

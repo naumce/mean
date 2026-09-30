@@ -3,6 +3,11 @@
 // drawer and the overview can never disagree. The worker's in-memory ladder
 // timers and open-question key are NOT persisted, so anything about "when"
 // is marked inferred/unknown rather than invented.
+// Activity precedence (first match wins): off → delivered → held →
+// attention (pill === "attention") → escalated → waiting_reply → watching.
+// The pill is the worker's CURRENT verdict; "attention" means it could not
+// start or continue running the load at all right now, which outranks what
+// it did earlier (e.g. an old escalation from before the load went stale).
 export type AgentActivity = "off" | "watching" | "waiting_reply" | "escalated" | "held" | "attention" | "delivered";
 export type AgentMode = "off" | "shadow" | "live";
 export interface AgentSummaryEvent { atMs: number; kind: string; evidence: unknown; actionTaken: string | null }
@@ -45,17 +50,19 @@ export function deriveAgentSummary(input: AgentSummaryInput): AgentSummary {
     return { mode, activity: "held", noticed, recommends: null, done, next: policyPrefix + "You have taken over. Night Shift keeps recording but sends nothing until you hand back.", nextConfidence: "known", lastEventAt };
   }
   const escalation = events.find((e) => e.kind === "escalation");
-  if (escalation && !events.some((e) => e.atMs >= escalation.atMs && (e.kind === "reply" || (e.kind === "anomaly" && rec(e.evidence).resolved === true)))) {
-    const ev = rec(escalation.evidence);
-    const recommends = (str(ev.reason) ?? "Escalated to dispatch.") + (ev.draftAttached === true ? " A customer note is drafted." : "");
+  const escalationActive = Boolean(escalation && !events.some((e) => e.atMs >= escalation.atMs && (e.kind === "reply" || (e.kind === "anomaly" && rec(e.evidence).resolved === true))));
+  const recommends = escalationActive && escalation
+    ? (str(rec(escalation.evidence).reason) ?? "Escalated to dispatch.") + (rec(escalation.evidence).draftAttached === true ? " A customer note is drafted." : "")
+    : null;
+  if (input.pill === "attention") {
+    return { mode, activity: "attention", noticed, recommends, done, next: policyPrefix + (input.attentionLine ?? "Night Shift could not start or continue; see the timeline."), nextConfidence: input.attentionLine ? "known" : "inferred", lastEventAt };
+  }
+  if (escalationActive) {
     return { mode, activity: "escalated", noticed, recommends, done, next: policyPrefix + "Escalated to dispatch. It is your decision now; Night Shift will not re-ask the driver about this.", nextConfidence: "known", lastEventAt };
   }
   const question = events.find((e) => (e.kind === "action" && QUESTION_KINDS.has(String(rec(e.evidence).kind))) || e.kind === "call");
   if (question && !events.some((e) => e.kind === "reply" && e.atMs >= question.atMs)) {
     return { mode, activity: "waiting_reply", noticed, recommends: null, done, next: policyPrefix + "Waiting for the driver's reply. Night Shift re-asks after its cooldown; the exact time is not recorded here.", nextConfidence: "inferred", lastEventAt };
-  }
-  if (input.pill === "attention") {
-    return { mode, activity: "attention", noticed, recommends: null, done, next: policyPrefix + (input.attentionLine ?? "Night Shift could not start or continue; see the timeline."), nextConfidence: input.attentionLine ? "known" : "inferred", lastEventAt };
   }
   if (lastEventAt === null || input.nowMs - lastEventAt > SILENCE_MS) {
     const minutes = lastEventAt === null ? null : Math.round((input.nowMs - lastEventAt) / 60_000);
