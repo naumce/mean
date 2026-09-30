@@ -71,7 +71,7 @@ Presenter tips: warm the model a few minutes before you start (`ollama run qwen3
 - The story's heartbeat is the open page; with the page closed nothing advances (and a very long dock hold ends by the timeout path with a `gone_dark` line on the timeline).
 - One demo per organisation at a time.
 - Great-circle simulated paths cross Lake Michigan; the Demo policy's `offRouteMi 25` keeps the off-route rule quiet.
-- Night Shift's trip-start hours check reads the driver's clocks after the assignment has already reserved this run's on-duty time, so its timeline opens with an "hours cannot carry this run" escalation (shadow). The story ignores it; it is a pre-existing double count between the dispatch engine and the agent, not a demo defect.
+- (Fixed 2026-09-28) Night Shift's trip-start hours check used to read the driver's clocks after the assignment had already reserved this run's on-duty time, so the timeline opened with a false "hours cannot carry this run" escalation. The worker now restores the pre-commit clocks; timelines recorded before that date still show it.
 - Because the load is hot from departure, the first question can read "about -4 minutes behind" (ahead of plan, past the customer deadline) — Night Shift's own wording, left untouched.
 - The simulation is org-wide: every other assignment in the demo org advances (and can complete) while the demo runs, and Reset rewinds only the demo load, the driver and the ten history loads. Use a dedicated demo org, or re-run the world seed when the rest of the board should look fresh.
 - One backend instance per org: the story's per-org mutex is in-process. With two backend instances both would tick and ping. Render runs one.
