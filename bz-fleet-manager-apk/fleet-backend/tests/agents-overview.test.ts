@@ -157,6 +157,42 @@ describe("GET /api/dispatcher/agents/overview", () => {
     expect(res.body.nightShift.loads.length).toBeLessThanOrEqual(25);
   });
 
+  // Fix round 1 (live-data finding): most seeded/imported loads never got a
+  // board number, so `loads[].boardLoadNo` fell back to a raw uuid on the AI
+  // Agents page. The field name is unchanged — only its value now falls back
+  // to orderRef, then externalId, before giving up and returning null.
+  it("boardLoadNo falls back to externalId when neither boardLoadNo nor orderRef is set", async () => {
+    delete process.env.OLLAMA_URL;
+    const { org, token } = await seedOrg();
+    await seedStandard(org.id);
+    const load = await seedLoad(org.id, {
+      agentEnabled: true, agentPill: "watching",
+      boardLoadNo: null, orderRef: null, externalId: "EXT-42",
+    });
+
+    const res = await request(app).get("/api/dispatcher/agents/overview").set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    const row = res.body.nightShift.loads.find((l: { loadId: string }) => l.loadId === load.id);
+    expect(row.boardLoadNo).toBe("EXT-42");
+  });
+
+  it("boardLoadNo prefers the load's own board number when all three are set", async () => {
+    delete process.env.OLLAMA_URL;
+    const { org, token } = await seedOrg();
+    await seedStandard(org.id);
+    const load = await seedLoad(org.id, {
+      agentEnabled: true, agentPill: "watching",
+      boardLoadNo: "LN-1", orderRef: "OR-1", externalId: "EXT-1",
+    });
+
+    const res = await request(app).get("/api/dispatcher/agents/overview").set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    const row = res.body.nightShift.loads.find((l: { loadId: string }) => l.loadId === load.id);
+    expect(row.boardLoadNo).toBe("LN-1");
+  });
+
   it("is tenant scoped: another org's loads and runs never appear", async () => {
     delete process.env.OLLAMA_URL;
     const { token } = await seedOrg();

@@ -163,6 +163,18 @@ function shadowFor(
   return chosen ? chosen.shadow : null;
 }
 
+/** `loads[].boardLoadNo`: the field name stays `boardLoadNo` (the portal
+ *  type mirrors it verbatim) but its VALUE is the first non-empty of the
+ *  load's own board number, its `orderRef`, then its `externalId` — most
+ *  seeded/imported loads never got a board number, and showing a raw uuid
+ *  instead of any of the ids the load actually carries is a live-data bug,
+ *  not a fallback anyone reads intentionally. Precedence is fixed; do not
+ *  reorder it. */
+function displayLoadNo(load: { boardLoadNo: string | null; orderRef: string | null; externalId: string | null }): string | null {
+  const candidates = [load.boardLoadNo, load.orderRef, load.externalId];
+  return candidates.find((v): v is string => typeof v === "string" && v.trim().length > 0) ?? null;
+}
+
 const ACTIVITY_PRIORITY: Record<string, number> = { attention: 0, escalated: 0, waiting_reply: 1 };
 
 /** Same shape as `AgentsOverview["nightShift"]["loads"][number]`, but with
@@ -188,7 +200,7 @@ export async function buildAgentsOverview(orgId: string | null): Promise<AgentsO
   // which is a separate fact (service.configured) from the workload itself.
   const loads = await prisma.load.findMany({
     where: { ...orgFilter(orgId), OR: [{ agentEnabled: true }, { agentPill: { not: "off" } }] },
-    select: { id: true, orgId: true, boardLoadNo: true, agentPill: true, agentEnabled: true, agentPolicyId: true },
+    select: { id: true, orgId: true, boardLoadNo: true, orderRef: true, externalId: true, agentPill: true, agentEnabled: true, agentPolicyId: true },
   });
 
   const activity = { watching: 0, waitingReply: 0, escalated: 0, held: 0, attention: 0, delivered: 0, off: 0, total: 0 };
@@ -262,7 +274,7 @@ export async function buildAgentsOverview(orgId: string | null): Promise<AgentsO
       if (load.agentEnabled) {
         loadRows.push({
           loadId: load.id,
-          boardLoadNo: load.boardLoadNo,
+          boardLoadNo: displayLoadNo(load),
           pill: load.agentPill,
           mode: summary.mode,
           activity: summary.activity,
