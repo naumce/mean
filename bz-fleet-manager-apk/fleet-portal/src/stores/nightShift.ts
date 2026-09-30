@@ -41,6 +41,25 @@ export interface AgentTimelineEntry {
   evidence?: unknown
 }
 
+/** Mirrors fleet-backend's `lib/agentSummary.ts` `AgentSummary`/`AgentMode`/
+ *  `AgentActivity` field-for-field (Task 1/2 of the AI Agents Surface plan):
+ *  the plain-language read of a load's persisted Night Shift facts, computed
+ *  once on the server so the drawer and the AI Agents overview can never
+ *  disagree. Kept here rather than imported — the portal has no build-time
+ *  dependency on fleet-backend's source. */
+export type AgentMode = 'off' | 'shadow' | 'live'
+export type AgentActivity = 'off' | 'watching' | 'waiting_reply' | 'escalated' | 'held' | 'attention' | 'delivered'
+export interface AgentSummary {
+  mode: AgentMode
+  activity: AgentActivity
+  noticed: string | null
+  recommends: string | null
+  done: string[]
+  next: string
+  nextConfidence: 'known' | 'inferred' | 'unknown'
+  lastEventAt: number | null
+}
+
 /** GET /loads/:id/agent's full body — the load's agent state plus its
  *  timeline in one response (there is no separate timeline endpoint). */
 export interface AgentForLoad {
@@ -53,6 +72,10 @@ export interface AgentForLoad {
   pill: string
   line: string | null
   timeline: AgentTimelineEntry[]
+  /** Task 5 (View agent summary): the same derivation the AI Agents overview
+   *  reads, carried on every timeline response. Required — a fixture without
+   *  one is not a valid `AgentForLoad` any more than one missing `pill`. */
+  summary: AgentSummary
 }
 
 /** The drawer's supervision actions (spec §17.3), same vocabulary as the

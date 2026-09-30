@@ -97,7 +97,9 @@ function respond(url: string) {
   // Task 6 (?load= deep link): AgentDrawer fetches this the moment its
   // loadId prop is non-null (nightShift store's agentFor) — a well-formed
   // AgentForLoad fixture so opening it from the query param resolves
-  // cleanly instead of falling into the drawer's own error state.
+  // cleanly instead of falling into the drawer's own error state. Task 5
+  // made `summary` required — AgentDrawer renders it unconditionally once
+  // the agent loads, so it must be present here too.
   if (url.includes('/agent')) {
     return {
       data: {
@@ -106,6 +108,10 @@ function respond(url: string) {
           id: 'p1', name: 'Default', stopMin: 5, delayMin: 10, darkMin: 5, darkAtStopMin: 5,
           offRouteMi: 2, offRouteMin: 10, rungGapMin: 10, maxCalls: 3, dispatcherEmail: 'd@x.com',
           dispatcherPhone: null, customerEmailOn: false, shadow: true, bossCallOn: false, quietFrom: null, quietTo: null,
+        },
+        summary: {
+          mode: 'shadow', activity: 'watching', noticed: null, recommends: null, done: [],
+          next: 'Watching. Next check within a minute.', nextConfidence: 'known', lastEventAt: null,
         },
       },
     }

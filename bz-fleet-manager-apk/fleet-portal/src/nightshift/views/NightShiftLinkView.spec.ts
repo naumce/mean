@@ -2,7 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import NightShiftLinkView from './NightShiftLinkView.vue'
 import AppShell from '../../layouts/AppShell.vue'
-import { useNightShiftStore, type AgentForLoad, type AgentPolicy } from '../../stores/nightShift'
+import { useNightShiftStore, type AgentForLoad, type AgentPolicy, type AgentSummary } from '../../stores/nightShift'
 
 // Task 10 (the deep link): NightShiftLinkView renders AgentDrawer full-screen
 // with NO dispatcher session at all — the auth store is never touched, and
@@ -55,6 +55,20 @@ const standardPolicy: AgentPolicy = {
   quietTo: null,
 }
 
+// Task 5 (AI Agents Surface plan): `AgentForLoad.summary` is now required —
+// this view mounts AgentDrawer, which renders it unconditionally once an
+// agent is loaded, so every fixture here needs a valid one.
+const defaultSummary: AgentSummary = {
+  mode: 'shadow',
+  activity: 'watching',
+  noticed: null,
+  recommends: null,
+  done: [],
+  next: 'Watching. Next check within a minute.',
+  nextConfidence: 'known',
+  lastEventAt: null,
+}
+
 function agentState(overrides: Partial<AgentForLoad> = {}): AgentForLoad {
   return {
     enabled: true,
@@ -62,6 +76,7 @@ function agentState(overrides: Partial<AgentForLoad> = {}): AgentForLoad {
     pill: 'watching',
     line: null,
     timeline: [],
+    summary: defaultSummary,
     ...overrides,
   }
 }

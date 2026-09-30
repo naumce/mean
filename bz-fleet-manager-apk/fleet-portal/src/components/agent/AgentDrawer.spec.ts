@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { useNightShiftStore, type AgentForLoad, type AgentPolicy } from '../../stores/nightShift'
+import { useNightShiftStore, type AgentForLoad, type AgentPolicy, type AgentSummary } from '../../stores/nightShift'
 import AgentDrawer from './AgentDrawer.vue'
 
 vi.mock('../../stores/nightShift', async () => {
@@ -30,6 +30,17 @@ const standardPolicy: AgentPolicy = {
   quietTo: null,
 }
 
+const defaultSummary: AgentSummary = {
+  mode: 'shadow',
+  activity: 'watching',
+  noticed: null,
+  recommends: null,
+  done: [],
+  next: 'Watching. Next check within a minute.',
+  nextConfidence: 'known',
+  lastEventAt: null,
+}
+
 function agentState(overrides: Partial<AgentForLoad> = {}): AgentForLoad {
   return {
     enabled: true,
@@ -37,6 +48,7 @@ function agentState(overrides: Partial<AgentForLoad> = {}): AgentForLoad {
     pill: 'watching',
     line: null,
     timeline: [],
+    summary: defaultSummary,
     ...overrides,
   }
 }
@@ -407,5 +419,97 @@ describe('AgentDrawer', () => {
 
     await wrapper.get('[data-testid="drawer-close"]').trigger('click')
     expect(wrapper.emitted('close')).toHaveLength(1)
+  })
+
+  // Task 5 (AI Agents Surface plan): the "View agent" summary panel sits
+  // above the actions row, fed straight from the timeline response's
+  // `summary` — no separate fetch, no re-derivation in the component.
+  describe('the summary panel', () => {
+    it('renders with the timeline response\'s own summary', async () => {
+      const summary: AgentSummary = {
+        mode: 'live', activity: 'escalated', noticed: 'Running late', recommends: 'driver reports: a breakdown.',
+        done: ['Sent chat: Everything OK?'], next: 'Escalated to dispatch. It is your decision now; Night Shift will not re-ask the driver about this.',
+        nextConfidence: 'known', lastEventAt: 5000,
+      }
+      const store = createStoreStub({ agentFor: vi.fn().mockResolvedValue(agentState({ summary })) })
+      mockedUseNightShiftStore.mockReturnValue(store as unknown as ReturnType<typeof useNightShiftStore>)
+      const wrapper = mountDrawer()
+      await flushPromises()
+
+      expect(wrapper.get('[data-testid="summary-noticed"]').text()).toContain('Running late')
+      expect(wrapper.get('[data-testid="summary-recommends"]').text()).toContain('driver reports: a breakdown.')
+      expect(wrapper.get('[data-testid="summary-activity"]').text()).toBe('Escalated')
+      expect(wrapper.get('[data-testid="summary-mode"]').text()).toBe('Live')
+    })
+  })
+
+  // Task 5: `ping`, `sheet_write` and `plan` entries are noise to a
+  // dispatcher reading what happened — hidden by default, behind a toggle
+  // that says how many are hidden.
+  describe('technical details', () => {
+    function timelineWithTechnicalEntries() {
+      return [
+        { atMs: 400, kind: 'ping', text: 'ping' },
+        { atMs: 300, kind: 'ping', text: 'ping' },
+        { atMs: 200, kind: 'ping', text: 'ping' },
+        { atMs: 100, kind: 'anomaly', text: 'unplanned stop', evidence: { kind: 'unplanned_stop', key: 'unplanned_stop@1' } },
+      ]
+    }
+
+    it('hides ping/sheet_write/plan entries by default, behind a toggle that says how many', async () => {
+      const store = createStoreStub({
+        agentFor: vi.fn().mockResolvedValue(agentState({ timeline: timelineWithTechnicalEntries() })),
+      })
+      mockedUseNightShiftStore.mockReturnValue(store as unknown as ReturnType<typeof useNightShiftStore>)
+      const wrapper = mountDrawer()
+      await flushPromises()
+
+      expect(wrapper.findAll('[data-testid="timeline-entry"]')).toHaveLength(1)
+      expect(wrapper.get('[data-testid="timeline-technical-toggle"]').text()).toContain('Technical details (3 hidden)')
+    })
+
+    it('shows every entry once the toggle is clicked', async () => {
+      const store = createStoreStub({
+        agentFor: vi.fn().mockResolvedValue(agentState({ timeline: timelineWithTechnicalEntries() })),
+      })
+      mockedUseNightShiftStore.mockReturnValue(store as unknown as ReturnType<typeof useNightShiftStore>)
+      const wrapper = mountDrawer()
+      await flushPromises()
+
+      await wrapper.get('[data-testid="timeline-technical-toggle"]').trigger('click')
+      expect(wrapper.findAll('[data-testid="timeline-entry"]')).toHaveLength(4)
+    })
+
+    // Fix round 1 (review): once expanded, nothing is actually hidden any
+    // more — the label must say so rather than keep repeating a stale count.
+    it('relabels to "Hide technical details" once expanded, with no leftover count', async () => {
+      const store = createStoreStub({
+        agentFor: vi.fn().mockResolvedValue(agentState({ timeline: timelineWithTechnicalEntries() })),
+      })
+      mockedUseNightShiftStore.mockReturnValue(store as unknown as ReturnType<typeof useNightShiftStore>)
+      const wrapper = mountDrawer()
+      await flushPromises()
+
+      await wrapper.get('[data-testid="timeline-technical-toggle"]').trigger('click')
+      const label = wrapper.get('[data-testid="timeline-technical-toggle"]').text()
+      expect(label).toBe('Hide technical details')
+      expect(label).not.toMatch(/\d+ hidden/)
+    })
+
+    // Fix round 1 (review): a trip with no ping/sheet_write/plan entries has
+    // nothing for the toggle to reveal, so it must not render at all.
+    it('renders no toggle at all when there are no technical entries to hide', async () => {
+      const store = createStoreStub({
+        agentFor: vi.fn().mockResolvedValue(agentState({
+          timeline: [{ atMs: 100, kind: 'anomaly', text: 'unplanned stop', evidence: { kind: 'unplanned_stop', key: 'unplanned_stop@1' } }],
+        })),
+      })
+      mockedUseNightShiftStore.mockReturnValue(store as unknown as ReturnType<typeof useNightShiftStore>)
+      const wrapper = mountDrawer()
+      await flushPromises()
+
+      expect(wrapper.find('[data-testid="timeline-technical-toggle"]').exists()).toBe(false)
+      expect(wrapper.findAll('[data-testid="timeline-entry"]')).toHaveLength(1)
+    })
   })
 })

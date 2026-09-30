@@ -8,6 +8,7 @@ import {
   type AgentTimelineEntry,
   type NightShiftApi,
 } from '../../stores/nightShift'
+import AgentSummaryPanel from './AgentSummaryPanel.vue'
 
 // Task 10 (the deep link): this drawer is mounted by BOTH an authenticated
 // dispatcher session (BrokerBoardView/CockpitView, via the pill) and a
@@ -63,6 +64,9 @@ const replyText = ref('')
 const correcting = ref(false)
 const correctedKey = ref('')
 const correctNote = ref('')
+// Task 5: whether the timeline's technical entries (ping/sheet_write/plan)
+// are shown — reset on every load switch, same as the rest of this block.
+const showTechnical = ref(false)
 
 let pollTimer: ReturnType<typeof setInterval> | undefined
 
@@ -100,6 +104,7 @@ watch(
     correcting.value = false
     correctedKey.value = ''
     correctNote.value = ''
+    showTechnical.value = false
     if (!loadId) {
       agent.value = null
       error.value = null
@@ -162,6 +167,27 @@ function toggleHold(): void {
 
 // --- Timeline --------------------------------------------------------
 const timeline = computed<AgentTimelineEntry[]>(() => agent.value?.timeline ?? [])
+
+// Task 5 (AI Agents Surface plan): `ping`, `sheet_write` and `plan` entries
+// are the worker's own bookkeeping, not something a dispatcher reading "what
+// happened" needs to see by default — hidden behind a toggle that says how
+// many there are, rather than dropped, so nothing is actually lost.
+const TECHNICAL_KINDS = new Set(['ping', 'sheet_write', 'plan'])
+// Fix round 1 (review): the count of technical entries in the trip, regardless
+// of whether they're currently shown — used only to size the "(n hidden)"
+// label and to decide whether the toggle is worth showing at all. Once
+// `showTechnical` is true, nothing is actually hidden any more, so the label
+// switches to "Hide technical details" instead of repeating a stale count.
+const technicalCount = computed(() => timeline.value.filter((e) => TECHNICAL_KINDS.has(e.kind)).length)
+const technicalToggleLabel = computed(() =>
+  showTechnical.value ? 'Hide technical details' : `Technical details (${technicalCount.value} hidden)`,
+)
+const visibleTimeline = computed<AgentTimelineEntry[]>(() =>
+  showTechnical.value ? timeline.value : timeline.value.filter((e) => !TECHNICAL_KINDS.has(e.kind)),
+)
+function toggleTechnical(): void {
+  showTechnical.value = !showTechnical.value
+}
 
 // --- Itinerary (slice 2, 2026-09-19) ----------------------------------
 // Two views of the same run: what it was PLANNED as (the newest `plan`
@@ -253,7 +279,7 @@ function replyRawText(entry: AgentTimelineEntry): string | null {
 // one the dispatcher happens to be looking at — so the button only makes
 // sense on the newest classified reply. Offering it on an older one would
 // promise a correction the server would not actually apply to that entry.
-const latestClassifiedIndex = computed(() => timeline.value.findIndex((e) => replySituationKey(e) !== null))
+const latestClassifiedIndex = computed(() => visibleTimeline.value.findIndex((e) => replySituationKey(e) !== null))
 
 function openCorrect(): void {
   correcting.value = true
@@ -375,6 +401,9 @@ function formatTime(atMs: number): string {
       Queued — {{ pending.kind.replace('_', ' ') }}. Waiting for the worker to apply it (up to 60s).
     </p>
 
+    <!-- Task 5: What it noticed/recommends/has done/happens next, plus the mode·activity badges — above the actions row, never duplicating it. -->
+    <AgentSummaryPanel v-if="agent" :summary="agent.summary" :shadow="agent.summary.mode === 'shadow'" />
+
     <!-- Actions (spec §6.4 + §17.3): the same set the email offers, plus supervision. -->
     <div class="flex flex-wrap gap-2 border-b border-line px-4 py-3">
       <button type="button" class="rounded border border-line px-2.5 py-1.5 text-xs font-semibold text-ink hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50" data-testid="action-call" :disabled="!!pending || !agent" @click="callNow">Call the driver now</button>
@@ -406,13 +435,18 @@ function formatTime(atMs: number): string {
       </ol>
     </section>
 
-    <!-- The timeline, newest first (spec §6.4). -->
+    <!-- The timeline, newest first (spec §6.4). Task 5: ping/sheet_write/plan hidden by default. -->
     <div class="flex-1 overflow-y-auto px-4 py-3">
+      <div v-if="technicalCount > 0" class="mb-2 flex items-center justify-end">
+        <button type="button" class="text-[10px] font-semibold text-ink-3 hover:text-ink" data-testid="timeline-technical-toggle" @click="toggleTechnical">
+          {{ technicalToggleLabel }}
+        </button>
+      </div>
       <p v-if="loading && timeline.length === 0" class="text-xs text-ink-2">Loading…</p>
       <p v-else-if="timeline.length === 0" class="text-xs text-ink-3">Nothing on this trip yet.</p>
       <ul class="space-y-2">
         <li
-          v-for="(entry, i) in timeline"
+          v-for="(entry, i) in visibleTimeline"
           :key="`${entry.atMs}-${entry.kind}-${i}`"
           class="rounded-lg border p-2.5 text-xs"
           :class="isWouldSay(entry) ? 'border-blue-300 bg-blue-500/5 dark:border-blue-700' : 'border-line bg-surface-2'"
