@@ -31,7 +31,7 @@ function pickupHour(rand, isNight) {
  *  detention pings and/or agent-trip evidence. `externalId` and every id
  *  derived from it, so a rerun with the same index reproduces the identical
  *  row set. */
-function buildOneHistoricalLoad(rand, { index, orgId, agentPolicyId, driver, customer, lane, nowMs }) {
+function buildOneHistoricalLoad(rand, { index, orgId, driver, customer, lane, nowMs }) {
   const externalId = `${WORLD_LOAD_TAG}HIST-${String(index + 1).padStart(6, "0")}`;
   const loadId = stableId(`load:${externalId}`);
   const daysAgo = randInt(rand, 1, HISTORICAL_LOOKBACK_DAYS);
@@ -92,7 +92,14 @@ function buildOneHistoricalLoad(rand, { index, orgId, agentPolicyId, driver, cus
   // Agent evidence: a single roll decides the whole shape (never two
   // independent rolls that could double- or under-count), realizing
   // ESCALATION_RATE as a strict subset of TRIP_RATE per targets.mjs's own
-  // header comment.
+  // header comment. History goes dark (seed-mix-brief.md rule 1): every one
+  // of these loads is COMPLETED, so the load itself always stays
+  // `agentEnabled: false`/`agentPill: "off"`/`agentPolicyId: null` regardless
+  // of what its trip looked like — only Dwayne's three named exceptions
+  // (namedHistory.mjs) ever keep a historical load "on". The AgentTrip/
+  // AgentEvent rows below are still created exactly as before: driver
+  // metrics, history, and the drawer all read this evidence directly, never
+  // through the load's own agentEnabled/agentPill.
   const roll = rand();
   let agentTrips = [];
   let agentEvents = [];
@@ -113,13 +120,11 @@ function buildOneHistoricalLoad(rand, { index, orgId, agentPolicyId, driver, cus
     agentTrips = [trip];
     if (hasEscalation) {
       agentEvents = [ask, escalationEvent(trip.id, askAtMs + 20 * 60_000, { reason: "no word unresolved after 2 calls", anomalyKey: "no_word" })];
-      load.agentEnabled = true; load.agentPolicyId = agentPolicyId; load.agentPill = "escalated";
     } else {
       const hasReply = chance(rand, REPLY_GIVEN_RATE);
       agentEvents = hasReply
         ? [ask, replyEvent(trip.id, askAtMs + randInt(rand, 3, 20) * 60_000, { rawText: "yep, on my way", answersKey: "no_word" })]
         : [ask];
-      load.agentEnabled = true; load.agentPolicyId = agentPolicyId; load.agentPill = "delivered";
     }
   }
 
@@ -129,13 +134,13 @@ function buildOneHistoricalLoad(rand, { index, orgId, agentPolicyId, driver, cus
 /** `count` generic historical loads, spread across `drivers`/`customers`/
  *  `lanes` by independent PRNG draws per load. Returns flat arrays ready for
  *  createMany. */
-export function buildGenericHistory(rand, { orgId, agentPolicyId, drivers, customers, lanes, nowMs, count, startIndex = 0 }) {
+export function buildGenericHistory(rand, { orgId, drivers, customers, lanes, nowMs, count, startIndex = 0 }) {
   const loads = []; const stops = []; const appointments = []; const assignments = [];
   const driverLocations = []; const agentTrips = []; const agentEvents = [];
 
   for (let i = 0; i < count; i++) {
     const built = buildOneHistoricalLoad(rand, {
-      index: startIndex + i, orgId, agentPolicyId,
+      index: startIndex + i, orgId,
       driver: pick(rand, drivers), customer: pick(rand, customers), lane: pick(rand, lanes), nowMs,
     });
     loads.push(built.load);

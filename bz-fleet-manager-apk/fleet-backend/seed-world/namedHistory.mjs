@@ -5,8 +5,8 @@ import { pick, randInt, stableId } from "./prng.mjs";
 import { atLocalTime } from "./time.mjs";
 import {
   BORIS_ACCIDENTS, BORIS_BREAKDOWNS, BORIS_COMPLETED, CHIDI_ACCIDENTS, CHIDI_BREAKDOWNS, CHIDI_COMPLETED,
-  DWAYNE_COMPLETED, DWAYNE_ESCALATIONS, DWAYNE_REPLIED, HISTORICAL_LOOKBACK_DAYS, MARCUS_LANE_RUNS, MILAN_COMPLETED,
-  MILAN_ON_TIME, ORG_TIMEZONE, WORLD_LOAD_TAG,
+  DWAYNE_COMPLETED, DWAYNE_DELIVERED_EXTERNAL_IDS, DWAYNE_ESCALATIONS, DWAYNE_REPLIED, HISTORICAL_LOOKBACK_DAYS,
+  MARCUS_LANE_RUNS, MILAN_COMPLETED, MILAN_ON_TIME, ORG_TIMEZONE, WORLD_LOAD_TAG,
 } from "./targets.mjs";
 
 // Exact-number dedicated history for Milan (scenario A), Dwayne (scenario
@@ -97,23 +97,42 @@ export function buildMilanHistory(rand, { orgId, driver, customers, lanes, nowMs
  *  (closing the question); of the rest, the first DWAYNE_ESCALATIONS also
  *  get a no-reply ESCALATION. -> opened=18, closed=11, responseRate ~0.611,
  *  noResponseIncidents=3 (driverResponseMetrics.ts's own per-trip state
- *  machine). */
+ *  machine) — all of that evidence is unaffected by the mix rule below.
+ *
+ *  seed-mix-brief.md rule 3: history goes dark, except Dwayne's
+ *  DWAYNE_DELIVERED_EXTERNAL_IDS (targets.mjs) — his three most recent
+ *  "replied" loads — which keep `agentEnabled: true`/`agentPill:
+ *  "delivered"`. Every other Dwayne load (the other 8 replied, all 3
+ *  escalated, all 4 asked-only) goes `agentEnabled: false`/`agentPill:
+ *  "off"`/`agentPolicyId: null`, same as every other historical load, while
+ *  still carrying its trip/ask/reply/escalation evidence exactly as before.
+ *  "Most recent" is true by construction: the three kept indices are forced
+ *  to 1/2/3 days ago and every other index to at least 4, using the SAME
+ *  randInt() draw every iteration either way — so the shared PRNG stream
+ *  consumes exactly as many draws, in exactly the same order, as it did
+ *  before this rule existed, and nothing downstream shifts. */
 export function buildDwayneHistory(rand, { orgId, agentPolicyId, driver, customers, lanes, nowMs }) {
   const rows = emptyRows();
   for (let i = 0; i < DWAYNE_COMPLETED; i++) {
-    const built = buildNamedLoad(rand, {
-      tag: `DWAYNE-${String(i + 1).padStart(3, "0")}`, orgId, driver,
-      customer: pick(rand, customers), lane: pick(rand, lanes), nowMs,
-      daysAgo: randInt(rand, 1, HISTORICAL_LOOKBACK_DAYS), isLate: false,
-    });
+    const tag = `DWAYNE-${String(i + 1).padStart(3, "0")}`;
+    const externalId = `${WORLD_LOAD_TAG}${tag}`;
+    const keptIndex = DWAYNE_DELIVERED_EXTERNAL_IDS.indexOf(externalId);
+    const isKeptEnabled = keptIndex >= 0;
+
+    const customer = pick(rand, customers);
+    const lane = pick(rand, lanes);
+    const drawnDaysAgo = randInt(rand, 1, HISTORICAL_LOOKBACK_DAYS);
+    const daysAgo = isKeptEnabled ? keptIndex + 1 : Math.max(drawnDaysAgo, DWAYNE_DELIVERED_EXTERNAL_IDS.length + 1);
+
+    const built = buildNamedLoad(rand, { tag, orgId, driver, customer, lane, nowMs, daysAgo, isLate: false });
     // Decided up front (never mutated afterward): which bucket this load
-    // falls in fixes its pill and its event set together, as one immutable
-    // choice, instead of building a row and patching it once the events are
-    // known.
+    // falls in fixes its evidence set, independent of whether the load
+    // itself stays "on" (isKeptEnabled) — those are two separate questions.
     const replied = i < DWAYNE_REPLIED;
     const escalated = !replied && i - DWAYNE_REPLIED < DWAYNE_ESCALATIONS;
-    const pill = replied ? "delivered" : escalated ? "escalated" : "asked";
-    const withEvidence = { ...built.load, agentEnabled: true, agentPolicyId, agentPill: pill };
+    const withEvidence = isKeptEnabled
+      ? { ...built.load, agentEnabled: true, agentPolicyId, agentPill: "delivered" }
+      : { ...built.load, agentEnabled: false, agentPolicyId: null, agentPill: "off" };
     rows.loads.push(withEvidence);
     rows.stops.push(...built.stops);
     rows.appointments.push(...built.appointments);
@@ -148,8 +167,14 @@ export function buildDwayneHistory(rand, { orgId, agentPolicyId, driver, custome
  *  total, split (in targets.mjs) as 4+1 for Boris and 2+1 for Chidi. Each
  *  load gets exactly one ask+reply pair; which
  *  loads carry which situationKey is assigned by index, so the totals are
- *  exact by construction, not by chance. */
-export function buildIncidentDriverHistory(rand, { orgId, agentPolicyId, driver, customers, lanes, nowMs, completedCount, breakdownCount, accidentCount, tagPrefix }) {
+ *  exact by construction, not by chance. History goes dark (seed-mix-brief.md
+ *  rule 1, no exception for Boris/Chidi): every one of these loads always
+ *  stays `agentEnabled: false`/`agentPill: "off"`/`agentPolicyId: null`
+ *  regardless of situationKey — the AgentTrip/ask/reply evidence for the
+ *  breakdown/accident loads is still created exactly as before, since
+ *  driverResponseMetrics.ts reads AgentEvent rows directly, never the load's
+ *  own agentEnabled/agentPill. */
+export function buildIncidentDriverHistory(rand, { orgId, driver, customers, lanes, nowMs, completedCount, breakdownCount, accidentCount, tagPrefix }) {
   const rows = emptyRows();
   for (let i = 0; i < completedCount; i++) {
     const built = buildNamedLoad(rand, {
@@ -158,7 +183,7 @@ export function buildIncidentDriverHistory(rand, { orgId, agentPolicyId, driver,
       daysAgo: randInt(rand, 1, HISTORICAL_LOOKBACK_DAYS), isLate: false,
     });
     const situationKey = i < breakdownCount ? "breakdown" : i < breakdownCount + accidentCount ? "accident" : null;
-    const withEvidence = { ...built.load, agentEnabled: situationKey !== null, agentPolicyId: situationKey !== null ? agentPolicyId : null, agentPill: situationKey !== null ? "delivered" : "off" };
+    const withEvidence = { ...built.load, agentEnabled: false, agentPolicyId: null, agentPill: "off" };
     rows.loads.push(withEvidence);
     rows.stops.push(...built.stops);
     rows.appointments.push(...built.appointments);

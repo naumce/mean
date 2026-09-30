@@ -54,7 +54,10 @@ import {
 // single typed entry point (seed-world.d.ts, next to this file) is what lets
 // that test avoid `any` without a second .d.ts.
 export { SCENARIOS } from "./seed-world/scenarios.mjs";
-export { ORG_NAME, ORG_TIMEZONE, DISPATCHER_EMAIL, DISPATCHER_PASSWORD, WORLD_LOAD_TAG, WORLD_DRIVER_TAG } from "./seed-world/targets.mjs";
+export {
+  AGENT_POLICY_NAME, CAST_PHONES, DWAYNE_DELIVERED_EXTERNAL_IDS, ORG_NAME, ORG_TIMEZONE, DISPATCHER_EMAIL,
+  DISPATCHER_PASSWORD, WORLD_LOAD_TAG, WORLD_DRIVER_TAG,
+} from "./seed-world/targets.mjs";
 export { WORLD_ORG_NAME } from "./seed-world/constants.mjs";
 export { CAST } from "./seed-world/cast.mjs";
 
@@ -149,7 +152,7 @@ export async function seedWorld(prisma, { scale = 1, now = Date.now() } = {}) {
   // drivers' reserve above) -------------------------------------------------
   const genericHistoricalCount = Math.max(0, scaled(HISTORICAL_BASELINE, scale) - NAMED_HISTORY_RESERVE);
   const genericHistory = buildGenericHistory(rand, {
-    orgId: org.id, agentPolicyId: agentPolicy.id, drivers: bulkSpecs, customers: customerSpecs, lanes, nowMs, count: genericHistoricalCount,
+    orgId: org.id, drivers: bulkSpecs, customers: customerSpecs, lanes, nowMs, count: genericHistoricalCount,
   });
 
   // ---- Generic bulk current/future loads -----------------------------------

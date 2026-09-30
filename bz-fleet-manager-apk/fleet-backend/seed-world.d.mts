@@ -52,6 +52,17 @@ export const DISPATCHER_EMAIL: string;
 export const DISPATCHER_PASSWORD: string;
 export const WORLD_LOAD_TAG: string;
 export const WORLD_DRIVER_TAG: string;
+export const AGENT_POLICY_NAME: string;
+
+/** E.164 phones for the 4 cast drivers the Night Shift agent mix
+ *  (seed-mix-brief.md) gives a `Driver.phone` — keyed by cast.mjs's own
+ *  `key`. Every other driver (cast or bulk) stays phoneless. */
+export const CAST_PHONES: Record<string, string>;
+
+/** Dwayne's three most recent delivered loads — the only historical loads
+ *  that keep `agentEnabled: true`/`agentPill: "delivered"` once history
+ *  otherwise goes dark (seed-mix-brief.md rule 3). */
+export const DWAYNE_DELIVERED_EXTERNAL_IDS: string[];
 
 export interface CastHos {
   driveRemainingMin: number;

@@ -2,7 +2,7 @@ import { CAST } from "./cast.mjs";
 import { randomHub } from "./cities.mjs";
 import { LAST_NAMES, FIRST_NAMES, SECOND_LANGUAGES, randomFullName } from "./names.mjs";
 import { chance, pick, pickWeighted, randInt, stableId } from "./prng.mjs";
-import { EQUIPMENT_MIX, HAZMAT_RATE, SECOND_LANGUAGE_RATE } from "./targets.mjs";
+import { CAST_PHONES, EQUIPMENT_MIX, HAZMAT_RATE, SECOND_LANGUAGE_RATE } from "./targets.mjs";
 
 // Builds the driver ROSTER as plain specs (no DB, no orgId yet) — the cast
 // (cast.mjs, fixed) plus `bulkCount` randomly-generated drivers. Every spec
@@ -33,6 +33,11 @@ function castToSpec(cast) {
     name: cast.name,
     firstName: cast.firstName,
     lastName: cast.lastName,
+    // Only the 4 cast drivers named in CAST_PHONES (the two watching-with-
+    // phone loads' drivers, Wei, and Dwayne — see targets.mjs) ever get a
+    // phone; every other cast member, including the deliberate missing-phone
+    // one, stays null exactly like every bulk driver below.
+    phone: CAST_PHONES[cast.key] ?? null,
     homeBaseCity: cast.homeBaseCity,
     homeBaseState: cast.homeBaseState,
     homeLat: cast.homeBaseLat,
@@ -72,6 +77,7 @@ function bulkSpec(rand, index) {
     id: stableId(`driver:${externalId}`),
     email: `wd-bulk-${String(index + 1).padStart(4, "0")}@greatlakes.demo`,
     externalId,
+    phone: null, // every bulk driver stays phoneless (targets.mjs's CAST_PHONES)
     name: full,
     firstName: full.split(" ")[0],
     lastName: full.split(" ").slice(1).join(" ") || full,
@@ -128,6 +134,7 @@ export function driverRows(specs, orgId, nowMs) {
     email: s.email,
     passwordHash: FIXED_DRIVER_PASSWORD_HASH,
     name: s.name,
+    phone: s.phone ?? null,
     firstName: s.firstName,
     lastName: s.lastName,
     status: "offline",

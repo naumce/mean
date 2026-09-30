@@ -141,3 +141,30 @@ export const FLEET_MINIMUM = 10;
 export function fleetCount(scale) {
   return Math.max(FLEET_MINIMUM, scaled(FLEET_BASELINE, scale));
 }
+
+// ---------------------------------------------------------------------------
+// Night Shift agent mix (seed-mix-brief.md, 2026-09-30): a small, honest set
+// of agentEnabled loads instead of "every load the generic ~20% roll or a
+// named driver's history happened to touch" — see history.mjs/namedHistory.mjs
+// (history goes dark) and scenarioActive.mjs (the live mix) for where these
+// are actually applied.
+// ---------------------------------------------------------------------------
+
+/** E.164, reserved fictional block +1 NPA 555 01xx (312 = Chicago). Only the
+ *  cast drivers below ever get a `Driver.phone` — every bulk driver and every
+ *  other cast member (including the deliberate missing-phone one) stays
+ *  null. Keyed by cast.mjs's own `key`, read by drivers.mjs's castToSpec(). */
+export const CAST_PHONES = {
+  ana: "+13125550101",
+  hassan: "+13125550102",
+  wei: "+13125550103",
+  dwayne: "+13125550104",
+};
+
+/** Dwayne's three most recent delivered loads (rule 3): the only historical
+ *  loads that keep `agentEnabled: true`/`agentPill: "delivered"` once history
+ *  otherwise goes dark. Exported so the test can name them without having to
+ *  re-derive Dwayne's own PRNG draws. namedHistory.mjs's buildDwayneHistory()
+ *  forces exactly these three to the smallest `daysAgo` among his 18 loads,
+ *  so "most recent" is true by construction, not just by label. */
+export const DWAYNE_DELIVERED_EXTERNAL_IDS = ["W-DWAYNE-009", "W-DWAYNE-010", "W-DWAYNE-011"];

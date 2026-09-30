@@ -61,6 +61,14 @@ function buildActiveLoad(rand, { code, tag, orgId, origin, destination, required
   return { load, stops, appointments, assignment, loadId, externalId };
 }
 
+/** Loads whose `agentEnabled`/`agentPill` seed-mix-brief.md rule 2 turns
+ *  "watching" with NO seeded trip — the real worker creates its own trip and
+ *  starts watching in shadow, so no AgentTrip/AgentEvent rows are added here,
+ *  unlike scenario J's own seeded-trip pattern. */
+function withWatching(load, agentPolicyId) {
+  return { ...load, agentEnabled: true, agentPolicyId, agentPill: "watching" };
+}
+
 /**
  * Ana's inbound trip (Kalamazoo -> Detroit), the driver behind scenario C.
  * plannedEnd is pinned to exactly 10:20 tomorrow, Detroit time — always in
@@ -71,8 +79,11 @@ function buildActiveLoad(rand, { code, tag, orgId, origin, destination, required
  * to equal the route's own drive time (real dispatch plans routinely carry
  * slack) — economics (loadedMi/driveMin/etc.) are computed independently
  * from the real Kalamazoo->Detroit distance.
+ *
+ * seed-mix-brief.md rule 2: one of the two "watching, with a phone" loads
+ * (Ana's driver phone comes from targets.mjs's CAST_PHONES via drivers.mjs).
  */
-function buildAnaInbound(rand, { orgId, customer, nowMs }) {
+function buildAnaInbound(rand, { orgId, customer, nowMs, agentPolicyId }) {
   const ana = castByScenario("C");
   const detroit = hub("Detroit");
   const plannedEnd = atLocalTime(new Date(nowMs), ORG_TIMEZONE, 10, 20, 1);
@@ -83,7 +94,7 @@ function buildAnaInbound(rand, { orgId, customer, nowMs }) {
     startedAt: plannedStart, completedAt: null, deliveryWindowEnd: new Date(nowMs + 20 * 60 * 60_000), assignmentStatus: "in_progress",
   });
   const pings = alongRoutePings(ana.id, KALAMAZOO_MI, detroit, 0.85, nowMs);
-  return { ...built, pings, driverId: ana.id, destination: detroit };
+  return { ...built, load: withWatching(built.load, agentPolicyId), pings, driverId: ana.id, destination: detroit };
 }
 
 function commonInProgress(rand, { code, orgId, homeHub, destHub, driverId, requiredEquip, customer, nowMs, startedHoursAgo = 2.5 }) {
@@ -104,12 +115,14 @@ function commonInProgress(rand, { code, orgId, homeHub, destHub, driverId, requi
 
 /** I — 90 min behind plan (verbatim); pings placed at the lagging position.
  *  Columbus -> Nashville (long enough that 3h elapsed still leaves >4h
- *  remaining — deriveStatus reads this driver ON_LOAD, not AVAILABLE_SOON). */
-function buildScenarioI(rand, { orgId, customer, nowMs }) {
+ *  remaining — deriveStatus reads this driver ON_LOAD, not AVAILABLE_SOON).
+ *  seed-mix-brief.md rule 2: the second "watching, with a phone" load
+ *  (Hassan's phone comes from targets.mjs's CAST_PHONES via drivers.mjs). */
+function buildScenarioI(rand, { orgId, customer, nowMs, agentPolicyId }) {
   const hassan = castByScenario("I");
   const built = commonInProgress(rand, { code: "I", orgId, homeHub: "Columbus", destHub: "Nashville", driverId: hassan.id, requiredEquip: hassan.equipmentTypes[0], customer, nowMs, startedHoursAgo: 3 });
   const pings = behindPlanPings(hassan.id, built.origin, built.destination, built.planFraction, 90, built.totalDriveMin, nowMs);
-  return { ...built, pings, driverId: hassan.id };
+  return { ...built, load: withWatching(built.load, agentPolicyId), pings, driverId: hassan.id };
 }
 
 /** J — agentEnabled, agentPill "asked", an OPEN unplanned_stop anomaly.
@@ -144,12 +157,16 @@ function buildScenarioJ(rand, { orgId, customer, nowMs, agentPolicyId }) {
 }
 
 /** K — last 4 pings identical for 25 min at a non-stop point; SimDriverState
- *  "stopped". Milwaukee -> Nashville (long enough to stay ON_LOAD). */
-function buildScenarioK(rand, { orgId, customer, nowMs }) {
+ *  "stopped". Milwaukee -> Nashville (long enough to stay ON_LOAD).
+ *  seed-mix-brief.md rule 2: the intentional "watching, no phone on file"
+ *  example — Owen never appears in targets.mjs's CAST_PHONES, so
+ *  Driver.phone stays null and the real worker marks this one `attention`
+ *  with "no driver or carrier phone on file", exactly as designed. */
+function buildScenarioK(rand, { orgId, customer, nowMs, agentPolicyId }) {
   const owen = castByScenario("K");
   const built = commonInProgress(rand, { code: "K", orgId, homeHub: "Milwaukee", destHub: "Nashville", driverId: owen.id, requiredEquip: owen.equipmentTypes[0], customer, nowMs, startedHoursAgo: 2.5 });
   const pings = identicalStopPings(owen.id, built.origin, built.destination, 0.4, 25, nowMs);
-  return { ...built, pings, driverId: owen.id, simMode: "stopped" };
+  return { ...built, load: withWatching(built.load, agentPolicyId), pings, driverId: owen.id, simMode: "stopped" };
 }
 
 /** L — last ping 70 min old; SimDriverState "dark". Minneapolis -> Kansas
@@ -204,10 +221,10 @@ export function buildActiveScenarios(rand, { orgId, customers, nowMs, agentPolic
   const customerFor = (i) => standard[i % standard.length];
 
   const parts = [
-    buildAnaInbound(rand, { orgId, customer: customerFor(7), nowMs }),
-    buildScenarioI(rand, { orgId, customer: customerFor(8), nowMs }),
+    buildAnaInbound(rand, { orgId, customer: customerFor(7), nowMs, agentPolicyId }),
+    buildScenarioI(rand, { orgId, customer: customerFor(8), nowMs, agentPolicyId }),
     buildScenarioJ(rand, { orgId, customer: customerFor(9), nowMs, agentPolicyId }),
-    buildScenarioK(rand, { orgId, customer: customerFor(10), nowMs }),
+    buildScenarioK(rand, { orgId, customer: customerFor(10), nowMs, agentPolicyId }),
     buildScenarioL(rand, { orgId, customer: customerFor(11), nowMs }),
     buildScenarioM(rand, { orgId, customer: customerFor(12), nowMs }),
     buildScenarioN(rand, { orgId, customer: customerFor(13), nowMs }),

@@ -7,8 +7,20 @@ import { driverMetrics } from "../src/lib/driverMetrics.js";
 import { laneKey, laneRunsByDriver } from "../src/lib/lanes.js";
 import { scanDetention } from "../src/lib/detentionScan.js";
 import {
-  seedWorld, SCENARIOS, CAST, ORG_NAME, ORG_TIMEZONE, DISPATCHER_EMAIL, DISPATCHER_PASSWORD,
+  seedWorld, SCENARIOS, CAST, ORG_NAME, ORG_TIMEZONE, DISPATCHER_EMAIL, DISPATCHER_PASSWORD, DWAYNE_DELIVERED_EXTERNAL_IDS,
+  CAST_PHONES,
 } from "../seed-world.mjs";
+
+// seed-mix-brief.md (2026-09-30): the small, intentional Night Shift mix —
+// exactly which current loads are "watching" (2 with a driver phone, 1
+// deliberately without) and which historical loads stay "on" once history
+// otherwise goes dark. Loads/drivers named here are fixed identities from
+// seed-world/scenarioActive.mjs and seed-world/cast.mjs, not derived from any
+// PRNG draw, so hardcoding them is exact by construction the same way the
+// scenario A-N externalIds already are above.
+const WATCHING_WITH_PHONE_EXTERNAL_IDS = ["W-C-ANA-INBOUND", "W-I-LATE"]; // Ana, Hassan
+const MISSING_PHONE_EXTERNAL_ID = "W-K-STOP"; // Owen — the intentional no-phone "watching" example
+const RESERVED_PHONE_BLOCK_RE = /^\+1\d{3}55501\d{2}$/;
 
 // AI Dispatch Foundation, Task 7 — the deterministic demo world. This suite
 // seeds ONCE (beforeAll, scale 0.15, a fixed `now`) and every `it()` below
@@ -439,6 +451,108 @@ describe("seed-world (AI Dispatch Foundation, Task 7)", () => {
     const sim = await prisma.simDriverState.findUniqueOrThrow({ where: { driverId } });
     expect(sim.mode).toBe("offroute");
     await expectOnLoad(org.id, driverId);
+  });
+
+  it("the Night Shift mix: agentEnabled loads are exactly 2 watching+phone, J asked, 1 watching without a phone, and Dwayne's 3 delivered exceptions", async () => {
+    const org = await orgOrThrow();
+    const enabled = await prisma.load.findMany({
+      where: { orgId: org.id, agentEnabled: true },
+      select: { externalId: true, agentPill: true, agentPolicyId: true },
+    });
+
+    const policy = await prisma.agentPolicy.findFirstOrThrow({ where: { orgId: org.id, name: "Standard" } });
+    expect(policy.shadow).toBe(true); // the safeguard the whole mix leans on
+    for (const l of enabled) expect(l.agentPolicyId).toBe(policy.id);
+
+    const byPill = (pill: string) => enabled.filter((l) => l.agentPill === pill).map((l) => l.externalId).sort();
+    expect(byPill("watching")).toEqual([...WATCHING_WITH_PHONE_EXTERNAL_IDS, MISSING_PHONE_EXTERNAL_ID].sort());
+    expect(byPill("asked")).toEqual(["W-J-ANOMALY"]);
+    expect(byPill("delivered")).toEqual([...DWAYNE_DELIVERED_EXTERNAL_IDS].sort());
+    expect(enabled).toHaveLength(WATCHING_WITH_PHONE_EXTERNAL_IDS.length + 1 + 1 + DWAYNE_DELIVERED_EXTERNAL_IDS.length);
+
+    // J: still exactly the seeded trip + one open anomaly event (unchanged by
+    // this rule — restated here as a mix-level cross-check, not a
+    // replacement for the dedicated "J:" test above).
+    const jLoad = await loadWithDetails(org.id, "W-J-ANOMALY");
+    const jTrip = await prisma.agentTrip.findFirstOrThrow({ where: { loadId: jLoad.id } });
+    expect(await prisma.agentEvent.count({ where: { tripId: jTrip.id } })).toBe(2); // anomaly + ask
+
+    // The two "watching" loads seed NO trip of their own — the real worker
+    // creates it and starts watching in shadow.
+    for (const externalId of [...WATCHING_WITH_PHONE_EXTERNAL_IDS, MISSING_PHONE_EXTERNAL_ID]) {
+      const load = await loadWithDetails(org.id, externalId);
+      expect(await prisma.agentTrip.count({ where: { loadId: load.id } })).toBe(0);
+    }
+  });
+
+  it("history goes dark: every historical load with an AgentTrip, other than Dwayne's 3 named exceptions, is agentEnabled:false/agentPill:'off', with its trip/event evidence intact", async () => {
+    const org = await orgOrThrow();
+    const historicalWithTrip = await prisma.load.findMany({
+      where: { orgId: org.id, status: "delivered", agentTrips: { some: {} } },
+      select: { id: true, externalId: true, agentEnabled: true, agentPill: true, agentPolicyId: true },
+    });
+    expect(historicalWithTrip.length).toBeGreaterThan(0);
+
+    const exceptions = historicalWithTrip.filter((l) => DWAYNE_DELIVERED_EXTERNAL_IDS.includes(l.externalId!));
+    const disabled = historicalWithTrip.filter((l) => !DWAYNE_DELIVERED_EXTERNAL_IDS.includes(l.externalId!));
+    expect(exceptions).toHaveLength(DWAYNE_DELIVERED_EXTERNAL_IDS.length);
+    expect(disabled.length).toBeGreaterThan(0);
+
+    for (const l of exceptions) {
+      expect(l.agentEnabled).toBe(true);
+      expect(l.agentPill).toBe("delivered");
+    }
+    for (const l of disabled) {
+      expect(l.agentEnabled).toBe(false);
+      expect(l.agentPill).toBe("off");
+      expect(l.agentPolicyId).toBeNull();
+    }
+
+    const disabledIds = disabled.map((l) => l.id);
+    const [tripCount, eventCount] = await Promise.all([
+      prisma.agentTrip.count({ where: { loadId: { in: disabledIds } } }),
+      prisma.agentEvent.count({ where: { trip: { loadId: { in: disabledIds } } } }),
+    ]);
+    expect(tripCount).toBeGreaterThan(0);
+    expect(eventCount).toBeGreaterThan(0);
+
+    // Nothing silently dropped: every historical trip is accounted for by
+    // either the disabled bucket above or Dwayne's 3 named exceptions — the
+    // "pre-existing total" this test can derive without hardcoding a PRNG-
+    // dependent count.
+    const totalHistoricalTrips = await prisma.agentTrip.count({ where: { loadId: { in: historicalWithTrip.map((l) => l.id) } } });
+    const exceptionTripCount = await prisma.agentTrip.count({ where: { loadId: { in: exceptions.map((l) => l.id) } } });
+    expect(tripCount + exceptionTripCount).toBe(totalHistoricalTrips);
+  });
+
+  it("every agentEnabled load's driver has a reserved-block phone, except the named missing-phone load", async () => {
+    const org = await orgOrThrow();
+    const enabledLoads = await prisma.load.findMany({
+      where: { orgId: org.id, agentEnabled: true },
+      include: { assignment: true },
+    });
+    expect(enabledLoads.length).toBeGreaterThan(0);
+
+    const seenPhones = new Set<string>();
+    for (const load of enabledLoads) {
+      const driverId = load.assignment?.driverId;
+      expect(driverId).toBeTruthy();
+      const driver = await prisma.driver.findUniqueOrThrow({ where: { id: driverId! } });
+      if (load.externalId === MISSING_PHONE_EXTERNAL_ID) {
+        expect(driver.phone).toBeNull();
+      } else {
+        expect(driver.phone).toMatch(RESERVED_PHONE_BLOCK_RE);
+        seenPhones.add(driver.phone!);
+      }
+    }
+    // Exactly the 4 cast phones (Ana, Hassan, Wei, Dwayne) — Dwayne's phone
+    // repeats across his 3 delivered loads (same driver), so this is a set
+    // comparison, not a per-load count.
+    expect(seenPhones).toEqual(new Set(Object.values(CAST_PHONES)));
+
+    // Every bulk driver stays phoneless.
+    const anyBulkPhone = await prisma.driver.findFirst({ where: { orgId: org.id, externalId: { startsWith: "WD-BULK-" }, phone: { not: null } } });
+    expect(anyBulkPhone).toBeNull();
   });
 
   it("a second seedWorld run yields identical counts and identical scenario driver ids, and clears any prior SimulationState", async () => {
