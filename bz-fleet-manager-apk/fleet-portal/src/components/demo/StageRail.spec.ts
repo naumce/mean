@@ -45,4 +45,22 @@ describe('StageRail', () => {
     expect(wrapper.text()).toContain('Human approval')
     expect(wrapper.text()).toContain('Delivered')
   })
+
+  it('renders a badge pill only for tiles that carry one', () => {
+    const withBadge = stages().map((s) => (s.id === 'ai_recommendation' ? { ...s, badge: 'AI' as const } : s))
+    const wrapper = mount(StageRail, { props: { stages: withBadge } })
+    const badge = wrapper.find('[data-testid="stage-badge-ai_recommendation"]')
+    expect(badge.exists()).toBe(true)
+    expect(badge.text()).toBe('AI')
+    expect(wrapper.find('[data-testid="stage-badge-uncovered"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="stage-badge-awaiting_approval"]').exists()).toBe(false)
+  })
+
+  it('renders the "Dispatch rules" badge text when that is the badge', () => {
+    const withBadge = stages().map((s) =>
+      s.id === 'ai_recommendation' ? { ...s, badge: 'Dispatch rules' as const } : s,
+    )
+    const wrapper = mount(StageRail, { props: { stages: withBadge } })
+    expect(wrapper.find('[data-testid="stage-badge-ai_recommendation"]').text()).toBe('Dispatch rules')
+  })
 })

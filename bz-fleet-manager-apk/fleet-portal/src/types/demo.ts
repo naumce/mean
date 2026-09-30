@@ -143,6 +143,13 @@ export interface DemoActionBody {
  *  stage — StageRail's only prop. */
 export interface PresenterStageView extends DemoPresenterStageDef {
   status: 'done' | 'current' | 'upcoming'
+  /** Set only on the `ai_recommendation` tile, from `story.
+   *  recommendationSource` — `'ai'` -> `'AI'`, `'engine'` ->
+   *  `'Dispatch rules'`, `null` (no recommendation yet) -> undefined.
+   *  StageRail renders it as a small pill so the room sees, at a glance,
+   *  whether the driver on screen came from the model or the dispatch
+   *  rules fallback. */
+  badge?: 'AI' | 'Dispatch rules'
 }
 
 /** The single action StageCard offers for the current stage, or null when

@@ -50,6 +50,16 @@ function presenterStageId(stage: DemoStage): string {
   return PRESENTER_STAGE_ALIAS[stage] ?? stage
 }
 
+/** Task 7: the `ai_recommendation` tile's badge — who actually picked the
+ *  driver on screen, straight off `story.recommendationSource` rather than
+ *  the log text. `null` (no recommendation made yet) renders no badge at
+ *  all, never a placeholder. */
+function recommendationBadge(source: DemoStory['recommendationSource']): PresenterStageView['badge'] {
+  if (source === 'ai') return 'AI'
+  if (source === 'engine') return 'Dispatch rules'
+  return undefined
+}
+
 /** The driver's scripted breakdown reply — prefilled so the presenter never
  *  has to type it live in the room, editable because the whole point of
  *  this stage is that it is a real reply proxied to the worker. */
@@ -212,7 +222,8 @@ export const useDemoStore = defineStore('demo', {
         const status: PresenterStageView['status'] =
           currentIndex === -1 ? 'upcoming' : i < currentIndex ? 'done' : i === currentIndex ? 'current' : 'upcoming'
         const title = s.id === 'delivered' && story.stage === 'delivering' ? `${s.title} (in progress)` : s.title
-        return { ...s, title, status }
+        const badge = s.id === 'ai_recommendation' ? recommendationBadge(story.recommendationSource) : undefined
+        return { ...s, title, status, badge }
       })
     },
 

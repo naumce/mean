@@ -555,50 +555,8 @@ describe('useDemoStore', () => {
     })
   })
 
-  describe('presenterStages', () => {
-    it('is empty before the first load', () => {
-      const store = useDemoStore()
-      expect(store.presenterStages).toEqual([])
-    })
-
-    it('marks tiles before the current stage done, the matching tile current, the rest upcoming', async () => {
-      const store = await withStage({ stage: 'breakdown_detected' })
-      expect(store.presenterStages.map((s) => [s.id, s.status])).toEqual([
-        ['uncovered', 'done'],
-        ['ai_recommendation', 'done'],
-        ['awaiting_approval', 'done'],
-        ['in_transit', 'done'],
-        ['breakdown_detected', 'current'],
-        ['driver_contacted', 'upcoming'],
-        ['escalated', 'upcoming'],
-        ['customer_updated', 'upcoming'],
-        ['resolved', 'upcoming'],
-        ['delivered', 'upcoming'],
-      ])
-    })
-
-    it('maps awaiting_driver_reply onto the driver_contacted tile', async () => {
-      const store = await withStage({ stage: 'awaiting_driver_reply' })
-      expect(store.presenterStages.find((s) => s.status === 'current')?.id).toBe('driver_contacted')
-    })
-
-    it('maps awaiting_customer_update onto the escalated tile', async () => {
-      const store = await withStage({ stage: 'awaiting_customer_update' })
-      expect(store.presenterStages.find((s) => s.status === 'current')?.id).toBe('escalated')
-    })
-
-    it('maps delivering onto the delivered tile, titled "(in progress)"', async () => {
-      const store = await withStage({ stage: 'delivering' })
-      const current = store.presenterStages.find((s) => s.status === 'current')
-      expect(current?.id).toBe('delivered')
-      expect(current?.title).toBe('Delivered (in progress)')
-    })
-
-    it('leaves every tile upcoming when the stage is error (no tile guessed as current)', async () => {
-      const store = await withStage({ stage: 'error' })
-      expect(store.presenterStages.every((s) => s.status === 'upcoming')).toBe(true)
-    })
-  })
+  // presenterStages tests moved to demo.presenterStages.spec.ts (repo's
+  // 800-line-per-file cap — Task 7 fix round 1).
 
   describe('currentPresenterStage', () => {
     it('is null before the first load', () => {

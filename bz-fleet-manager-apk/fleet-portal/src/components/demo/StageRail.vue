@@ -24,6 +24,11 @@ defineProps<{ stages: PresenterStageView[] }>()
     >
       <span class="text-base leading-none" aria-hidden="true">{{ stage.status === 'done' ? '✓' : '●' }}</span>
       <span class="text-[11px] font-semibold leading-tight">{{ stage.title }}</span>
+      <span
+        v-if="stage.badge"
+        class="rounded-full bg-ink/10 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-ink-2"
+        :data-testid="`stage-badge-${stage.id}`"
+      >{{ stage.badge }}</span>
     </li>
   </ol>
 </template>

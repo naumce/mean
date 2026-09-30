@@ -41,7 +41,7 @@ export interface StageCard {
  *  `delivered`. */
 export const STAGES: readonly StageCard[] = [
   { id: "uncovered", title: "Uncovered load", narration: "A load has no driver assigned yet." },
-  { id: "ai_recommendation", title: "AI recommendation", narration: "Deciding who should run this load." },
+  { id: "ai_recommendation", title: "Driver recommendation", narration: "Deciding who should run this load." },
   { id: "awaiting_approval", title: "Human approval", narration: "A dispatcher reviews the recommendation before anything is booked." },
   { id: "in_transit", title: "In transit", narration: "The truck is on the road toward delivery." },
   { id: "breakdown_detected", title: "Breakdown detected", narration: "Night Shift noticed the truck stopped somewhere unplanned." },
