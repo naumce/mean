@@ -33,11 +33,13 @@ const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? 
 export function deriveAgentSummary(input: AgentSummaryInput): AgentSummary {
   const events = [...input.events].sort((a, b) => b.atMs - a.atMs); // newest first; ties keep the caller's input order (stable sort)
   const lastEventAt = events.length ? events[0].atMs : null;
-  const done = doneLines(events);
-  const noticed = noticedLine(events);
   const off = !input.enabled || input.pill === "off";
   const mode: AgentMode = off ? "off" : input.policyShadow === false ? "live" : "shadow";
   const policyPrefix = !off && input.policyShadow === null ? "Policy unknown — " : "";
+  // Shadow (or an unresolved policy) means every send was a would_say row, even after the load was
+  // switched off — key the "done" wording on the policy, not on the off/shadow/live mode.
+  const done = doneLines(events, input.policyShadow === false ? "live" : "shadow");
+  const noticed = noticedLine(events);
 
   if (off) return { mode, activity: "off", noticed, recommends: null, done, next: "Night Shift is switched off for this load.", nextConfidence: "known", lastEventAt };
 
@@ -84,14 +86,22 @@ function noticedLine(events: AgentSummaryEvent[]): string | null {
   return open.actionTaken ?? ANOMALY_WORDS[kind] ?? kind;
 }
 
-function doneLines(events: AgentSummaryEvent[]): string[] {
+// In shadow mode, `would_say` rows already cover every channel (chat, sms, email) for
+// what Night Shift *would* have sent, and the paired `action`/`email` rows that record
+// the same drafts are not real sends — showing both would duplicate the line and claim
+// a send that never happened. Live mode has no `would_say` rows, so it reads the real
+// send records instead.
+function doneLines(events: AgentSummaryEvent[], mode: AgentMode): string[] {
   const lines: string[] = [];
   for (const e of events) {
     const ev = rec(e.evidence);
-    if (e.kind === "would_say") lines.push(`Would have sent ${String(ev.channel ?? "message")}: ${String(ev.text ?? "")}`);
-    else if (e.kind === "action" && DONE_ACTION_KINDS.has(String(ev.kind))) lines.push(`Sent ${String(ev.channel ?? "message")}: ${String(ev.text ?? "")}`);
-    else if (e.kind === "call") lines.push(ev.answered === true ? "Called the driver (answered)" : "Called the driver");
-    else if (e.kind === "email") lines.push(`Emailed ${String(ev.to ?? "")}: ${String(ev.subject ?? ev.kind ?? "")}`);
+    if (mode === "shadow") {
+      if (e.kind === "would_say") lines.push(`Would have sent ${String(ev.channel ?? "message")}: ${String(ev.text ?? "")}`);
+    } else {
+      if (e.kind === "action" && DONE_ACTION_KINDS.has(String(ev.kind))) lines.push(`Sent ${String(ev.channel ?? "message")}: ${String(ev.text ?? "")}`);
+      else if (e.kind === "call") lines.push(ev.answered === true ? "Called the driver (answered)" : "Called the driver");
+      else if (e.kind === "email") lines.push(`Emailed ${String(ev.to ?? "")}: ${String(ev.subject ?? ev.kind ?? "")}`);
+    }
     if (lines.length === 5) break;
   }
   return lines;

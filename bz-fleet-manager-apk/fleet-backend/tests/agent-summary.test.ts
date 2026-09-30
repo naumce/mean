@@ -124,8 +124,8 @@ describe("deriveAgentSummary", () => {
     expect(s.activity).toBe("waiting_reply");
     expect(s.nextConfidence).toBe("inferred");
   });
-  it("done lines cover calls, emails and respond actions, newest first", () => {
-    const s = deriveAgentSummary(base({ events: [
+  it("live done lines cover calls, emails and respond actions, newest first", () => {
+    const s = deriveAgentSummary(base({ policyShadow: false, events: [
       ev(NOW - 30_000, "action", { kind: "respond", channel: "chat", text: "Sure, got it" }, "respond"),
       ev(NOW - 20_000, "call", { answered: true }),
       ev(NOW - 10_000, "email", { to: "dispatch@acme.com", subject: "Delay update" }),
@@ -176,5 +176,36 @@ describe("deriveAgentSummary", () => {
     expect(s.activity).toBe("attention");
     expect(s.next).toBe("ATTENTION — no driver or carrier phone on file");
     expect(s.recommends).toBe("driver reports: Driver reports a breakdown.");
+  });
+
+  // --- Fix round 3 ---
+
+  it("shadow done lines come from would_say only, never duplicating the paired action/email records", () => {
+    const s = deriveAgentSummary(base({ policyShadow: true, events: [
+      ev(NOW - 40_000, "action", { kind: "message", channel: "chat", text: "You've been stopped 2 min. Everything OK?" }, "message"),
+      ev(NOW - 40_000, "would_say", { channel: "chat", to: "+1", text: "You've been stopped 2 min. Everything OK?" }),
+      ev(NOW - 20_000, "email", { to: "dispatch@acme.com", subject: "Delay update", messageId: null }),
+      ev(NOW - 20_000, "would_say", { channel: "email", to: "dispatch@acme.com", text: "Delay update" }),
+    ] }));
+    expect(s.done).toEqual([
+      "Would have sent email: Delay update",
+      "Would have sent chat: You've been stopped 2 min. Everything OK?",
+    ]);
+    expect(s.done.some((line) => line.startsWith("Sent") || line.startsWith("Emailed"))).toBe(false);
+  });
+});
+
+describe("deriveAgentSummary — done wording after switch-off", () => {
+  it("a switched-off load whose policy was shadow still lists would-have-sent lines, never 'Sent'", () => {
+    const NOW2 = Date.parse("2026-09-30T12:00:00Z");
+    const s = deriveAgentSummary({
+      enabled: false, pill: "off", policyShadow: true, attentionLine: null, nowMs: NOW2,
+      events: [
+        { atMs: NOW2 - 60_000, kind: "action", evidence: { kind: "message", channel: "chat", text: "Everything OK?" }, actionTaken: "message" },
+        { atMs: NOW2 - 60_000, kind: "would_say", evidence: { channel: "chat", to: "+1", text: "Everything OK?" }, actionTaken: null },
+      ],
+    });
+    expect(s.mode).toBe("off");
+    expect(s.done).toEqual(["Would have sent chat: Everything OK?"]);
   });
 });
