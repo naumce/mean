@@ -30,6 +30,7 @@ import { dispatcherAssignmentsRouter } from "./routes/dispatcherAssignments.js";
 import { dispatcherSuggestRouter } from "./routes/dispatcherSuggest.js";
 import { dispatcherLoadboardRouter } from "./routes/dispatcherLoadboard.js";
 import { dispatcherNightShiftRouter } from "./routes/dispatcherNightShift.js";
+import { dispatcherAgentsRouter } from "./routes/dispatcherAgents.js";
 import { nightShiftLinkRouter } from "./routes/nightShiftLink.js";
 import { driverPageApiRouter, driverPageRouter } from "./routes/driverAvailabilityPage.js";
 import { dispatcherSheetRouter, sheetOauthCallback } from "./routes/dispatcherSheet.js";
@@ -222,6 +223,10 @@ export function createApp() {
   app.use("/api/dispatcher", dispatcherSuggestRouter);
   app.use("/api/dispatcher", dispatcherLoadboardRouter);
   app.use("/api/dispatcher", dispatcherNightShiftRouter);
+  // AI Agents Surface (Task 3): GET /agents/overview — read-only, never
+  // gated on DEMO_MODE, next to dispatcherNightShiftRouter since it reads
+  // the same Night Shift state (plus the AI harness's).
+  app.use("/api/dispatcher", dispatcherAgentsRouter);
   app.use("/api/dispatcher", dispatcherApiKeysRouter);
   app.use("/api/dispatcher", dispatcherSheetRouter);
   app.use("/api/dispatcher", dispatcherAlertsRouter);
