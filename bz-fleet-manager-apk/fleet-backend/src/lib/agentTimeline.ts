@@ -1,5 +1,6 @@
 import { prisma } from "../db.js";
 import { policyFor } from "./agentPolicies.js";
+import { deriveAgentSummary, type AgentSummary, type AgentSummaryEvent } from "./agentSummary.js";
 
 /** One line of a load's Night Shift timeline, merging AgentUpdate and
  *  AgentEvent rows — same shape GET /loads/:id/agent has always answered
@@ -20,6 +21,7 @@ export interface AgentTimelineBody {
   pill: string;
   line: string | null;
   timeline: AgentTimelineEntry[];
+  summary: AgentSummary;
 }
 
 /** The load's Night Shift timeline (spec §6.4/§17.3) — extracted from
@@ -64,5 +66,14 @@ export async function timelineFor(loadId: string, orgId: string | null): Promise
     ...events.map((e) => ({ atMs: Number(e.atMs), kind: e.kind, text: e.actionTaken ?? e.kind, evidence: e.evidence })),
   ].sort((a, b) => b.atMs - a.atMs);
 
-  return { enabled: load.agentEnabled, boardLoadNo: load.boardLoadNo, policy, pill: load.agentPill, line, timeline };
+  const attentionLine = updates.find((u) => u.kind === "attention")?.text ?? null;
+  const summaryEvents: AgentSummaryEvent[] = events.map((e) => ({
+    atMs: Number(e.atMs), kind: e.kind, evidence: e.evidence, actionTaken: e.actionTaken ?? null,
+  }));
+  const summary = deriveAgentSummary({
+    enabled: load.agentEnabled, pill: load.agentPill, policyShadow: policy.shadow ?? null,
+    attentionLine, events: summaryEvents, nowMs: Date.now(),
+  });
+
+  return { enabled: load.agentEnabled, boardLoadNo: load.boardLoadNo, policy, pill: load.agentPill, line, timeline, summary };
 }

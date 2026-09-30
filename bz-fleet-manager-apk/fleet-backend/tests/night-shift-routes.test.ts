@@ -689,6 +689,37 @@ describe("GET /loads/:id/agent — the timeline", () => {
     expect(res.status).toBe(404);
     expect(res.status).not.toBe(403);
   });
+
+  // Task 2: `summary` (deriveAgentSummary, Task 1) added to the body so the
+  // drawer and the AI Agents overview read the same plain-language state.
+  it("adds a summary derived from the load's persisted agent state", async () => {
+    const { org, auth } = await seedOrg();
+    await seedStandard(org.id); // shadow: true — the load falls back to it.
+    const load = await seedLoad(org.id, { agentEnabled: true, agentPill: "asked" });
+
+    const trip = await prisma.agentTrip.create({
+      data: { id: `trip-${load.id}`, loadRef: "L-1", loadId: load.id, driverToken: `tok-${load.id}`, brief: {}, status: "tracking" },
+    });
+    await prisma.agentEvent.create({ data: { tripId: trip.id, atMs: BigInt(1000), kind: "anomaly", evidence: { kind: "unplanned_stop" }, actionTaken: "unplanned stop" } });
+    await prisma.agentEvent.create({ data: { tripId: trip.id, atMs: BigInt(2000), kind: "action", evidence: { kind: "message" }, actionTaken: "asked the driver to check in" } });
+
+    const res = await request(app).get(`/api/dispatcher/loads/${load.id}/agent`).set("authorization", auth);
+
+    expect(res.status).toBe(200);
+    expect(res.body.summary).toMatchObject({ mode: "shadow", activity: "waiting_reply", nextConfidence: "inferred" });
+    expect(res.body.summary.noticed).toBe("unplanned stop");
+  });
+
+  it("summary.activity is 'off' for a load with Night Shift switched off", async () => {
+    const { org, auth } = await seedOrg();
+    await seedStandard(org.id);
+    const load = await seedLoad(org.id, { agentEnabled: false, agentPill: "off" });
+
+    const res = await request(app).get(`/api/dispatcher/loads/${load.id}/agent`).set("authorization", auth);
+
+    expect(res.status).toBe(200);
+    expect(res.body.summary.activity).toBe("off");
+  });
 });
 
 // --- POST /loads/:id/agent/commands ------------------------------------------------
