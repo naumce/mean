@@ -20,7 +20,12 @@ COPY night-shift night-shift
 COPY fleet-portal fleet-portal
 RUN cd fleet-backend && npx prisma generate
 # Same-origin: the portal calls /api on the page's own origin.
-RUN cd fleet-portal && VITE_API_URL=/api npm run build
+# Render exposes the service's environment variables to the Docker build only
+# through declared ARGs. MAPBOX_TOKEN is the public pk. token the backend already
+# geocodes with; the portal bakes it in so the Cockpit renders the live Mapbox
+# map instead of the schematic radar (lib/cockpit/mapData.ts mapboxToken).
+ARG MAPBOX_TOKEN
+RUN cd fleet-portal && VITE_API_URL=/api VITE_MAPBOX_TOKEN="$MAPBOX_TOKEN" npm run build
 
 COPY start.sh ./
 EXPOSE 3001
