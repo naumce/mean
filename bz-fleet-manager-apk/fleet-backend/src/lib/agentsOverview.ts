@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { deriveAgentSummary, type AgentSummaryEvent } from "./agentSummary.js";
 import { DEFAULT_HARNESS_CONFIG, harnessEnabled } from "./aiHarness/config.js";
@@ -23,7 +24,7 @@ export interface AgentsOverview {
       error: string | null;
     };
     activity: {
-      running: { runId: string; loadId: string | null; startedAt: string | null } | null;
+      running: { runId: string; loadId: string | null; loadNo: string | null; startedAt: string | null } | null;
       queued: number;
       lastRun: {
         runId: string;
@@ -48,6 +49,10 @@ export interface AgentsOverview {
       delivered: number;
       off: number;
       total: number;
+      /** Every load eligible for `loads[]` (agentEnabled) BEFORE the
+       *  MAX_LOADS display cap — so a dispatcher can tell "25 shown" from
+       *  "25 total" (N2). Always >= loads.length. */
+      listed: number;
     };
     mode: { shadowLoads: number; liveLoads: number; livePolicies: number };
     enforcement: { customerEmailOn: "not_enforced"; quietHours: "not_enforced" };
@@ -100,9 +105,20 @@ async function runningInfo(orgId: string | null): Promise<{ running: AgentsOverv
     where: { id: state.running },
     select: { id: true, loadId: true, startedAt: true, proposedAt: true },
   });
-  if (!record) return { running: { runId: state.running, loadId: null, startedAt: null }, queued: state.queued.length };
+  if (!record) return { running: { runId: state.running, loadId: null, loadNo: null, startedAt: null }, queued: state.queued.length };
+  // Same "never a raw id" fix as the loads[] rows below (displayLoadNo) —
+  // the dispatch-side "thinking about load X" line reads this loadNo, not
+  // loadId, so it never prints a uuid either.
+  const load = record.loadId
+    ? await prisma.load.findUnique({ where: { id: record.loadId }, select: { boardLoadNo: true, orderRef: true, externalId: true } })
+    : null;
   return {
-    running: { runId: record.id, loadId: record.loadId, startedAt: (record.startedAt ?? record.proposedAt).toISOString() },
+    running: {
+      runId: record.id,
+      loadId: record.loadId,
+      loadNo: load ? displayLoadNo(load) : null,
+      startedAt: (record.startedAt ?? record.proposedAt).toISOString(),
+    },
     queued: state.queued.length,
   };
 }
@@ -203,7 +219,7 @@ export async function buildAgentsOverview(orgId: string | null): Promise<AgentsO
     select: { id: true, orgId: true, boardLoadNo: true, orderRef: true, externalId: true, agentPill: true, agentEnabled: true, agentPolicyId: true },
   });
 
-  const activity = { watching: 0, waitingReply: 0, escalated: 0, held: 0, attention: 0, delivered: 0, off: 0, total: 0 };
+  const activity = { watching: 0, waitingReply: 0, escalated: 0, held: 0, attention: 0, delivered: 0, off: 0, total: 0, listed: 0 };
   const mode = { shadowLoads: 0, liveLoads: 0, livePolicies };
   const loadRows: LoadRow[] = [];
 
@@ -213,21 +229,49 @@ export async function buildAgentsOverview(orgId: string | null): Promise<AgentsO
 
     const [policies, attentionUpdates, trips] = await Promise.all([
       prisma.agentPolicy.findMany({ where: { orgId: { in: orgIds } }, select: { id: true, orgId: true, name: true, shadow: true } }),
-      prisma.agentUpdate.findMany({
-        where: { loadId: { in: loadIds }, kind: "attention" },
-        orderBy: { atMs: "desc" },
-        select: { loadId: true, text: true },
-      }),
+      // Fix round 1 tried Prisma's `distinct: ["loadId"]` + `orderBy` here,
+      // but on this project's Prisma version (5.22) `distinct` is applied
+      // CLIENT-SIDE for the query engine in use: the emitted SQL was plain
+      // `ORDER BY "atMs" DESC` with no `DISTINCT`/`LIMIT` at all, so Postgres
+      // still streamed every row (measured: ~98k AgentUpdate rows per poll
+      // on the seeded org, unchanged from before that "fix" — see
+      // final-review.md's Re-review, F3). A raw `DISTINCT ON` is the actual
+      // SQL-level fix: Postgres itself returns one (the newest, via the
+      // matching `ORDER BY "loadId", "atMs" DESC`) row per load, so only the
+      // useful rows ever cross the wire. `Prisma.join` parameterizes the id
+      // list safely (no string-built SQL).
+      loadIds.length
+        ? prisma.$queryRaw<Array<{ loadId: string; text: string; atMs: bigint }>>`
+            SELECT DISTINCT ON ("loadId") "loadId", "text", "atMs"
+            FROM "AgentUpdate"
+            WHERE "loadId" IN (${Prisma.join(loadIds)}) AND "kind" = 'attention'
+            ORDER BY "loadId", "atMs" DESC
+          `
+        : Promise.resolve([] as Array<{ loadId: string; text: string; atMs: bigint }>),
       prisma.agentTrip.findMany({ where: { loadId: { in: loadIds } }, select: { id: true, loadId: true } }),
     ]);
 
-    const attentionByLoad = new Map<string, string>();
-    for (const u of attentionUpdates) if (!attentionByLoad.has(u.loadId)) attentionByLoad.set(u.loadId, u.text);
+    // `DISTINCT ON ("loadId")` above already guarantees one (the newest) row
+    // per loadId — Postgres itself, not a client-side filter.
+    const attentionByLoad = new Map(attentionUpdates.map((u) => [u.loadId, u.text]));
 
     const tripLoadMap = new Map(trips.filter((t) => t.loadId).map((t) => [t.id, t.loadId as string]));
     const tripIds = [...tripLoadMap.keys()];
+    // Not bounded per load at the SQL level: at today's scale (1,457 events
+    // for the same 623-load org) a single findMany over every trip in scope
+    // costs ~70ms, and the per-load cap of 200 is already applied below in
+    // JS without a second sort (events arrive newest-first). A true
+    // per-load SQL bound (a raw DISTINCT-style window query, or one
+    // findMany per load inside Promise.all) is the next step once a load
+    // routinely exceeds ~200 events; `select` here is narrowed regardless,
+    // since it costs nothing today and removes columns deriveAgentSummary
+    // never reads.
     const events = tripIds.length
-      ? await prisma.agentEvent.findMany({ where: { tripId: { in: tripIds } }, orderBy: { atMs: "desc" } })
+      ? await prisma.agentEvent.findMany({
+          where: { tripId: { in: tripIds } },
+          orderBy: { atMs: "desc" },
+          select: { tripId: true, atMs: true, kind: true, evidence: true, actionTaken: true },
+        })
       : [];
 
     // Bounded per load (spec: "last 200 by atMs desc") — events arrive newest
@@ -267,10 +311,15 @@ export async function buildAgentsOverview(orgId: string | null): Promise<AgentsO
       if (summary.mode === "shadow") mode.shadowLoads += 1;
       else if (summary.mode === "live") mode.liveLoads += 1;
 
-      // `loads[]` itself is narrower than the counted set: only loads Night
-      // Shift is actually switched on for (spec: "enabled loads only") — a
-      // load whose pill has not caught up to being switched off yet is
-      // counted above but not surfaced as something to look at.
+      // `loads[]` itself is narrower than the counted set above: the filter
+      // is `agentEnabled` alone, full stop. That includes a load whose pill
+      // has not yet caught up to being switched off — it renders as an
+      // honest "Off · Night Shift is switched off for this load" row (see
+      // deriveAgentSummary's `off` branch) rather than being silently
+      // dropped, which is why a pill of "off" can still appear here even
+      // though the counted set above also includes loads with
+      // `agentEnabled: false` whose pill is not yet "off" (those never make
+      // it into `loads[]` at all).
       if (load.agentEnabled) {
         loadRows.push({
           loadId: load.id,
@@ -284,6 +333,11 @@ export async function buildAgentsOverview(orgId: string | null): Promise<AgentsO
         });
       }
     }
+
+    // N2: every eligible row (agentEnabled), regardless of the MAX_LOADS
+    // display cap applied below — lets the page say "25 of 62", not just
+    // silently show 25.
+    activity.listed = loadRows.length;
   }
 
   // Sort: attention/escalated first, then waiting_reply, then everything

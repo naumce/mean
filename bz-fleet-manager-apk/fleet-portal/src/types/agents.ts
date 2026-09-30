@@ -17,7 +17,7 @@ export interface AgentsOverview {
       error: string | null
     }
     activity: {
-      running: { runId: string; loadId: string | null; startedAt: string | null } | null
+      running: { runId: string; loadId: string | null; loadNo: string | null; startedAt: string | null } | null
       queued: number
       lastRun: {
         runId: string
@@ -42,6 +42,7 @@ export interface AgentsOverview {
       delivered: number
       off: number
       total: number
+      listed: number
     }
     mode: { shadowLoads: number; liveLoads: number; livePolicies: number }
     enforcement: { customerEmailOn: 'not_enforced'; quietHours: 'not_enforced' }

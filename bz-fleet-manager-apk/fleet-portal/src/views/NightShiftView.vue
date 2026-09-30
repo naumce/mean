@@ -440,7 +440,7 @@ onMounted(async () => {
             </button>
             <span class="text-ink-2">Also email the customer a status update</span>
           </label>
-          <p id="not-enforced-note-customer-email" class="text-xs text-ink-3" data-testid="not-enforced-note">
+          <p id="not-enforced-note-customer-email" class="text-xs text-ink-3" data-testid="not-enforced-note-customer-email">
             Not enforced yet — Night Shift does not read this setting. Messages are governed by Shadow/Live only.
           </p>
         </fieldset>
@@ -511,7 +511,7 @@ onMounted(async () => {
               />
             </label>
           </div>
-          <p id="not-enforced-note-quiet-hours" class="text-xs text-ink-3" data-testid="not-enforced-note">
+          <p id="not-enforced-note-quiet-hours" class="text-xs text-ink-3" data-testid="not-enforced-note-quiet-hours">
             Not enforced yet — Night Shift does not read this setting. Messages are governed by Shadow/Live only.
           </p>
         </fieldset>

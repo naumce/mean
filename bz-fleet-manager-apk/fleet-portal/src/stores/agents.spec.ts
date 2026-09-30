@@ -20,7 +20,7 @@ function overview(overrides: Partial<AgentsOverview> = {}): AgentsOverview {
     },
     nightShift: {
       service: { configured: false, lastActivityAt: null },
-      activity: { watching: 0, waitingReply: 0, escalated: 0, held: 0, attention: 0, delivered: 0, off: 0, total: 0 },
+      activity: { watching: 0, waitingReply: 0, escalated: 0, held: 0, attention: 0, delivered: 0, off: 0, total: 0, listed: 0 },
       mode: { shadowLoads: 0, liveLoads: 0, livePolicies: 0 },
       enforcement: { customerEmailOn: 'not_enforced', quietHours: 'not_enforced' },
       loads: [],
@@ -98,17 +98,30 @@ describe('useAgentsStore', () => {
       expect(store.dispatchStatus?.detail).toContain('qwen3:8b')
     })
 
-    it('reads "AI ready" and shows what it is thinking about when a run is in progress', () => {
+    it('reads "AI ready" and shows the load number it is thinking about when a run is in progress', () => {
       const store = useAgentsStore()
       store.data = overview({
         dispatch: {
           rules: { available: true },
           model: { configured: true, reachable: true, modelPresent: true, model: 'qwen3:8b', error: null },
-          activity: { running: { runId: 'run-1', loadId: 'load-9', startedAt: null }, queued: 2, lastRun: null },
+          activity: { running: { runId: 'run-1', loadId: 'load-9', loadNo: '1042', startedAt: null }, queued: 2, lastRun: null },
         },
       })
       expect(store.dispatchStatus?.headline).toBe('Rules available · AI ready')
-      expect(store.dispatchStatus?.detail).toContain('load-9')
+      expect(store.dispatchStatus?.detail).toBe('Thinking about load 1042')
+    })
+
+    it('falls back to "Thinking about a load" — never a raw id — when the running run has no loadNo', () => {
+      const store = useAgentsStore()
+      store.data = overview({
+        dispatch: {
+          rules: { available: true },
+          model: { configured: true, reachable: true, modelPresent: true, model: 'qwen3:8b', error: null },
+          activity: { running: { runId: 'run-1', loadId: 'load-9', loadNo: null, startedAt: null }, queued: 2, lastRun: null },
+        },
+      })
+      expect(store.dispatchStatus?.detail).toBe('Thinking about a load')
+      expect(store.dispatchStatus?.detail).not.toContain('load-9')
     })
 
     it('reads "AI ready" and shows the last run when idle', () => {
@@ -170,11 +183,13 @@ describe('useAgentsStore', () => {
       expect(store.nightShiftStatus).toBeNull()
     })
 
-    it('reads "Not configured" when no worker address is set', () => {
+    it('reads "Not configured" when no worker address is set, without claiming nothing is watched', () => {
       const store = useAgentsStore()
       store.data = overview()
       expect(store.nightShiftStatus).toMatchObject({ headline: 'Not configured' })
-      expect(store.nightShiftStatus?.detail).toBe('No worker address is set, so nothing is being watched.')
+      expect(store.nightShiftStatus?.detail).toBe(
+        'No worker address is set on this server, so it cannot run or confirm Night Shift. The states below come from the database and may be stale.',
+      )
     })
 
     it('reads "Ready · nothing watched yet" when configured with an empty workload', () => {
@@ -182,7 +197,7 @@ describe('useAgentsStore', () => {
       store.data = overview({
         nightShift: {
           service: { configured: true, lastActivityAt: null },
-          activity: { watching: 0, waitingReply: 0, escalated: 0, held: 0, attention: 0, delivered: 0, off: 0, total: 0 },
+          activity: { watching: 0, waitingReply: 0, escalated: 0, held: 0, attention: 0, delivered: 0, off: 0, total: 0, listed: 0 },
           mode: { shadowLoads: 0, liveLoads: 0, livePolicies: 1 },
           enforcement: { customerEmailOn: 'not_enforced', quietHours: 'not_enforced' },
           loads: [],
@@ -197,14 +212,14 @@ describe('useAgentsStore', () => {
       store.data = overview({
         nightShift: {
           service: { configured: true, lastActivityAt },
-          activity: { watching: 2, waitingReply: 1, escalated: 1, held: 0, attention: 1, delivered: 0, off: 0, total: 5 },
+          activity: { watching: 2, waitingReply: 1, escalated: 1, held: 0, attention: 1, delivered: 4, off: 0, total: 9, listed: 9 },
           mode: { shadowLoads: 3, liveLoads: 2, livePolicies: 2 },
           enforcement: { customerEmailOn: 'not_enforced', quietHours: 'not_enforced' },
           loads: [],
         },
       })
       expect(store.nightShiftStatus?.headline).toBe('3 watching · 2 need attention')
-      expect(store.nightShiftStatus?.detail).toBe('3 in shadow mode (messages recorded, not sent) · 2 live · Last report 2m')
+      expect(store.nightShiftStatus?.detail).toBe('3 in shadow mode (messages recorded, not sent) · 2 live · 4 delivered · Last report 2m')
     })
   })
 })

@@ -309,11 +309,12 @@ describe('NightShiftView', () => {
       expect(wrapper.find('#policy-quiet-from').attributes('disabled')).toBeDefined()
       expect(wrapper.find('#policy-quiet-to').attributes('disabled')).toBeDefined()
 
-      const notes = wrapper.findAll('[data-testid="not-enforced-note"]')
-      expect(notes.length).toBeGreaterThan(0)
-      for (const note of notes) {
-        expect(note.text()).toBe(NOT_ENFORCED_TEXT)
-      }
+      const customerEmailNote = wrapper.find('[data-testid="not-enforced-note-customer-email"]')
+      const quietHoursNote = wrapper.find('[data-testid="not-enforced-note-quiet-hours"]')
+      expect(customerEmailNote.exists()).toBe(true)
+      expect(quietHoursNote.exists()).toBe(true)
+      expect(customerEmailNote.text()).toBe(NOT_ENFORCED_TEXT)
+      expect(quietHoursNote.text()).toBe(NOT_ENFORCED_TEXT)
 
       // Shadow/Live controls must be untouched by this task.
       expect(wrapper.find('[data-testid="choose-shadow"]').attributes('disabled')).toBeUndefined()

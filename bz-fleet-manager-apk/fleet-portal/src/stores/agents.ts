@@ -48,7 +48,7 @@ function dispatchStatusFor(dispatch: AgentsOverview['dispatch']): StatusCopy {
   if (activity.running) {
     return {
       headline: 'Rules available · AI ready',
-      detail: `Thinking about load ${activity.running.loadId ?? '…'}`,
+      detail: activity.running.loadNo ? `Thinking about load ${activity.running.loadNo}` : 'Thinking about a load',
     }
   }
   if (activity.lastRun) {
@@ -69,7 +69,11 @@ function nightShiftStatusFor(nightShift: AgentsOverview['nightShift']): StatusCo
   const { service, activity, mode } = nightShift
 
   if (!service.configured) {
-    return { headline: 'Not configured', detail: 'No worker address is set, so nothing is being watched.' }
+    return {
+      headline: 'Not configured',
+      detail:
+        'No worker address is set on this server, so it cannot run or confirm Night Shift. The states below come from the database and may be stale.',
+    }
   }
   if (activity.total === 0) {
     return { headline: 'Ready · nothing watched yet', detail: 'No loads are enabled for Night Shift yet.' }
@@ -80,7 +84,7 @@ function nightShiftStatusFor(nightShift: AgentsOverview['nightShift']): StatusCo
     headline: `${watching} watching · ${needAttention} need attention`,
     detail:
       `${mode.shadowLoads} in shadow mode (messages recorded, not sent) · ${mode.liveLoads} live` +
-      ` · Last report ${ageLabel(service.lastActivityAt, Date.now())}`,
+      ` · ${activity.delivered} delivered · Last report ${ageLabel(service.lastActivityAt, Date.now())}`,
   }
 }
 

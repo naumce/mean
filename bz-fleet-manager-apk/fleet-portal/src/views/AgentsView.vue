@@ -52,9 +52,18 @@ onUnmounted(() => {
         />
       </div>
 
-      <div v-if="store.data.nightShift.loads.length > 0" class="rounded-lg border border-line bg-surface">
-        <AgentLoadRow v-for="load in store.data.nightShift.loads" :key="load.loadId" :load="load" />
-      </div>
+      <template v-if="store.data.nightShift.loads.length > 0">
+        <p
+          v-if="store.data.nightShift.loads.length < store.data.nightShift.activity.listed"
+          class="text-xs text-ink-3"
+          data-testid="loads-showing-count"
+        >
+          Showing {{ store.data.nightShift.loads.length }} of {{ store.data.nightShift.activity.listed }} loads
+        </p>
+        <div class="rounded-lg border border-line bg-surface">
+          <AgentLoadRow v-for="load in store.data.nightShift.loads" :key="load.loadId" :load="load" />
+        </div>
+      </template>
       <p v-else class="text-sm text-ink-3">No loads are being watched right now.</p>
     </template>
   </div>

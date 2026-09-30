@@ -56,6 +56,15 @@ describe('AgentSummaryPanel', () => {
     expect(wrapper.get('[data-testid="summary-done"]').text()).toContain('Nothing sent yet.')
   })
 
+  it('sets the full text as the title on each done line and clamps it to two lines', () => {
+    const longLine =
+      'Would have sent email: Dear customer, we are writing to let you know that your shipment has been delayed due to an unforeseen circumstance and will now arrive later than originally planned.'
+    const wrapper = mount(AgentSummaryPanel, { props: { summary: summary({ done: [longLine] }), shadow: false } })
+    const item = wrapper.get('[data-testid="summary-done"] li')
+    expect(item.attributes('title')).toBe(longLine)
+    expect(item.classes()).toContain('line-clamp-2')
+  })
+
   it('shows the shadow note under What it has done only in shadow mode', () => {
     const shadowWrapper = mount(AgentSummaryPanel, { props: { summary: summary({ mode: 'shadow' }), shadow: true } })
     expect(shadowWrapper.get('[data-testid="summary-done"]').text()).toContain('Shadow mode: these were recorded, not sent.')

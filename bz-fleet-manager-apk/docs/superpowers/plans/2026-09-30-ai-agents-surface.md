@@ -328,14 +328,14 @@ export interface AgentsOverview {
       error: string | null;
     };
     activity: {
-      running: { runId: string; loadId: string | null; startedAt: string | null } | null;
+      running: { runId: string; loadId: string | null; loadNo: string | null; startedAt: string | null } | null; // loadNo added after review (F10)
       queued: number;
       lastRun: { runId: string; loadId: string | null; status: string; driverId: string | null; driverName: string | null; confidence: number | null; completedAt: string | null; promptVersion: string | null } | null;
     };
   };
   nightShift: {
     service: { configured: boolean; lastActivityAt: string | null };  // WORKER_URL set; newest AgentEvent/AgentUpdate in the org
-    activity: { watching: number; waitingReply: number; escalated: number; held: number; attention: number; delivered: number; off: number; total: number };
+    activity: { watching: number; waitingReply: number; escalated: number; held: number; attention: number; delivered: number; off: number; total: number; listed: number /* eligible loads before the 25-row cap (N2) */ };
     mode: { shadowLoads: number; liveLoads: number; livePolicies: number };
     enforcement: { customerEmailOn: "not_enforced"; quietHours: "not_enforced" };
     loads: Array<{ loadId: string; boardLoadNo: string | null; pill: string; mode: "shadow" | "live" | "off"; activity: string; next: string; nextConfidence: "known" | "inferred" | "unknown"; lastEventAt: string | null }>; // enabled loads only, ordered: attention/escalated first, then waiting_reply, then the rest by lastEventAt desc, max 25

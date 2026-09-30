@@ -47,7 +47,7 @@ const activityLabel = computed(() => ACTIVITY_LABELS[props.summary.activity])
     <div data-testid="summary-done">
       <p class="text-[10px] font-bold uppercase tracking-wider text-ink-3">What it has done</p>
       <ul v-if="summary.done.length" class="mt-0.5 space-y-0.5">
-        <li v-for="(line, i) in summary.done" :key="i" class="text-xs text-ink-2">{{ line }}</li>
+        <li v-for="(line, i) in summary.done" :key="i" class="line-clamp-2 text-xs text-ink-2" :title="line">{{ line }}</li>
       </ul>
       <p v-else class="mt-0.5 text-xs text-ink-2">Nothing sent yet.</p>
       <p v-if="shadow" class="mt-1 text-[11px] italic text-ink-3" data-testid="summary-shadow-note">

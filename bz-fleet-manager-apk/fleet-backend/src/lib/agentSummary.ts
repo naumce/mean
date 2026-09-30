@@ -29,6 +29,15 @@ const ANOMALY_WORDS: Record<string, string> = {
 
 const rec = (e: unknown): Record<string, unknown> => (e && typeof e === "object" ? (e as Record<string, unknown>) : {});
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v : null);
+const isFailed = (e: AgentSummaryEvent): boolean => rec(e.evidence).failed === true;
+
+// A "done" line reports one record; a shadow email's `would_say` text can be
+// a whole multi-paragraph escalation draft (night-shift/src/core/agent.ts's
+// `would_say` for an email channel carries the full body). Clamped here,
+// once, for every line this module ever produces — not just email — so no
+// single record can dominate the drawer or the overview row.
+const MAX_DONE_LINE = 140;
+const clampLine = (line: string): string => (line.length > MAX_DONE_LINE ? line.slice(0, MAX_DONE_LINE) + "…" : line);
 
 export function deriveAgentSummary(input: AgentSummaryInput): AgentSummary {
   const events = [...input.events].sort((a, b) => b.atMs - a.atMs); // newest first; ties keep the caller's input order (stable sort)
@@ -62,7 +71,12 @@ export function deriveAgentSummary(input: AgentSummaryInput): AgentSummary {
   if (escalationActive) {
     return { mode, activity: "escalated", noticed, recommends, done, next: policyPrefix + "Escalated to dispatch. It is your decision now; Night Shift will not re-ask the driver about this.", nextConfidence: "known", lastEventAt };
   }
-  const question = events.find((e) => (e.kind === "action" && QUESTION_KINDS.has(String(rec(e.evidence).kind))) || e.kind === "call");
+  // A failed send/call never opens a question — Night Shift's own core
+  // refuses to climb the ladder on a delivery that threw (agent.ts's
+  // noteDeliveryFailure comment), and the summary must not do what the core
+  // refused to: a message the driver was never sent cannot be "waiting for
+  // a reply".
+  const question = events.find((e) => !isFailed(e) && ((e.kind === "action" && QUESTION_KINDS.has(String(rec(e.evidence).kind))) || e.kind === "call"));
   if (question && !events.some((e) => e.kind === "reply" && e.atMs >= question.atMs)) {
     return { mode, activity: "waiting_reply", noticed, recommends: null, done, next: policyPrefix + "Waiting for the driver's reply. Night Shift re-asks after its cooldown; the exact time is not recorded here.", nextConfidence: "inferred", lastEventAt };
   }
@@ -93,14 +107,31 @@ function noticedLine(events: AgentSummaryEvent[]): string | null {
 // send records instead.
 function doneLines(events: AgentSummaryEvent[], mode: AgentMode): string[] {
   const lines: string[] = [];
+  const push = (line: string) => lines.push(clampLine(line));
   for (const e of events) {
     const ev = rec(e.evidence);
+    const failed = ev.failed === true;
     if (mode === "shadow") {
-      if (e.kind === "would_say") lines.push(`Would have sent ${String(ev.channel ?? "message")}: ${String(ev.text ?? "")}`);
+      if (e.kind === "would_say") push(`Would have sent ${String(ev.channel ?? "message")}: ${String(ev.text ?? "")}`);
     } else {
-      if (e.kind === "action" && DONE_ACTION_KINDS.has(String(ev.kind))) lines.push(`Sent ${String(ev.channel ?? "message")}: ${String(ev.text ?? "")}`);
-      else if (e.kind === "call") lines.push(ev.answered === true ? "Called the driver (answered)" : "Called the driver");
-      else if (e.kind === "email") lines.push(`Emailed ${String(ev.to ?? "")}: ${String(ev.subject ?? ev.kind ?? "")}`);
+      // A failed record is never "Sent"/"Called"/"Emailed" — Night Shift's
+      // own core writes `failed: true` precisely so this layer can tell a
+      // real send from an attempt that threw; reporting the latter as a
+      // success would be the exact dishonesty rule 6 above also guards
+      // against for the open-question read of the same records.
+      if (e.kind === "action" && DONE_ACTION_KINDS.has(String(ev.kind))) {
+        const text = String(ev.text ?? e.actionTaken ?? "");
+        push(failed ? `Could not send ${String(ev.channel ?? "message")}: ${text}` : `Sent ${String(ev.channel ?? "message")}: ${text}`);
+      } else if (e.kind === "call") {
+        push(failed ? "Could not reach the driver by phone" : ev.answered === true ? "Called the driver (answered)" : "Called the driver");
+      } else if (e.kind === "email") {
+        // Prefer the human `actionTaken` over the raw evidence when there is
+        // no subject — most `record("email", …)` call sites never set one,
+        // and the fallback used to be the internal `kind` enum
+        // ("customer_arrival") rather than plain language.
+        const label = String(ev.subject ?? e.actionTaken ?? "");
+        push(failed ? `Could not email ${String(ev.to ?? "")}: ${label}` : `Emailed ${String(ev.to ?? "")}: ${label}`);
+      }
     }
     if (lines.length === 5) break;
   }

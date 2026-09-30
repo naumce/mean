@@ -180,6 +180,49 @@ describe("deriveAgentSummary", () => {
 
   // --- Fix round 3 ---
 
+  // --- Final-review fix round: B1/B2/B3 ---
+
+  it("a failed outbound message is not an open question, and done says it could not send", () => {
+    const s = deriveAgentSummary(base({ policyShadow: false, pill: "asked", events: [
+      ev(NOW - 60_000, "action", { anomalyKey: "delay", rung: 1, kind: "message", channel: "chat", failed: true, error: "gateway timeout" }, "delivery failed — will retry after cooldown"),
+    ] }));
+    expect(s.activity).not.toBe("waiting_reply");
+    expect(s.done).toEqual(["Could not send chat: delivery failed — will retry after cooldown"]);
+  });
+
+  it("a failed manual call is not an open question, and done says the driver could not be reached", () => {
+    const s = deriveAgentSummary(base({ policyShadow: false, events: [
+      ev(NOW - 60_000, "call", { manual: true, failed: true, error: "no answer path" }, "manual call failed"),
+    ] }));
+    expect(s.activity).not.toBe("waiting_reply");
+    expect(s.done).toEqual(["Could not reach the driver by phone"]);
+  });
+
+  it("a failed email is reported as not sent, using actionTaken for the label", () => {
+    const s = deriveAgentSummary(base({ policyShadow: false, events: [
+      ev(NOW - 60_000, "email", { to: "ops@acme.com", failed: true, error: "smtp down" }, "escalation email failed to send"),
+    ] }));
+    expect(s.done).toEqual(["Could not email ops@acme.com: escalation email failed to send"]);
+    expect(s.done.some((line) => line.startsWith("Emailed"))).toBe(false);
+  });
+
+  it("email done line uses actionTaken, not the raw evidence kind, when there is no subject", () => {
+    const s = deriveAgentSummary(base({ policyShadow: false, events: [
+      ev(NOW - 10_000, "email", { to: "demo-customer@example.invalid", kind: "customer_arrival", messageId: null }, "customer told of arrival"),
+    ] }));
+    expect(s.done).toEqual(["Emailed demo-customer@example.invalid: customer told of arrival"]);
+  });
+
+  it("a long done line is clamped to 140 characters with a trailing ellipsis", () => {
+    const longText = "x".repeat(300);
+    const s = deriveAgentSummary(base({ events: [
+      ev(NOW - 10_000, "would_say", { channel: "email", to: "ops@acme.com", text: longText }),
+    ] }));
+    expect(s.done).toHaveLength(1);
+    expect(s.done[0]!.length).toBeLessThanOrEqual(141);
+    expect(s.done[0]!.endsWith("…")).toBe(true);
+  });
+
   it("shadow done lines come from would_say only, never duplicating the paired action/email records", () => {
     const s = deriveAgentSummary(base({ policyShadow: true, events: [
       ev(NOW - 40_000, "action", { kind: "message", channel: "chat", text: "You've been stopped 2 min. Everything OK?" }, "message"),

@@ -19,6 +19,11 @@ const ACTIVITY_LABELS: Record<string, string> = {
   off: 'Off',
 }
 
+// Global Constraint: "never a raw id" — when the load has no board number,
+// order ref or external id (agentsOverview.ts's `displayLoadNo` returns
+// null), show a short id fragment instead of the full UUID.
+const label = computed(() => props.load.boardLoadNo ?? `Load ${props.load.loadId.slice(0, 8)}`)
+
 const modeLabel = computed(() => MODE_LABELS[props.load.mode] ?? props.load.mode)
 const activityLabel = computed(() => ACTIVITY_LABELS[props.load.activity] ?? props.load.activity)
 
@@ -36,7 +41,7 @@ const uncertaintyTitle = computed(() =>
     :data-testid="`agent-load-row-${load.loadId}`"
   >
     <div class="flex items-center gap-2 text-sm">
-      <span class="font-semibold text-ink">{{ load.boardLoadNo ?? load.loadId }}</span>
+      <span class="font-semibold text-ink">{{ label }}</span>
       <span class="rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium text-ink-2" data-testid="load-mode">{{ modeLabel }}</span>
       <span class="rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium text-ink-2" data-testid="load-activity">{{ activityLabel }}</span>
     </div>

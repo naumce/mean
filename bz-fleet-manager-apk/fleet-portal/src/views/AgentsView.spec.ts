@@ -40,7 +40,7 @@ function overview(overrides: Partial<AgentsOverview> = {}): AgentsOverview {
     },
     nightShift: {
       service: { configured: false, lastActivityAt: null },
-      activity: { watching: 0, waitingReply: 0, escalated: 0, held: 0, attention: 0, delivered: 0, off: 0, total: 0 },
+      activity: { watching: 0, waitingReply: 0, escalated: 0, held: 0, attention: 0, delivered: 0, off: 0, total: 0, listed: 0 },
       mode: { shadowLoads: 0, liveLoads: 0, livePolicies: 0 },
       enforcement: { customerEmailOn: 'not_enforced', quietHours: 'not_enforced' },
       loads: [],
@@ -134,6 +134,32 @@ describe('AgentsView', () => {
       const row2 = wrapper.find('[data-testid="agent-load-row-load-2"]')
       expect(row1.find('[data-testid="uncertainty-marker"]').exists()).toBe(true)
       expect(row2.find('[data-testid="uncertainty-marker"]').exists()).toBe(false)
+    })
+
+    it('shows "Showing <rows> of <listed> loads" when the list is truncated, using activity.listed as the denominator', async () => {
+      const { wrapper } = await mountView({
+        data: overview({
+          nightShift: {
+            ...overview().nightShift,
+            loads,
+            activity: { ...overview().nightShift.activity, total: 623, listed: 25 },
+          },
+        }),
+      })
+      expect(wrapper.find('[data-testid="loads-showing-count"]').text()).toBe('Showing 2 of 25 loads')
+    })
+
+    it('does not show the showing-count line when all listed loads are shown, even if activity.total is far larger', async () => {
+      const { wrapper } = await mountView({
+        data: overview({
+          nightShift: {
+            ...overview().nightShift,
+            loads,
+            activity: { ...overview().nightShift.activity, total: 623, listed: 2 },
+          },
+        }),
+      })
+      expect(wrapper.find('[data-testid="loads-showing-count"]').exists()).toBe(false)
     })
   })
 
