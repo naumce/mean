@@ -85,7 +85,7 @@ Rules the function implements (each is one test):
 7. `pill === 'attention'` → `activity 'attention'`, `next = attentionLine ?? "Night Shift could not start or continue; see the timeline."`, `'known'` when attentionLine present else `'inferred'`.
 8. Otherwise enabled → `activity 'watching'`; if `lastEventAt` is null or older than 3 minutes → `next = "Watching. No report from Night Shift in the last N minutes — it checks once a minute, so it may be down."` with `'unknown'`; else `next = "Watching. Next check within a minute."`, `'known'`.
 9. `noticed` = newest `anomaly` event whose `key` has no later `anomaly {resolved: true}` with the same key → its `actionTaken` text if present else `kind` mapped: `unplanned_stop → "Unplanned stop"`, `delay → "Running late"`, `gone_dark → "No GPS for a while"`, `off_route → "Off the planned route"`; null when none.
-10. `done` = newest-first texts of `action(message|message_again|sms|respond)`, `call`, `email`, `would_say` events, formatted `"<Sent|Would have sent> <channel>: <text>"` (would_say → "Would have sent"), max 5.
+10. `done` = newest-first lines for `action(message|message_again|sms|respond)` and `would_say` events formatted `"<Sent|Would have sent> <channel>: <text>"`, plus `"Called the driver"`/`"Called the driver (answered)"` for `call` events and `"Emailed <to>: <subject>"` for `email` events; max 5. (Amended after review: one format string did not fit calls and emails.)
 
 - [ ] **Step 1: Write the failing tests** — `fleet-backend/tests/agent-summary.test.ts`:
 

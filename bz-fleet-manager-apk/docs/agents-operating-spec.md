@@ -136,13 +136,12 @@ raises.
 
 ### Status vocabulary for the UI
 
-No such fixed vocabulary exists in the product today (see Gap 9); the following is this document's own proposal, derived from state the backend already exposes:
+Shipped on 2026-09-30 on the **AI Agents** page (`/agents`, `GET /api/dispatcher/agents/overview`). Readiness is stated separately from functionality: the rules engine is always available, and the headline never implies drivers cannot be found without a model:
 
-- **Not configured** — `harnessEnabled()` is false, i.e. `OLLAMA_URL` is unset (source: `fleet-backend/src/lib/aiHarness/config.ts:74-76`).
-- **Ready** — enabled, with an empty queue for the org (source: `fleet-backend/src/lib/aiHarness/runner.ts:68-71`).
-- **Thinking** — a run's status is `queued` or `running`.
-- **Proposed** — a run's status is `proposed`.
-- **Failed** — a run's status is `failed`, `incomplete`, or `cancelled` (source: `fleet-backend/src/lib/aiHarness/loop.ts:52`).
+- **Rules available · AI not configured** — `OLLAMA_URL` unset (source: `fleet-backend/src/lib/agentsOverview.ts`, `fleet-portal/src/stores/agents.ts`).
+- **Rules available · AI unreachable** — configured, but the model server did not answer the preflight check; the error text is shown.
+- **Rules available · AI model not installed** — the server answers but has not pulled the configured model.
+- **Rules available · AI ready** — reachable with the model present; the detail line then reports activity: the run in progress, or the last run's driver, confidence and status.
 
 ## 4. Night Shift
 
@@ -274,10 +273,11 @@ Four deterministic rules run every tick, each returning named evidence or nothin
 
 - The actual pill vocabulary already used on the board is `off | watching | asked | calling | escalated | delivered | attention | shadow | held` — richer than a
   five-value summary (source: `fleet-backend/prisma/schema.prisma:745`).
-- Collapsed for a simple status read-out, this document proposes: **Not configured** (`off`, no policy assigned yet); **Watching**
-  (`watching`/`asked`/`calling`); **Shadow mode** (`shadow`, or any of the above while the load's `AgentPolicy.shadow` is true); **Needs attention**
-  (`attention`/`escalated`/`held`); **Delivered** (`delivered`).
-- No such collapsed vocabulary exists in the product today — this mapping is this document's own proposal (see Gap 9).
+- Shipped on 2026-09-30 (`fleet-backend/src/lib/agentSummary.ts`, shown on the AI Agents page and at the top of every load's agent drawer). **Mode** and
+  **activity** are always shown separately: mode is `Shadow` or `Live` from the load's policy (what the agent may send); activity is one of `Watching`,
+  `Waiting for reply`, `Escalated`, `Held`, `Needs attention`, `Delivered`, `Off` (what it is doing), derived only from `Load.agentPill` and the persisted
+  events. "What happens next" carries a confidence: `known`, `inferred` (the worker's ladder timers are not persisted, so no time is promised) or `unknown`
+  (no report from the worker for three minutes). The service itself is reported as configured or not, separately from an empty workload.
 
 ## 5. Rules engine
 
@@ -326,15 +326,15 @@ Four deterministic rules run every tick, each returning named evidence or nothin
 
 ## 7. Gaps between this specification and the implementation
 
-1. **No unified "AI Agents" status surface exists.** There is no page listing the Dispatch Assistant and Night Shift together with their current status. The AI
+1. **Resolved 2026-09-30 — the AI Agents page (`/agents`) lists both agents with readiness, activity and per-load rows.** Historical note: There is no page listing the Dispatch Assistant and Night Shift together with their current status. The AI
    Lab (`/ai-lab`) is a developer console for experiments and runs; `/night-shift` is a policy-configuration screen with Connect/Policies/Usage/Settings tabs,
    not a live status board (source: `fleet-portal/src/router/index.ts:81,92-94`; `fleet-portal/src/views/NightShiftView.vue:11-23`).
 
-2. **No per-load "View agent" panel.** A load's own agent timeline lives only inside the Cockpit's `AgentDrawer`, opened by an in-page click from `CockpitView`
+2. **Resolved 2026-09-30 — every load's agent drawer opens with a summary (noticed / recommends / done / next / mode · activity) and hides pings behind "Technical details"; the Cockpit accepts `?load=<id>`.** Historical note: A load's own agent timeline lives only inside the Cockpit's `AgentDrawer`, opened by an in-page click from `CockpitView`
    — there is no dedicated route or standalone page for it (source: `fleet-portal/src/components/agent/AgentDrawer.vue`;
    `fleet-portal/src/components/demo/HowItWorksLinks.vue:13-16`).
 
-3. **The demo's "Night Shift timeline" link is generic, not per-load.** `HowItWorksLinks.vue`'s "Night Shift timeline" link opens the plain `/cockpit` route
+3. **Resolved 2026-09-30 — the demo's timeline link and its "View agent activity" button open `/cockpit?load=<id>`.** Historical note: `HowItWorksLinks.vue`'s "Night Shift timeline" link opens the plain `/cockpit` route
    rather than deep-linking to the specific load's drawer, because no such deep link exists yet in the codebase — the component's own comment says so (source:
    `fleet-portal/src/components/demo/HowItWorksLinks.vue:13-16,50`).
 
@@ -368,7 +368,7 @@ Four deterministic rules run every tick, each returning named evidence or nothin
    `night-shift/src/live/platformLoads.ts:171-172,275`; `fleet-portal/src/views/NightShiftView.vue:63-64,490-499`). This is the same "policy field exists but is
    not read by the agent" pattern as Gap 6. UI marks the control "Not enforced yet" (2026-09-30).
 
-9. **The status vocabularies in Sections 3 and 4 are this document's own proposal, not existing UI copy.** No fixed set of these labels exists in the frontend
+9. **Resolved 2026-09-30 — the vocabularies in Sections 3 and 4 are now the shipped UI copy.** Historical note: No fixed set of these labels exists in the frontend
    today; they are derived from state the backend already exposes, to give a buyer a plain-language read-out.
 
 10. **No language model runs in production.** The Render service's environment has no `OLLAMA_URL` and no `ANTHROPIC_API_KEY` (checked against the live
