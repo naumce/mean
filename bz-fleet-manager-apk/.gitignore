@@ -14,3 +14,7 @@ fleet-backend/uploads/
 /commit-slice.sh
 /risk-brief.html
 /.superpowers/
+
+# Playwright audit artifacts (screenshots, console logs) — generated, never committed
+.playwright-cli/
+output/
