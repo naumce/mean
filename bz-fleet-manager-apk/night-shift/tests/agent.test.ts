@@ -318,7 +318,11 @@ describe("Agent", () => {
     await drive(0, 76, (m) => m * 0.6); // slow: 30.4 behind at 76 -> delay, one question
     await drive(77, 90, (m) => 45.6 + (m - 76) * 3); // catches up: the delay clears
     await drive(91, 140, (m) => 87.6 + (m - 90) * 0.25); // slow again: ETA passes the deadline
-    const delayChats = messenger.sent.filter((m) => m.channel === "chat" && /behind/i.test(m.text));
+    // The first raise is genuinely behind pace; the second's ETA has only
+    // just passed the deadline (behindPlan false), so it is worded as "on
+    // pace... at risk" rather than a dishonest minute count — either wording
+    // still counts as the fresh ladder's question.
+    const delayChats = messenger.sent.filter((m) => m.channel === "chat" && /behind|at risk of missing its window/i.test(m.text));
     expect(delayChats).toHaveLength(2);
     expect(events.events.filter((e) => e.kind === "anomaly" && e.evidence.key === "delay" && e.evidence.resolved === true)).toHaveLength(1);
   });
@@ -465,7 +469,10 @@ describe("Agent", () => {
 
     const chats = messenger.sent.filter((c) => c.channel === "chat");
     expect(chats.some((c) => /haven't seen your location/.test(c.text))).toBe(true);
-    const delayChats = chats.filter((c) => /behind/.test(c.text));
+    // This delay's ETA has only just passed the deadline (behindPlan false),
+    // so it is worded as "on pace... at risk" rather than a minute count —
+    // the point of this test is the "as of" suffix, which either wording carries.
+    const delayChats = chats.filter((c) => /behind|at risk of missing its window/.test(c.text));
     expect(delayChats.length).toBeGreaterThan(0);
     for (const c of delayChats) expect(c.text).toContain("as of your 07:50 position");
 

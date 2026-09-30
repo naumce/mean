@@ -41,7 +41,7 @@ export interface PhraseContext {
 
 /** One sentence of situation, one question. */
 export function questionFor(a: Anomaly, ctx: PhraseContext): string {
-  const ev = a.evidence as Record<string, number | { lat: number; lng: number }>;
+  const ev = a.evidence as Record<string, number | boolean | { lat: number; lng: number }>;
   switch (a.kind) {
     case "unplanned_stop": {
       const where = placeLabel(ev.at as GeoPoint, ctx.landmarks, ctx.plan, ctx.brief.origin.name);
@@ -52,7 +52,15 @@ export function questionFor(a: Anomaly, ctx: PhraseContext): string {
       // Saying it flat invites "I'm moving, what are you talking about" —
       // and the driver would be right.
       const asOf = (ev.fixAgeMin as number) > STALE_FIX_MIN ? " (as of your " + clockLabel(ev.asOfMs as number, ctx.tz) + " position)" : "";
-      return "You're about " + ev.behindMin + " minutes behind for " + ctx.brief.destination.name + ". Is everything OK?" + asOf;
+      const behindMin = ev.behindMin as number;
+      // The anomaly can fire on a past-deadline call alone (behindPlan false)
+      // or on a pace that has since recovered (behindMin <= 0). Either way,
+      // "-4 minutes behind" or "0 minutes behind" is not a claim the evidence
+      // supports — the honest claim is that the window itself is at risk.
+      if (behindMin <= 0 || ev.behindPlan === false) {
+        return "You're on pace, but this delivery is at risk of missing its window at " + ctx.brief.destination.name + ". Is everything OK?" + asOf;
+      }
+      return "You're about " + behindMin + " minutes behind for " + ctx.brief.destination.name + ". Is everything OK?" + asOf;
     }
     case "gone_dark":
       return "I haven't seen your location for " + ev.gapMin + " minutes. Everything OK?";
@@ -104,7 +112,15 @@ export function escalationBody(
   for (const e of events) {
     const at = clockLabel(e.atMs, tz);
     const ev = e.evidence as Record<string, unknown>;
-    if (e.kind === "anomaly" && !ev.resolved) lines.push(at + " — noticed: " + String(ev.kind) + (ev.observedMin != null ? " (" + ev.observedMin + " min)" : "") + (ev.behindMin != null ? " (" + ev.behindMin + " min behind)" : ""));
+    // A non-positive behindMin, or a positive one with behindPlan false
+    // (pastDeadline alone raised the anomaly), is not a claim that the driver
+    // is behind by that many minutes — it is the same "at risk of missing
+    // its window" situation the delay question states. Mirrors questionFor's
+    // condition exactly so the dispatcher's email never tells a different
+    // story than what the driver was asked.
+    const behindMin = ev.behindMin as number | undefined;
+    const behindNote = behindMin == null ? "" : behindMin > 0 && ev.behindPlan !== false ? " (" + behindMin + " min behind)" : " (at risk of missing its window)";
+    if (e.kind === "anomaly" && !ev.resolved) lines.push(at + " — noticed: " + String(ev.kind) + (ev.observedMin != null ? " (" + ev.observedMin + " min)" : "") + behindNote);
     if (e.kind === "action" && (ev.kind === "message" || ev.kind === "message_again" || ev.kind === "sms")) {
       // "No reply" is a claim about silence, made only when nothing answered
       // this question. A reply is matched by the key it answered, not by
