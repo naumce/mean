@@ -1,7 +1,7 @@
 import request from "supertest";
 import { prisma } from "../src/db.js";
 import { app } from "./helpers.js";
-import { haversineMi, driveMinutes } from "../src/domain/dispatch/distance.js";
+import { haversineMi } from "../src/domain/dispatch/distance.js";
 import { availabilityFor } from "../src/lib/driverAvailability.js";
 import { driverMetrics } from "../src/lib/driverMetrics.js";
 import { laneKey, laneRunsByDriver } from "../src/lib/lanes.js";
@@ -50,7 +50,11 @@ const CURRENT_ASSIGNED_BASELINE = 80;
 const CURRENT_IN_PROGRESS_BASELINE = 40;
 const CURRENT_TENDERED_BASELINE = 10;
 const SCENARIO_OPEN_LOADS = 8; // A B C D E F G H
-const SCENARIO_IN_PROGRESS_LOADS = 6; // Ana's inbound + I J K L N
+// invited-brief.md section C: Ana's inbound trip and I are now assigned, not
+// yet departed (startedAt null, a future plannedStart) rather than
+// in_progress — see SCENARIO_ASSIGNED_LOADS below.
+const SCENARIO_IN_PROGRESS_LOADS = 4; // J K L N
+const SCENARIO_ASSIGNED_LOADS = 2; // Ana's inbound + I (assigned, not yet departed)
 const SCENARIO_DELIVERED_LOADS = 1; // M (completed/historical, fixed regardless of scale)
 const BULK_DRIVER_BASELINE = 150;
 
@@ -195,7 +199,7 @@ describe("seed-world (AI Dispatch Foundation, Task 7)", () => {
     ]);
 
     expect(delivered).toBe(scaled(HISTORICAL_BASELINE) + SCENARIO_DELIVERED_LOADS);
-    expect(assigned).toBe(scaled(CURRENT_ASSIGNED_BASELINE));
+    expect(assigned).toBe(scaled(CURRENT_ASSIGNED_BASELINE) + SCENARIO_ASSIGNED_LOADS);
     expect(tendered).toBe(scaled(CURRENT_TENDERED_BASELINE));
     expect(open).toBe(scaled(CURRENT_OPEN_BASELINE) + SCENARIO_OPEN_LOADS);
     expect(inProgress).toBe(scaled(CURRENT_IN_PROGRESS_BASELINE) + SCENARIO_IN_PROGRESS_LOADS);
@@ -204,7 +208,7 @@ describe("seed-world (AI Dispatch Foundation, Task 7)", () => {
     // full scale) — a softer, human-readable confirmation on top of the
     // exact formula checks above.
     const currentTotal = open + assigned + inProgress + tendered;
-    expect(withinTolerance(currentTotal, 225 * SCALE + SCENARIO_OPEN_LOADS + SCENARIO_IN_PROGRESS_LOADS, 0.25)).toBe(true);
+    expect(withinTolerance(currentTotal, 225 * SCALE + SCENARIO_OPEN_LOADS + SCENARIO_ASSIGNED_LOADS + SCENARIO_IN_PROGRESS_LOADS, 0.25)).toBe(true);
   });
 
   it("every world load carries a customerId", async () => {
@@ -275,7 +279,7 @@ describe("seed-world (AI Dispatch Foundation, Task 7)", () => {
     expect(metrics.responseRate!).toBeLessThan(0.67);
   });
 
-  it("C: Ana Kovacs is in_progress, plannedEnd 10:20 Detroit time, projected available in Detroit", async () => {
+  it("C: Ana Kovacs's inbound load is assigned (not yet departed), plannedEnd 10:20 Detroit time, projected available in Detroit", async () => {
     const org = await orgOrThrow();
     const cast = castFor("C");
     const load = await loadWithDetails(org.id, "W-C-SOON");
@@ -284,10 +288,13 @@ describe("seed-world (AI Dispatch Foundation, Task 7)", () => {
     expect(localClock(pickupAppt.windowEnd, ORG_TIMEZONE)).toBe("12:00");
 
     const driver = await driverByExternalId(org.id, cast.externalId);
-    const assignment = await prisma.assignment.findFirstOrThrow({ where: { orgId: org.id, driverId: driver.id, status: "in_progress" } });
+    // invited-brief.md section C: Ana's inbound trip is assigned, not yet
+    // departed — startedAt null, plannedStart in the future — rather than
+    // the in_progress/already-driving state this test asserted before.
+    const assignment = await prisma.assignment.findFirstOrThrow({ where: { orgId: org.id, driverId: driver.id, status: "assigned" } });
     expect(localClock(assignment.plannedEnd, ORG_TIMEZONE)).toBe("10:20");
-    expect(assignment.startedAt).not.toBeNull();
-    expect(assignment.startedAt!.getTime()).toBeLessThanOrEqual(NOW_MS);
+    expect(assignment.startedAt).toBeNull();
+    expect(assignment.plannedStart.getTime()).toBeGreaterThan(NOW_MS);
     expect(assignment.plannedEnd.getTime()).toBeGreaterThan(NOW_MS);
 
     const [view] = await availabilityFor(org.id, [driver.id], NOW_MS);
@@ -350,29 +357,59 @@ describe("seed-world (AI Dispatch Foundation, Task 7)", () => {
     expect(customer.requiresDelayNotification).toBe(true);
   });
 
-  it("I: the driver's latest ping is at least 60 min behind the plan's expected position", async () => {
+  it("I: Hassan Farah's load is assigned (not yet departed), with a future departure window and geocoded/appointed stops", async () => {
     const org = await orgOrThrow();
+    // invited-brief.md section C: W-I-LATE is now assigned, not yet
+    // departed (startedAt null, a future plannedStart/pickup window end)
+    // rather than the in_progress/behind-plan state this test asserted
+    // before — the real worker only starts tracking once Hassan accepts the
+    // invite and departs, so no pings are seeded for this load anymore.
     const load = await loadWithDetails(org.id, "W-I-LATE");
-    expect(load.status).toBe("in_progress");
+    expect(load.status).toBe("assigned");
     const pickup = stop(load, "pickup");
     const delivery = stop(load, "delivery");
+    expect(pickup.geocodeStatus).toBe("ok");
+    expect(delivery.geocodeStatus).toBe("ok");
+    expect(pickup.appointment).not.toBeNull();
+    expect(delivery.appointment).not.toBeNull();
+
     const assignment = load.assignment!;
+    expect(assignment.status).toBe("assigned");
+    expect(assignment.startedAt).toBeNull();
+    expect(pickup.appointment!.windowEnd.getTime()).toBe(assignment.plannedStart.getTime());
+    expect(delivery.appointment!.windowEnd.getTime()).toBeGreaterThan(assignment.plannedEnd.getTime());
 
-    const elapsedFraction = Math.min(1, Math.max(0, (NOW_MS - assignment.plannedStart.getTime()) / (assignment.plannedEnd.getTime() - assignment.plannedStart.getTime())));
-    const expectedPoint = {
-      lat: pickup.lat! + (delivery.lat! - pickup.lat!) * elapsedFraction,
-      lng: pickup.lng! + (delivery.lng! - pickup.lng!) * elapsedFraction,
-    };
+    const departureHours = (assignment.plannedStart.getTime() - NOW_MS) / (60 * 60_000);
+    expect(departureHours).toBeGreaterThanOrEqual(1);
+    expect(departureHours).toBeLessThanOrEqual(4);
 
-    const lastPing = await prisma.driverLocation.findFirstOrThrow({ where: { driverId: assignment.driverId }, orderBy: { createdAt: "desc" } });
-    const gapMi = haversineMi(expectedPoint, { lat: lastPing.latitude, lng: lastPing.longitude });
-    // The seed places the ping 90 plan-minutes behind along the ROAD (loadedMi
-    // = great-circle × 1.2); this measures the straight-line gap, so the
-    // expected reading is ≈ 90 / 1.2 = 75 min. A band, not a floor, so a drift
-    // in either direction fails.
-    expect(driveMinutes(gapMi)).toBeGreaterThanOrEqual(65);
-    expect(driveMinutes(gapMi)).toBeLessThanOrEqual(95);
+    expect(await prisma.driverLocation.count({ where: { driverId: assignment.driverId } })).toBe(0);
+    // Already-active (status "assigned" is one of activeStatuses.ts's
+    // ACTIVE_STATUSES), so the driver reads ON_LOAD even before departure.
     await expectOnLoad(org.id, assignment.driverId);
+  });
+
+  it("invited-brief.md section C: Ana's and Hassan's loads are assigned-not-departed — startedAt null, a 1-4h departure, the agent watching, driver phones kept", async () => {
+    const org = await orgOrThrow();
+    for (const externalId of WATCHING_WITH_PHONE_EXTERNAL_IDS) {
+      const load = await loadWithDetails(org.id, externalId);
+      expect(load.status).toBe("assigned");
+      expect(load.agentEnabled).toBe(true);
+      expect(load.agentPill).toBe("watching");
+
+      const assignment = load.assignment!;
+      expect(assignment.status).toBe("assigned");
+      expect(assignment.startedAt).toBeNull();
+
+      const departureHours = (assignment.plannedStart.getTime() - NOW_MS) / (60 * 60_000);
+      expect(departureHours).toBeGreaterThanOrEqual(1);
+      expect(departureHours).toBeLessThanOrEqual(4);
+
+      const driver = await prisma.driver.findUniqueOrThrow({ where: { id: assignment.driverId } });
+      expect(driver.phone).toMatch(RESERVED_PHONE_BLOCK_RE);
+
+      expect(await prisma.agentTrip.count({ where: { loadId: load.id } })).toBe(0);
+    }
   });
 
   it("J: agentEnabled, agentPill 'asked', and an open unplanned_stop anomaly", async () => {

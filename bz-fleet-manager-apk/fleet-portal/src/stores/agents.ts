@@ -80,8 +80,11 @@ function nightShiftStatusFor(nightShift: AgentsOverview['nightShift']): StatusCo
   }
   const watching = activity.watching + activity.waitingReply
   const needAttention = activity.attention + activity.escalated
+  const headlineParts = [`${watching} watching`]
+  if (activity.invited > 0) headlineParts.push(`${activity.invited} invited`)
+  headlineParts.push(`${needAttention} need attention`)
   return {
-    headline: `${watching} watching · ${needAttention} need attention`,
+    headline: headlineParts.join(' · '),
     detail:
       `${mode.shadowLoads} in shadow mode (messages recorded, not sent) · ${mode.liveLoads} live` +
       ` · ${activity.delivered} delivered · Last report ${ageLabel(service.lastActivityAt, Date.now())}`,

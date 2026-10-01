@@ -20,7 +20,7 @@ function overview(overrides: Partial<AgentsOverview> = {}): AgentsOverview {
     },
     nightShift: {
       service: { configured: false, lastActivityAt: null },
-      activity: { watching: 0, waitingReply: 0, escalated: 0, held: 0, attention: 0, delivered: 0, off: 0, total: 0, listed: 0 },
+      activity: { watching: 0, waitingReply: 0, invited: 0, escalated: 0, held: 0, attention: 0, delivered: 0, off: 0, total: 0, listed: 0 },
       mode: { shadowLoads: 0, liveLoads: 0, livePolicies: 0 },
       enforcement: { customerEmailOn: 'not_enforced', quietHours: 'not_enforced' },
       loads: [],
@@ -197,7 +197,7 @@ describe('useAgentsStore', () => {
       store.data = overview({
         nightShift: {
           service: { configured: true, lastActivityAt: null },
-          activity: { watching: 0, waitingReply: 0, escalated: 0, held: 0, attention: 0, delivered: 0, off: 0, total: 0, listed: 0 },
+          activity: { watching: 0, waitingReply: 0, invited: 0, escalated: 0, held: 0, attention: 0, delivered: 0, off: 0, total: 0, listed: 0 },
           mode: { shadowLoads: 0, liveLoads: 0, livePolicies: 1 },
           enforcement: { customerEmailOn: 'not_enforced', quietHours: 'not_enforced' },
           loads: [],
@@ -212,14 +212,29 @@ describe('useAgentsStore', () => {
       store.data = overview({
         nightShift: {
           service: { configured: true, lastActivityAt },
-          activity: { watching: 2, waitingReply: 1, escalated: 1, held: 0, attention: 1, delivered: 4, off: 0, total: 9, listed: 9 },
+          activity: { watching: 2, waitingReply: 1, invited: 0, escalated: 1, held: 0, attention: 1, delivered: 4, off: 0, total: 9, listed: 9 },
           mode: { shadowLoads: 3, liveLoads: 2, livePolicies: 2 },
           enforcement: { customerEmailOn: 'not_enforced', quietHours: 'not_enforced' },
           loads: [],
         },
       })
       expect(store.nightShiftStatus?.headline).toBe('3 watching · 2 need attention')
+      expect(store.nightShiftStatus?.headline).not.toContain('invited')
       expect(store.nightShiftStatus?.detail).toBe('3 in shadow mode (messages recorded, not sent) · 2 live · 4 delivered · Last report 2m')
+    })
+
+    it('inserts the invited segment between watching and need-attention only when invited > 0', () => {
+      const store = useAgentsStore()
+      store.data = overview({
+        nightShift: {
+          service: { configured: true, lastActivityAt: null },
+          activity: { watching: 2, waitingReply: 1, invited: 3, escalated: 1, held: 0, attention: 1, delivered: 0, off: 0, total: 7, listed: 7 },
+          mode: { shadowLoads: 0, liveLoads: 0, livePolicies: 0 },
+          enforcement: { customerEmailOn: 'not_enforced', quietHours: 'not_enforced' },
+          loads: [],
+        },
+      })
+      expect(store.nightShiftStatus?.headline).toBe('3 watching · 3 invited · 2 need attention')
     })
   })
 })

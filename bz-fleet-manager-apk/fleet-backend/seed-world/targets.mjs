@@ -122,7 +122,11 @@ export const CURRENT_IN_PROGRESS_BASELINE = 40;
 export const CURRENT_TENDERED_BASELINE = 10;
 
 export const SCENARIO_OPEN_LOADS = 8; // A B C D E F G H
-export const SCENARIO_IN_PROGRESS_LOADS = 6; // Ana's inbound + I J K L N
+// invited-brief.md section C (2026-10-01): Ana's inbound trip and I are
+// assigned, not yet departed (a future plannedStart, startedAt null) rather
+// than in_progress — see SCENARIO_ASSIGNED_LOADS below.
+export const SCENARIO_IN_PROGRESS_LOADS = 4; // J K L N
+export const SCENARIO_ASSIGNED_LOADS = 2; // Ana's inbound + I (assigned, not yet departed)
 
 export const NEAR_TERM_PICKUP_HOURS = 48;
 export const NEXT_WEEK_MIN_DAYS = 7;

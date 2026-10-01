@@ -4,11 +4,24 @@
 // timers and open-question key are NOT persisted, so anything about "when"
 // is marked inferred/unknown rather than invented.
 // Activity precedence (first match wins): off → delivered → held →
-// attention (pill === "attention") → escalated → waiting_reply → watching.
-// The pill is the worker's CURRENT verdict; "attention" means it could not
-// start or continue running the load at all right now, which outranks what
-// it did earlier (e.g. an old escalation from before the load went stale).
-export type AgentActivity = "off" | "watching" | "waiting_reply" | "escalated" | "held" | "attention" | "delivered";
+// attention (pill === "attention") → escalated → waiting_reply → invited →
+// watching. The pill is the worker's CURRENT verdict; "attention" means it
+// could not start or continue running the load at all right now, which
+// outranks what it did earlier (e.g. an old escalation from before the load
+// went stale).
+//
+// "invited" is the state between the worker inviting a driver (action
+// { kind: "invite" }) and the first evidence it accepted — a later
+// `accepted` action, or `departed` (which alone covers the first ping: the
+// worker never records a separate "accepted via ping" event). An invite
+// that is superseded this way is no different from any other closed
+// question, so it reads as "watching" like the rest of them. An escalation,
+// anomaly or open question from BEFORE the invite is the previous run's
+// history, not news about this one — it must not reach past a fresh invite
+// to outrank "invited", so escalated/waiting_reply are only considered
+// using events at or after the invite's own timestamp while an
+// (un-superseded) invite is the newest thing on record.
+export type AgentActivity = "off" | "watching" | "waiting_reply" | "escalated" | "held" | "attention" | "delivered" | "invited";
 export type AgentMode = "off" | "shadow" | "live";
 export interface AgentSummaryEvent { atMs: number; kind: string; evidence: unknown; actionTaken: string | null }
 export interface AgentSummaryInput {
@@ -21,6 +34,14 @@ export interface AgentSummary {
 }
 
 const SILENCE_MS = 3 * 60_000;
+// Mirrors night-shift/src/core/constants.ts's ACCEPT_GRACE_MIN (~line 52:
+// "No accept by departure + this is the first escalation", value 30) — the
+// deadline night-shift/src/core/agent.ts's evaluateNow (~lines 356-358)
+// escalates at when a load is still unaccepted at departure + this many
+// minutes. fleet-backend does not import the worker package, so the value
+// is named here and cited in the `next` sentence; a change to the worker's
+// constant must be mirrored here by hand.
+const ACCEPT_GRACE_MIN = 30;
 const QUESTION_KINDS = new Set(["message", "message_again", "sms"]);
 const DONE_ACTION_KINDS = new Set(["message", "message_again", "sms", "respond"]);
 const ANOMALY_WORDS: Record<string, string> = {
@@ -60,8 +81,23 @@ export function deriveAgentSummary(input: AgentSummaryInput): AgentSummary {
   if (input.pill === "held" || (supervision && rec(supervision.evidence).kind === "takeover")) {
     return { mode, activity: "held", noticed, recommends: null, done, next: policyPrefix + "You have taken over. Night Shift keeps recording but sends nothing until you hand back.", nextConfidence: "known", lastEventAt };
   }
-  const escalation = events.find((e) => e.kind === "escalation");
-  const escalationActive = Boolean(escalation && !events.some((e) => e.atMs >= escalation.atMs && (e.kind === "reply" || (e.kind === "anomaly" && rec(e.evidence).resolved === true))));
+  // An un-superseded invite: the newest non-failed `action`/{kind:"invite"}
+  // with no later `accepted` or `departed` action. `departed` alone covers
+  // acceptance-via-first-ping — the worker never writes a separate event for
+  // that (core/agent.ts's evaluateNow only ever checks `s.status === "invited"`).
+  const newestInvite = events.find((e) => e.kind === "action" && String(rec(e.evidence).kind) === "invite" && !isFailed(e));
+  const inviteSuperseded = Boolean(
+    newestInvite && events.some((e) => e.kind === "action" && ["accepted", "departed"].includes(String(rec(e.evidence).kind)) && e.atMs >= newestInvite.atMs),
+  );
+  const invited = Boolean(newestInvite) && !inviteSuperseded;
+  // While an un-superseded invite is on record, only events at or after its
+  // own timestamp can still mark an escalation or question "active" — an
+  // older one is the previous run's history (see the AgentActivity comment
+  // above), and must not outrank the fresh invite.
+  const relevant = (e: AgentSummaryEvent) => !invited || e.atMs >= newestInvite!.atMs;
+
+  const escalation = events.find((e) => e.kind === "escalation" && relevant(e));
+  const escalationActive = Boolean(escalation && !events.some((e) => relevant(e) && e.atMs >= escalation.atMs && (e.kind === "reply" || (e.kind === "anomaly" && rec(e.evidence).resolved === true))));
   const recommends = escalationActive && escalation
     ? (str(rec(escalation.evidence).reason) ?? "Escalated to dispatch.") + (rec(escalation.evidence).draftAttached === true ? " A customer note is drafted." : "")
     : null;
@@ -76,9 +112,16 @@ export function deriveAgentSummary(input: AgentSummaryInput): AgentSummary {
   // noteDeliveryFailure comment), and the summary must not do what the core
   // refused to: a message the driver was never sent cannot be "waiting for
   // a reply".
-  const question = events.find((e) => !isFailed(e) && ((e.kind === "action" && QUESTION_KINDS.has(String(rec(e.evidence).kind))) || e.kind === "call"));
-  if (question && !events.some((e) => e.kind === "reply" && e.atMs >= question.atMs)) {
+  const question = events.find((e) => relevant(e) && !isFailed(e) && ((e.kind === "action" && QUESTION_KINDS.has(String(rec(e.evidence).kind))) || e.kind === "call"));
+  if (question && !events.some((e) => relevant(e) && e.kind === "reply" && e.atMs >= question.atMs)) {
     return { mode, activity: "waiting_reply", noticed, recommends: null, done, next: policyPrefix + "Waiting for the driver's reply. Night Shift re-asks after its cooldown; the exact time is not recorded here.", nextConfidence: "inferred", lastEventAt };
+  }
+  if (invited) {
+    return {
+      mode, activity: "invited", noticed, recommends: null, done,
+      next: policyPrefix + `Invited — waiting for the driver to accept the tracking link. If nothing arrives within ${ACCEPT_GRACE_MIN} minutes of departure, Night Shift escalates on its own.`,
+      nextConfidence: "known", lastEventAt,
+    };
   }
   if (lastEventAt === null || input.nowMs - lastEventAt > SILENCE_MS) {
     const minutes = lastEventAt === null ? null : Math.round((input.nowMs - lastEventAt) / 60_000);

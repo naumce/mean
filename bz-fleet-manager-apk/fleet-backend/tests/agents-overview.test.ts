@@ -271,6 +271,28 @@ describe("GET /api/dispatcher/agents/overview", () => {
     expect(row.boardLoadNo).toBe("EXT-42");
   });
 
+  // A.3: nightShift.activity gains `invited`, counted like the others — a
+  // load whose newest event is an un-superseded invite (action { kind:
+  // "invite" }) with no later accepted/departed action.
+  it("an invited load (invite sent, no accept/depart yet) counts as invited", async () => {
+    delete process.env.OLLAMA_URL;
+    const { org, token } = await seedOrg();
+    await seedStandard(org.id);
+    const load = await seedLoad(org.id, { agentEnabled: true, agentPill: "invited" });
+    const trip = await prisma.agentTrip.create({
+      data: { id: `trip-${load.id}`, loadRef: "L-INVITED", loadId: load.id, driverToken: `tok-${load.id}`, brief: {}, status: "invited" },
+    });
+    await prisma.agentEvent.create({
+      data: { tripId: trip.id, atMs: BigInt(1000), kind: "action", evidence: { kind: "invite", channel: "sms", text: "Track your load here: ..." }, actionTaken: "invite sent" },
+    });
+
+    const res = await request(app).get("/api/dispatcher/agents/overview").set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.nightShift.activity).toMatchObject({ invited: 1, total: 1, listed: 1 });
+    expect(res.body.nightShift.loads[0]).toMatchObject({ loadId: load.id, activity: "invited" });
+  });
+
   it("boardLoadNo prefers the load's own board number when all three are set", async () => {
     delete process.env.OLLAMA_URL;
     const { org, token } = await seedOrg();

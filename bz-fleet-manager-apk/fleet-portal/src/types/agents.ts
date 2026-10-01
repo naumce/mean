@@ -36,6 +36,7 @@ export interface AgentsOverview {
     activity: {
       watching: number
       waitingReply: number
+      invited: number
       escalated: number
       held: number
       attention: number

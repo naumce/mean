@@ -4,18 +4,21 @@ import { addressIn, hub, KALAMAZOO_MI } from "./cities.mjs";
 import { buildDwellPings } from "./detention.mjs";
 import { tripEconomics, revenueForMiles } from "./economics.mjs";
 import { alongRoute, driveMinutes, roadMiles } from "./geo.mjs";
-import { alongRoutePings, behindPlanPings, identicalStopPings, offRoutePings, staleDarkPings } from "./pings.mjs";
+import { alongRoutePings, identicalStopPings, offRoutePings, staleDarkPings } from "./pings.mjs";
 import { stableId } from "./prng.mjs";
 import { scenarioByCode } from "./scenarios.mjs";
 import { atLocalTime } from "./time.mjs";
 import { ORG_TIMEZONE, WORLD_LOAD_TAG } from "./targets.mjs";
 
-// The "already moving" half of the scenario set: C's Ana-inbound trip (an
-// extra load, no letter of its own — its point is entirely to make Ana
-// available for W-C-SOON) plus I, J, K, L, N (in_progress) and M
+// The "already moving (or about to be)" half of the scenario set: C's
+// Ana-inbound trip (an extra load, no letter of its own — its point is
+// entirely to make Ana available for W-C-SOON) plus I, J, K, L, N and M
 // (completed, detention). Every one of these produces a Load + stops +
 // appointment(s) + Assignment, and most also produce DriverLocation pings
-// and/or AgentTrip/AgentEvent rows.
+// and/or AgentTrip/AgentEvent rows. Ana's inbound trip and I are the
+// exception (invited-brief.md section C): assigned but not yet departed, so
+// they carry no pings/trip at all — the real worker starts watching once the
+// driver accepts and departs.
 
 function extrasFor(code) {
   const s = scenarioByCode(code);
@@ -73,12 +76,19 @@ function withWatching(load, agentPolicyId) {
  * Ana's inbound trip (Kalamazoo -> Detroit), the driver behind scenario C.
  * plannedEnd is pinned to exactly 10:20 tomorrow, Detroit time — always in
  * the future relative to `now` (a full calendar day out) regardless of what
- * `now` currently is; plannedStart is simply 90 minutes before `now` (always
- * in the past) so the assignment is genuinely `in_progress` no matter when
- * this generator runs. The gap between them is intentionally NOT required
- * to equal the route's own drive time (real dispatch plans routinely carry
- * slack) — economics (loadedMi/driveMin/etc.) are computed independently
- * from the real Kalamazoo->Detroit distance.
+ * `now` currently is. The gap between plannedStart and plannedEnd is
+ * intentionally NOT required to equal the route's own drive time (real
+ * dispatch plans routinely carry slack) — economics (loadedMi/driveMin/etc.)
+ * are computed independently from the real Kalamazoo->Detroit distance.
+ *
+ * invited-brief.md section C: assigned, not yet departed — the live worker
+ * only starts tracking once the driver accepts the invite and departs
+ * (first ping). plannedStart (and so the pickup appointment's window end,
+ * via buildActiveLoad) is 2h after seed time, always comfortably before the
+ * day-out plannedEnd above regardless of when this generator runs; startedAt
+ * stays null and the assignment itself is "assigned", not "in_progress".
+ * No pings/trip are seeded — the real worker creates its own trip once the
+ * driver accepts.
  *
  * seed-mix-brief.md rule 2: one of the two "watching, with a phone" loads
  * (Ana's driver phone comes from targets.mjs's CAST_PHONES via drivers.mjs).
@@ -87,14 +97,13 @@ function buildAnaInbound(rand, { orgId, customer, nowMs, agentPolicyId }) {
   const ana = castByScenario("C");
   const detroit = hub("Detroit");
   const plannedEnd = atLocalTime(new Date(nowMs), ORG_TIMEZONE, 10, 20, 1);
-  const plannedStart = new Date(nowMs - 90 * 60_000);
+  const plannedStart = new Date(nowMs + 2 * 60 * 60_000);
   const built = buildActiveLoad(rand, {
     code: null, tag: "C-ANA-INBOUND", orgId, origin: KALAMAZOO_MI, destination: detroit, requiredEquip: "DryVan",
-    customer, driverId: ana.id, plannedStart, plannedEnd, status: "in_progress",
-    startedAt: plannedStart, completedAt: null, deliveryWindowEnd: new Date(nowMs + 20 * 60 * 60_000), assignmentStatus: "in_progress",
+    customer, driverId: ana.id, plannedStart, plannedEnd, status: "assigned",
+    startedAt: null, completedAt: null, deliveryWindowEnd: new Date(plannedEnd.getTime() + 60 * 60_000), assignmentStatus: "assigned",
   });
-  const pings = alongRoutePings(ana.id, KALAMAZOO_MI, detroit, 0.85, nowMs);
-  return { ...built, load: withWatching(built.load, agentPolicyId), pings, driverId: ana.id, destination: detroit };
+  return { ...built, load: withWatching(built.load, agentPolicyId), driverId: ana.id, destination: detroit };
 }
 
 function commonInProgress(rand, { code, orgId, homeHub, destHub, driverId, requiredEquip, customer, nowMs, startedHoursAgo = 2.5 }) {
@@ -113,16 +122,32 @@ function commonInProgress(rand, { code, orgId, homeHub, destHub, driverId, requi
   return { ...built, origin, destination, totalDriveMin, planFraction };
 }
 
-/** I — 90 min behind plan (verbatim); pings placed at the lagging position.
- *  Columbus -> Nashville (long enough that 3h elapsed still leaves >4h
- *  remaining — deriveStatus reads this driver ON_LOAD, not AVAILABLE_SOON).
+/** I — invited-brief.md section C: assigned, not yet departed, same as
+ *  Ana's inbound trip above. Columbus -> Nashville (long enough that once
+ *  departed and underway, deriveStatus still reads this driver ON_LOAD, not
+ *  AVAILABLE_SOON — the assignment is already active (status "assigned" is
+ *  one of activeStatuses.ts's ACTIVE_STATUSES) so the driver reads ON_LOAD
+ *  even before departure). plannedStart (and so the pickup appointment's
+ *  window end) is 3h after seed time; startedAt stays null. Built directly
+ *  (not via commonInProgress, which is shared with J/K/L/N and still models
+ *  an already-departed load) so only this scenario's timing changes.
  *  seed-mix-brief.md rule 2: the second "watching, with a phone" load
- *  (Hassan's phone comes from targets.mjs's CAST_PHONES via drivers.mjs). */
+ *  (Hassan's phone comes from targets.mjs's CAST_PHONES via drivers.mjs). No
+ *  pings/trip are seeded — the real worker creates its own once Hassan
+ *  accepts and departs. */
 function buildScenarioI(rand, { orgId, customer, nowMs, agentPolicyId }) {
   const hassan = castByScenario("I");
-  const built = commonInProgress(rand, { code: "I", orgId, homeHub: "Columbus", destHub: "Nashville", driverId: hassan.id, requiredEquip: hassan.equipmentTypes[0], customer, nowMs, startedHoursAgo: 3 });
-  const pings = behindPlanPings(hassan.id, built.origin, built.destination, built.planFraction, 90, built.totalDriveMin, nowMs);
-  return { ...built, load: withWatching(built.load, agentPolicyId), pings, driverId: hassan.id };
+  const origin = hub("Columbus");
+  const destination = hub("Nashville");
+  const totalDriveMin = driveMinutes(roadMiles(origin, destination));
+  const plannedStart = new Date(nowMs + 3 * 60 * 60_000);
+  const plannedEnd = new Date(plannedStart.getTime() + totalDriveMin * 60_000);
+  const built = buildActiveLoad(rand, {
+    code: "I", tag: null, orgId, origin, destination, requiredEquip: hassan.equipmentTypes[0], customer,
+    driverId: hassan.id, plannedStart, plannedEnd, status: "assigned", startedAt: null, completedAt: null,
+    deliveryWindowEnd: new Date(plannedEnd.getTime() + 60 * 60_000), assignmentStatus: "assigned",
+  });
+  return { ...built, load: withWatching(built.load, agentPolicyId), driverId: hassan.id, origin, destination };
 }
 
 /** J — agentEnabled, agentPill "asked", an OPEN unplanned_stop anomaly.
@@ -248,11 +273,14 @@ export function buildActiveScenarios(rand, { orgId, customers, nowMs, agentPolic
   // Busy drivers (ON_LOAD/AVAILABLE_SOON, per scenarioLoads.mjs's
   // DriverAvailability pass) — everyone here except Grace (M's load is
   // COMPLETED, not active; she is simply available afterward, like any
-  // other free cast driver). Carries enough of the projection —
-  // availableAt/available* = current load's last delivery stop + plannedEnd —
-  // for scenarioLoads.mjs to stamp it without re-deriving it.
+  // other free cast driver). "assigned" counts as busy here too, same as
+  // activeStatuses.ts's ACTIVE_STATUSES treats it: Ana and Hassan already
+  // have this load even though they haven't departed yet. Carries enough of
+  // the projection — availableAt/available* = current load's last delivery
+  // stop + plannedEnd — for scenarioLoads.mjs to stamp it without
+  // re-deriving it.
   const busyDrivers = parts
-    .filter((p) => p.assignment.status === "in_progress")
+    .filter((p) => p.assignment.status === "in_progress" || p.assignment.status === "assigned")
     .map((p) => ({ driverId: p.driverId, plannedEnd: p.assignment.plannedEnd, destination: p.destination }));
 
   return { loads, stops, appointments, assignments, driverLocations, agentTrips, agentEvents, simDriverStates, busyDrivers };

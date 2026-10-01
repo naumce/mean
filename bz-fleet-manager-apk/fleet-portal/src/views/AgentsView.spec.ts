@@ -40,7 +40,7 @@ function overview(overrides: Partial<AgentsOverview> = {}): AgentsOverview {
     },
     nightShift: {
       service: { configured: false, lastActivityAt: null },
-      activity: { watching: 0, waitingReply: 0, escalated: 0, held: 0, attention: 0, delivered: 0, off: 0, total: 0, listed: 0 },
+      activity: { watching: 0, waitingReply: 0, invited: 0, escalated: 0, held: 0, attention: 0, delivered: 0, off: 0, total: 0, listed: 0 },
       mode: { shadowLoads: 0, liveLoads: 0, livePolicies: 0 },
       enforcement: { customerEmailOn: 'not_enforced', quietHours: 'not_enforced' },
       loads: [],

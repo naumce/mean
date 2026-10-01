@@ -48,7 +48,7 @@ export interface AgentTimelineEntry {
  *  disagree. Kept here rather than imported — the portal has no build-time
  *  dependency on fleet-backend's source. */
 export type AgentMode = 'off' | 'shadow' | 'live'
-export type AgentActivity = 'off' | 'watching' | 'waiting_reply' | 'escalated' | 'held' | 'attention' | 'delivered'
+export type AgentActivity = 'off' | 'watching' | 'waiting_reply' | 'invited' | 'escalated' | 'held' | 'attention' | 'delivered'
 export interface AgentSummary {
   mode: AgentMode
   activity: AgentActivity

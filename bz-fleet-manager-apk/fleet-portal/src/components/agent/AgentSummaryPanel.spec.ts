@@ -96,7 +96,7 @@ describe('AgentSummaryPanel', () => {
       expect(wrapper.get('[data-testid="summary-mode"]').text()).toBe(label)
     }
     const activityCases: Array<[AgentSummary['activity'], string]> = [
-      ['off', 'Off'], ['watching', 'Watching'], ['waiting_reply', 'Waiting for reply'],
+      ['off', 'Off'], ['watching', 'Watching'], ['waiting_reply', 'Waiting for reply'], ['invited', 'Invited'],
       ['escalated', 'Escalated'], ['held', 'Held'], ['attention', 'Needs attention'], ['delivered', 'Delivered'],
     ]
     for (const [activity, label] of activityCases) {

@@ -25,7 +25,7 @@ export const SCENARIOS = [
     code: "C",
     externalId: "W-C-SOON",
     title: "Covered soon by a driver finishing nearby",
-    hint: "Ana Kovacs is still inbound to Detroit but is projected to be free well before this same-city noon pickup.",
+    hint: "Ana Kovacs is assigned a Detroit run that has not departed yet (Night Shift has invited her); she is projected to finish it and be free well before this same-city noon pickup.",
   },
   {
     code: "D",
@@ -60,8 +60,8 @@ export const SCENARIOS = [
   {
     code: "I",
     externalId: "W-I-LATE",
-    title: "A load running behind plan",
-    hint: "This driver's most recent pings show them roughly 90 minutes behind the planned schedule.",
+    title: "A load waiting on driver acceptance",
+    hint: "Hassan Farah has been invited to this load but has not accepted or departed yet; Night Shift is waiting on him, with the pickup window still a few hours out.",
   },
   {
     code: "J",

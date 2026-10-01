@@ -15,6 +15,7 @@ const ACTIVITY_LABELS: Record<AgentSummary['activity'], string> = {
   off: 'Off',
   watching: 'Watching',
   waiting_reply: 'Waiting for reply',
+  invited: 'Invited',
   escalated: 'Escalated',
   held: 'Held',
   attention: 'Needs attention',

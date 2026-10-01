@@ -12,6 +12,7 @@ const MODE_LABELS: Record<AgentLoadRowData['mode'], string> = { shadow: 'Shadow'
 const ACTIVITY_LABELS: Record<string, string> = {
   watching: 'Watching',
   waiting_reply: 'Waiting for reply',
+  invited: 'Invited',
   escalated: 'Escalated',
   held: 'Held',
   attention: 'Needs attention',

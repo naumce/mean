@@ -47,6 +47,7 @@ export interface AgentsOverview {
       held: number;
       attention: number;
       delivered: number;
+      invited: number;
       off: number;
       total: number;
       /** Every load eligible for `loads[]` (agentEnabled) BEFORE the
@@ -219,7 +220,7 @@ export async function buildAgentsOverview(orgId: string | null): Promise<AgentsO
     select: { id: true, orgId: true, boardLoadNo: true, orderRef: true, externalId: true, agentPill: true, agentEnabled: true, agentPolicyId: true },
   });
 
-  const activity = { watching: 0, waitingReply: 0, escalated: 0, held: 0, attention: 0, delivered: 0, off: 0, total: 0, listed: 0 };
+  const activity = { watching: 0, waitingReply: 0, escalated: 0, held: 0, attention: 0, delivered: 0, invited: 0, off: 0, total: 0, listed: 0 };
   const mode = { shadowLoads: 0, liveLoads: 0, livePolicies };
   const loadRows: LoadRow[] = [];
 
@@ -306,6 +307,7 @@ export async function buildAgentsOverview(orgId: string | null): Promise<AgentsO
         case "held": activity.held += 1; break;
         case "attention": activity.attention += 1; break;
         case "delivered": activity.delivered += 1; break;
+        case "invited": activity.invited += 1; break;
         case "off": activity.off += 1; break;
       }
       if (summary.mode === "shadow") mode.shadowLoads += 1;

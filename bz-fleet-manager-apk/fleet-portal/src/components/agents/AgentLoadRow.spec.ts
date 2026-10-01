@@ -46,4 +46,10 @@ describe('AgentLoadRow', () => {
     expect(wrapper.text()).toContain('Load a1b2c3d4')
     expect(wrapper.text()).not.toContain('a1b2c3d4-e5f6-7890-abcd-ef1234567890')
   })
+
+  it('shows the "Invited" badge for an invited load, separate from the mode badge', async () => {
+    const wrapper = await mountRow(load({ activity: 'invited', mode: 'shadow' }))
+    expect(wrapper.get('[data-testid="load-activity"]').text()).toBe('Invited')
+    expect(wrapper.get('[data-testid="load-mode"]').text()).toBe('Shadow')
+  })
 })

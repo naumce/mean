@@ -252,3 +252,84 @@ describe("deriveAgentSummary — done wording after switch-off", () => {
     expect(s.done).toEqual(["Would have sent chat: Everything OK?"]);
   });
 });
+
+// Precedence: off → delivered → held → attention → escalated → waiting_reply
+// → invited → watching. "Invited" is the honest state between the worker
+// inviting a driver (action { kind: "invite" }) and the first evidence of
+// acceptance — a later `accepted` action, or `departed` (which covers the
+// first ping, since that is the only way `departed` is ever recorded). The
+// deadline named in `next` is night-shift/src/core/constants.ts's
+// ACCEPT_GRACE_MIN (~line 52) — 30 minutes — matching the auto-escalation
+// night-shift/src/core/agent.ts's evaluateNow fires at that same deadline
+// (~lines 356-358).
+describe("deriveAgentSummary — invited", () => {
+  it("an invite with nothing after it is invited, waiting for the driver to accept", () => {
+    const s = deriveAgentSummary(base({ pill: "invited", events: [
+      ev(NOW - 60_000, "action", { kind: "invite", channel: "sms", text: "Track your load here: ..." }, "invite sent"),
+    ] }));
+    expect(s.activity).toBe("invited");
+    expect(s.next).toBe("Invited — waiting for the driver to accept the tracking link. If nothing arrives within 30 minutes of departure, Night Shift escalates on its own.");
+    expect(s.nextConfidence).toBe("known");
+  });
+
+  it("an accepted action after the invite clears invited — watching", () => {
+    const s = deriveAgentSummary(base({ pill: "accepted", events: [
+      ev(NOW - 60_000, "action", { kind: "invite", channel: "sms", text: "..." }, "invite sent"),
+      ev(NOW - 30_000, "action", { kind: "accepted" }, "driver accepted"),
+    ] }));
+    expect(s.activity).toBe("watching");
+  });
+
+  it("a departed action after the invite clears invited — watching (departed covers the first ping)", () => {
+    const s = deriveAgentSummary(base({ pill: "tracking", events: [
+      ev(NOW - 60_000, "action", { kind: "invite", channel: "sms", text: "..." }, "invite sent"),
+      ev(NOW - 30_000, "action", { kind: "departed", atMs: NOW - 30_000 }, "first ping — tracking"),
+    ] }));
+    expect(s.activity).toBe("watching");
+  });
+
+  it("a later escalation (overdue by the accept deadline) wins over invited", () => {
+    const s = deriveAgentSummary(base({ pill: "escalated", events: [
+      ev(NOW - 40 * 60_000, "action", { kind: "invite", channel: "sms", text: "..." }, "invite sent"),
+      ev(NOW - 5_000, "escalation", { reason: "load not accepted by 06:00", draftAttached: false }),
+    ] }));
+    expect(s.activity).toBe("escalated");
+  });
+
+  it("an older escalation/anomaly/question from before the invite (previous run's history) does not override invited", () => {
+    const s = deriveAgentSummary(base({ pill: "invited", events: [
+      ev(NOW - 10 * 60_000, "anomaly", { kind: "delay", key: "delay" }),
+      ev(NOW - 9 * 60_000, "action", { kind: "message", channel: "chat", text: "Running late?" }, "message"),
+      ev(NOW - 8 * 60_000, "escalation", { reason: "driver reports: previous run issue", draftAttached: false }),
+      ev(NOW - 60_000, "action", { kind: "invite", channel: "sms", text: "..." }, "invite sent"),
+    ] }));
+    expect(s.activity).toBe("invited");
+  });
+
+  it("the attention pill is never overridden by an invite", () => {
+    const s = deriveAgentSummary(base({ pill: "attention", attentionLine: "ATTENTION — no driver or carrier phone on file", events: [
+      ev(NOW - 60_000, "action", { kind: "invite", channel: "sms", text: "..." }, "invite sent"),
+    ] }));
+    expect(s.activity).toBe("attention");
+  });
+
+  it("a failed invite is not invited", () => {
+    const s = deriveAgentSummary(base({ events: [
+      ev(NOW - 60_000, "action", { kind: "invite", channel: "sms", text: "...", failed: true, error: "gateway timeout" }, "invite failed to send"),
+    ] }));
+    expect(s.activity).toBe("watching");
+  });
+
+  it("a question asked AFTER the invite outranks it (waiting for the driver), while a question before it does not", () => {
+    const after = deriveAgentSummary(base({ events: [
+      ev(NOW - 5 * 60_000, "action", { kind: "invite", channel: "sms", text: "..." }, "invite sent"),
+      ev(NOW - 60_000, "action", { kind: "message", channel: "chat", text: "Everything OK?" }, "message"),
+    ] }));
+    expect(after.activity).toBe("waiting_reply");
+    const before = deriveAgentSummary(base({ events: [
+      ev(NOW - 5 * 60_000, "action", { kind: "message", channel: "chat", text: "Everything OK?" }, "message"),
+      ev(NOW - 60_000, "action", { kind: "invite", channel: "sms", text: "..." }, "invite sent"),
+    ] }));
+    expect(before.activity).toBe("invited");
+  });
+});
