@@ -63,7 +63,7 @@ const chipCls = (k: BrickFilter): string =>
     <div class="flex-1" />
     <div class="flex items-center gap-1.5">
       <button v-for="c in chips" :key="c.key" type="button" :class="chipCls(c.key)" :data-filter="c.key" @click="ck.setFilter(c.key)">
-        {{ c.label }}<span v-if="c.key === 'conflict' && conflictCount" class="ml-1 text-red-300">({{ conflictCount }})</span>
+        {{ c.label }}<span v-if="c.key === 'conflict' && conflictCount" class="ml-1 text-red-700 dark:text-red-400">({{ conflictCount }})</span>
       </button>
     </div>
     <SimControls />

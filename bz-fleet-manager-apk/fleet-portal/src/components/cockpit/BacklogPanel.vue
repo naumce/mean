@@ -12,7 +12,7 @@ const props = defineProps<{ nowMs: number }>()
 const emit = defineEmits<{ open: [loadId: string]; suggest: [loadId: string] }>()
 const ck = useCockpitStore()
 const cards = computed(() => ck.backlog.map((l) => ({ l, urgency: backlogUrgency(l.pickupWindowEnd, props.nowMs) })))
-const URGENCY_CLASS = { missed: 'bg-red-600 text-white', now: 'bg-red-500/20 text-red-500 border border-red-500/40', soon: 'bg-amber-500/15 text-amber-500 border border-amber-500/40' }
+const URGENCY_CLASS = { missed: 'bg-red-600 text-white', now: 'bg-red-500/20 text-red-700 dark:text-red-400 border border-red-500/40', soon: 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/40' }
 </script>
 
 <template>
@@ -55,8 +55,8 @@ const URGENCY_CLASS = { missed: 'bg-red-600 text-white', now: 'bg-red-500/20 tex
               <template v-if="l.stopCount > 0">{{ l.origin }} ➔ {{ l.destination }}</template>
               <span v-else class="font-normal text-ink-3">no stops yet — finish this row on Their Board</span>
               <span v-if="urgency" class="rounded px-1.5 py-0.5 font-mono text-[9px] font-bold" :class="URGENCY_CLASS[urgency.level]">{{ urgency.label }}</span>
-              <span v-else-if="l.pickupWindowEnd" class="rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[9px] font-bold text-amber-500">Appt {{ fmtDT(Date.parse(l.pickupWindowEnd), ck.tz) }}</span>
-              <span v-if="l.hazmatClass" class="rounded border border-red-500/30 bg-red-500/20 px-1.5 py-0.5 font-mono text-[9px] font-bold text-red-500">⚠️ HAZMAT CLASS {{ l.hazmatClass }}<template v-if="l.unNumber"> ({{ l.unNumber }})</template></span>
+              <span v-else-if="l.pickupWindowEnd" class="rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[9px] font-bold text-amber-700 dark:text-amber-400">Appt {{ fmtDT(Date.parse(l.pickupWindowEnd), ck.tz) }}</span>
+              <span v-if="l.hazmatClass" class="rounded border border-red-500/30 bg-red-500/20 px-1.5 py-0.5 font-mono text-[9px] font-bold text-red-700 dark:text-red-400">⚠️ HAZMAT CLASS {{ l.hazmatClass }}<template v-if="l.unNumber"> ({{ l.unNumber }})</template></span>
             </div>
             <div class="mt-0.5 flex items-center gap-2 overflow-hidden whitespace-nowrap font-mono text-[10px] text-ink-3">
               <span class="rounded px-1" :class="equipClass(l.requiredEquip)">{{ equipIcon(l.requiredEquip) }} {{ equipLabel(l.requiredEquip) }}</span>
@@ -65,12 +65,12 @@ const URGENCY_CLASS = { missed: 'bg-red-600 text-white', now: 'bg-red-500/20 tex
               <!-- Spec §8.3: a carrier lined up on an open load is not a carrier booked.
                    The row stays in the backlog; the chip tells "no carrier" from
                    "carrier not yet confirmed". -->
-              <span v-if="l.carrierId" data-carrier-chip class="rounded border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 font-mono text-[9px] font-bold text-cyan-600">{{ l.carrierName ?? 'Carrier' }} · pending</span>
+              <span v-if="l.carrierId" data-carrier-chip class="rounded border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 font-mono text-[9px] font-bold text-cyan-600 dark:text-cyan-400">{{ l.carrierName ?? 'Carrier' }} · pending</span>
               <span>• {{ l.stopCount }} stop{{ l.stopCount === 1 ? '' : 's' }}</span>
             </div>
           </div>
         </div>
-        <div class="shrink-0 text-right"><div class="font-mono text-xs font-bold text-emerald-500">{{ formatUsd(l.revenueCents) }}</div></div>
+        <div class="shrink-0 text-right"><div class="font-mono text-xs font-bold text-emerald-700 dark:text-emerald-400">{{ formatUsd(l.revenueCents) }}</div></div>
       </button>
       </div>
       <div v-if="!cards.length" class="py-3 font-mono text-[11px] text-ink-3">Board is clean — every load dispatched. 🎉</div>

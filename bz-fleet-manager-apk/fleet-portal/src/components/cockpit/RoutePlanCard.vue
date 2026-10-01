@@ -66,12 +66,12 @@ const breakClock = (ms: number): string =>
     <div class="mt-2">
       <span
         v-if="card.onRoad"
-        class="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-400"
+        class="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400"
         data-testid="route-onroad"
       >TRUCK-LEGAL ROAD</span>
       <span
         v-else
-        class="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-400"
+        class="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-400"
         data-testid="route-arc"
       >ESTIMATED PATH — not a routed road</span>
     </div>
@@ -85,7 +85,7 @@ const breakClock = (ms: number): string =>
           </span>
           <span class="font-mono text-[11px] text-muted">{{ card.progressPct }}%</span>
         </template>
-        <span v-else class="text-[11px] text-amber-400">Distance unknown — no route geometry</span>
+        <span v-else class="text-[11px] text-amber-700 dark:text-amber-400">Distance unknown — no route geometry</span>
       </div>
       <div v-if="card.progressPct !== null" class="mt-1.5 h-1 rounded bg-surface">
         <div class="h-1 rounded bg-emerald-500" :style="{ width: barWidth }" />
@@ -101,7 +101,7 @@ const breakClock = (ms: number): string =>
       <div v-if="!card.breaks" class="mt-1 text-[11px] text-muted" data-testid="route-breaks-absent">
         Break plan not loaded for this run.
       </div>
-      <div v-else-if="!card.breaks.known" class="mt-1 text-[11px] text-amber-400" data-testid="route-breaks-unknown">
+      <div v-else-if="!card.breaks.known" class="mt-1 text-[11px] text-amber-700 dark:text-amber-400" data-testid="route-breaks-unknown">
         Hours unknown — no break plan can be made.
       </div>
       <div v-else-if="!card.breaks.lines.length" class="mt-1 text-[11px] text-muted" data-testid="route-breaks-none">
@@ -119,10 +119,10 @@ const breakClock = (ms: number): string =>
                Telling a dispatcher there is no rest data when the registry
                covers the area perfectly well — there is simply nothing within
                range — sends them to import data they already have. -->
-          <span v-else-if="!b.hasCoverage" class="text-[11px] text-amber-400" data-testid="route-break-nocoverage">
+          <span v-else-if="!b.hasCoverage" class="text-[11px] text-amber-700 dark:text-amber-400" data-testid="route-break-nocoverage">
             No rest data in this area
           </span>
-          <span v-else class="text-[11px] text-amber-400" data-testid="route-break-nooption">
+          <span v-else class="text-[11px] text-amber-700 dark:text-amber-400" data-testid="route-break-nooption">
             Nothing within range of this point
           </span>
           <span v-if="b.precision === 'estimated'" class="text-[10px] text-muted">(est. position)</span>
@@ -142,7 +142,7 @@ const breakClock = (ms: number): string =>
            sends a dispatcher chasing the wrong fix. -->
       <div
         v-else-if="card.fuel.burn.mpgUsed === null"
-        class="mt-1 text-[11px] text-amber-400"
+        class="mt-1 text-[11px] text-amber-700 dark:text-amber-400"
         data-testid="route-fuel-unknown"
       >
         No mpg on file for this truck — burn cannot be estimated.
@@ -152,14 +152,14 @@ const breakClock = (ms: number): string =>
           <span class="font-mono text-fg">{{ Math.round(card.fuel.burn.totalGal) }}</span> gal at
           <span class="font-mono text-fg">{{ card.fuel.burn.mpgUsed.toFixed(1) }}</span> mpg
         </div>
-        <div v-if="card.fuel.advice" class="mt-0.5 text-emerald-400" data-testid="route-fuel-advice">
+        <div v-if="card.fuel.advice" class="mt-0.5 text-emerald-700 dark:text-emerald-400" data-testid="route-fuel-advice">
           Buy {{ Math.round(card.fuel.advice.gallons) }} gal at {{ card.fuel.advice.atLabel }} —
           saves {{ usd(card.fuel.advice.savingCents) }}
         </div>
         <!-- Not knowing is not the same as knowing there is no saving. With
              no prices on file the engine never compared anything, and saying
              "nothing cheaper" would be a finding it never made. -->
-        <div v-else-if="!card.fuel.known" class="mt-0.5 text-amber-400" data-testid="route-fuel-noprices">
+        <div v-else-if="!card.fuel.known" class="mt-0.5 text-amber-700 dark:text-amber-400" data-testid="route-fuel-noprices">
           No fuel prices on file for this lane — nothing to compare.
         </div>
         <!-- Here the engine DID compare and found nothing better. That is an
@@ -175,12 +175,12 @@ const breakClock = (ms: number): string =>
       <div class="text-[11px] text-muted">
         {{ equipLabel }}
         <template v-if="card.weightLbs !== null"> · {{ card.weightLbs.toLocaleString('en-US') }} lb</template>
-        <span v-if="card.hazmat" class="ml-1 rounded bg-red-500/15 px-1 text-[10px] font-semibold text-red-400">
+        <span v-if="card.hazmat" class="ml-1 rounded bg-red-500/15 px-1 text-[10px] font-semibold text-red-700 dark:text-red-400">
           HAZMAT {{ card.hazmat }}
         </span>
       </div>
       <div class="text-right">
-        <div class="font-mono text-sm font-bold text-emerald-400">{{ usd(card.revenueCents) }}</div>
+        <div class="font-mono text-sm font-bold text-emerald-700 dark:text-emerald-400">{{ usd(card.revenueCents) }}</div>
         <div v-if="ratePerMi" class="font-mono text-[10px] text-muted">{{ ratePerMi }}</div>
       </div>
     </div>

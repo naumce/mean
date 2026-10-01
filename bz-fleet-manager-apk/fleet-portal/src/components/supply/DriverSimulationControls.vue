@@ -98,8 +98,8 @@ async function save(): Promise<void> {
         >
           {{ saving ? 'Saving…' : 'Save' }}
         </button>
-        <span v-if="saved" class="text-emerald-600" data-testid="sim-mode-saved">Saved</span>
-        <span v-if="sim.error" class="text-red-600" data-testid="sim-mode-error">{{ sim.error }}</span>
+        <span v-if="saved" class="text-emerald-600 dark:text-emerald-400" data-testid="sim-mode-saved">Saved</span>
+        <span v-if="sim.error" class="text-red-600 dark:text-red-400" data-testid="sim-mode-error">{{ sim.error }}</span>
       </div>
     </div>
   </section>

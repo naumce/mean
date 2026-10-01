@@ -108,7 +108,7 @@ function scrollToStep(seq: number): void {
 
 <template>
   <div class="flex flex-col gap-4" data-testid="ai-run-view">
-    <p v-if="aiLab.error" class="text-sm text-red-600" role="alert">{{ aiLab.error }}</p>
+    <p v-if="aiLab.error" class="text-sm text-red-600 dark:text-red-400" role="alert">{{ aiLab.error }}</p>
 
     <template v-if="run">
       <div class="rounded-lg border border-line bg-surface p-3 font-mono text-xs" data-testid="run-header">
@@ -126,7 +126,7 @@ function scrollToStep(seq: number): void {
           <button
             v-if="isActive"
             type="button"
-            class="rounded border border-red-300 px-2 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-50"
+            class="rounded border border-red-300 px-2 py-1 text-[11px] font-semibold text-red-600 dark:text-red-400 hover:bg-red-50"
             data-testid="run-cancel"
             @click="onCancel"
           >
@@ -144,10 +144,10 @@ function scrollToStep(seq: number): void {
         </div>
       </div>
 
-      <div v-if="run.status === 'failed' && run.error" class="rounded-lg border border-red-300 bg-red-50 p-3 text-xs text-red-700" data-testid="run-error-panel">
+      <div v-if="run.status === 'failed' && run.error" class="rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/40 p-3 text-xs text-red-700 dark:text-red-200" data-testid="run-error-panel">
         {{ run.error }}
       </div>
-      <div v-else-if="run.reason && !run.proposedDecision" class="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800" data-testid="run-incomplete-reason">
+      <div v-else-if="run.reason && !run.proposedDecision" class="rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/40 p-3 text-xs text-amber-800 dark:text-amber-200" data-testid="run-incomplete-reason">
         {{ run.reason }}
       </div>
 
@@ -209,7 +209,7 @@ function scrollToStep(seq: number): void {
           <textarea v-model="verdictNote" rows="2" class="rounded border border-line bg-surface-2 px-2 py-1" data-testid="verdict-note" />
         </label>
 
-        <p v-if="verdictFormError" class="mt-1 text-[11px] text-red-600" role="alert">{{ verdictFormError }}</p>
+        <p v-if="verdictFormError" class="mt-1 text-[11px] text-red-600 dark:text-red-400" role="alert">{{ verdictFormError }}</p>
 
         <div class="mt-2 flex items-center gap-2">
           <button

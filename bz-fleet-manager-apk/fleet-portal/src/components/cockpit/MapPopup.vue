@@ -357,7 +357,7 @@ function showOnBoard(): void {
 
         <template v-if="riskDetail">
           <span class="text-ink-3">Status</span>
-          <span class="font-bold text-red-500" data-testid="popup-late">⏰ {{ riskDetail }}</span>
+          <span class="font-bold text-red-700 dark:text-red-400" data-testid="popup-late">⏰ {{ riskDetail }}</span>
         </template>
 
         <span class="text-ink-3">Driver</span>
@@ -504,7 +504,7 @@ function showOnBoard(): void {
            layer could ever know. -->
       <template v-if="nearestShopResult">
         <span class="text-ink-3">Service due</span>
-        <span class="font-bold text-amber-500" data-testid="popup-nearest-shop">{{ nearestShopResult.shop.name }} · {{ Math.round(nearestShopResult.miles) }} mi</span>
+        <span class="font-bold text-amber-700 dark:text-amber-400" data-testid="popup-nearest-shop">{{ nearestShopResult.shop.name }} · {{ Math.round(nearestShopResult.miles) }} mi</span>
       </template>
     </div>
 

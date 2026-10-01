@@ -64,7 +64,7 @@ onMounted(async () => {
       <p class="text-sm text-ink-2">v0.1 — read-only dispatch reasoning; nothing here assigns anything.</p>
     </div>
 
-    <p v-if="aiLab.error" class="text-sm text-red-600" role="alert">{{ aiLab.error }}</p>
+    <p v-if="aiLab.error" class="text-sm text-red-600 dark:text-red-400" role="alert">{{ aiLab.error }}</p>
 
     <div v-if="aiLab.status" class="rounded-lg border border-line bg-surface p-3 font-mono text-xs" data-testid="ai-status-banner">
       <div class="flex flex-wrap items-center gap-3">
@@ -89,7 +89,7 @@ onMounted(async () => {
           <label class="flex flex-1 flex-col gap-1">
             <span class="font-mono text-[10px] uppercase tracking-wide text-ink-3">Name</span>
             <input v-model.trim="draftName" class="rounded border border-line bg-surface-2 px-2 py-1 text-ink" data-testid="create-name" />
-            <span v-if="nameError" class="text-[11px] text-red-600" role="alert">{{ nameError }}</span>
+            <span v-if="nameError" class="text-[11px] text-red-600 dark:text-red-400" role="alert">{{ nameError }}</span>
           </label>
           <label class="flex flex-1 flex-col gap-1">
             <span class="font-mono text-[10px] uppercase tracking-wide text-ink-3">Notes</span>

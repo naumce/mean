@@ -431,7 +431,7 @@ function formatTime(atMs: number): string {
         <span>{{ itineraryIsLive ? 'Ahead · from last fix' : 'Itinerary · as planned' }}</span>
         <span :class="itinerary.slackMin >= 0 ? 'text-emerald-500' : 'text-red-500'" data-testid="itinerary-slack">ETA {{ hhmm(itinerary.etaAtMs) }} · {{ slackLabel }}</span>
       </div>
-      <p v-if="plannedItinerary?.hos && !plannedItinerary.hos.feasible" class="mt-1.5 rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[11px] font-semibold text-red-500" data-testid="itinerary-hos">⚠ {{ plannedItinerary.hos.reason }}</p>
+      <p v-if="plannedItinerary?.hos && !plannedItinerary.hos.feasible" class="mt-1.5 rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[11px] font-semibold text-red-700 dark:text-red-400" data-testid="itinerary-hos">⚠ {{ plannedItinerary.hos.reason }}</p>
       <ol class="mt-2 space-y-1">
         <li v-for="(l, i) in itinerary.legs" :key="i" class="flex items-baseline gap-2 text-[11px]" :data-leg="l.kind">
           <span class="w-9 shrink-0 font-mono text-ink-3">{{ hhmm(l.startMs) }}</span>

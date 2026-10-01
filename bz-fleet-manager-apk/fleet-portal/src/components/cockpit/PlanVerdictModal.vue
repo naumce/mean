@@ -170,13 +170,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
       </div>
 
       <div class="max-h-[50vh] overflow-y-auto px-4 py-3">
-        <div v-if="!blockers.length && !warnings.length" class="text-[11px] text-emerald-500" data-testid="verdict-clean">✓ No conflicts</div>
+        <div v-if="!blockers.length && !warnings.length" class="text-[11px] text-emerald-700 dark:text-emerald-400" data-testid="verdict-clean">✓ No conflicts</div>
 
         <div v-else class="flex flex-col gap-1.5" data-testid="conflict-list">
           <div v-for="(c, i) in blockers" :key="`b-${i}`" class="flex items-start gap-1.5 text-conflict" data-severity="block" :data-kind="c.kind">
             <span class="shrink-0 font-bold">✗</span><span>{{ c.detail }}</span>
           </div>
-          <div v-for="(c, i) in warnings" :key="`w-${i}`" class="flex items-start gap-1.5 text-amber-500" data-severity="warn" :data-kind="c.kind">
+          <div v-for="(c, i) in warnings" :key="`w-${i}`" class="flex items-start gap-1.5 text-amber-700 dark:text-amber-400" data-severity="warn" :data-kind="c.kind">
             <span class="shrink-0 font-bold">⚠</span><span>{{ c.detail }}</span>
           </div>
         </div>
@@ -236,7 +236,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
               <div class="flex justify-between"><span class="text-ink-3">Burn</span><span class="font-bold text-ink">{{ formatGal(fuel.burn.totalGal) }}</span></div>
               <div class="flex justify-between text-[10px] text-ink-3"><span>{{ formatGal(fuel.burn.loadedGal) }} loaded</span><span>{{ formatGal(fuel.burn.deadheadGal) }} deadhead</span></div>
             </div>
-            <div v-if="fuelAdvice" class="mt-1.5 text-[11px] text-emerald-500" data-testid="verdict-fuel-advice">
+            <div v-if="fuelAdvice" class="mt-1.5 text-[11px] text-emerald-700 dark:text-emerald-400" data-testid="verdict-fuel-advice">
               Buy {{ formatGal(fuelAdvice.gallons) }} in {{ fuelAdvice.atLabel }} — saves {{ formatUsd(fuelAdvice.savingCents) }} vs {{ fuelAdvice.vsLabel }}
             </div>
             <div v-else class="mt-1.5 text-[11px] text-ink-3" data-testid="verdict-fuel-no-advice">no cheaper stop found</div>
@@ -246,7 +246,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
               <div v-for="(s, i) in fuel.ifta.byState" :key="i" class="flex justify-between text-[11px]" data-testid="verdict-fuel-ifta-row">
                 <span class="text-ink-3">{{ s.state }}</span><span class="text-ink">{{ formatGal(s.gallons) }}</span>
               </div>
-              <div v-if="!fuel.ifta.complete" class="mt-0.5 text-[11px] text-amber-500" data-testid="verdict-fuel-unattributed">
+              <div v-if="!fuel.ifta.complete" class="mt-0.5 text-[11px] text-amber-700 dark:text-amber-400" data-testid="verdict-fuel-unattributed">
                 {{ formatGal(fuel.ifta.unattributedGal) }} unattributed
               </div>
             </div>

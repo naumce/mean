@@ -28,7 +28,7 @@ function formatWindow(load: UncoveredLoad): string {
           <div class="flex items-center gap-2">
             <span class="truncate font-medium text-ink">{{ load.externalId ?? load.id }}</span>
             <span class="rounded bg-surface-3 px-1.5 py-0.5 font-mono text-[10px] text-ink-3">{{ load.requiredEquip }}</span>
-            <span v-if="load.scenario" class="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-[10px] font-bold text-amber-800" :title="load.scenario.hint">
+            <span v-if="load.scenario" class="rounded bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 font-mono text-[10px] font-bold text-amber-800 dark:text-amber-200" :title="load.scenario.hint">
               {{ load.scenario.code }}: {{ load.scenario.title }}
             </span>
           </div>

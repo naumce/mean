@@ -45,7 +45,7 @@ const telemetry = computed(() => {
   const p = props.lastPing
   if (!p) return { t: 'NO GPS', c: 'text-ink-3' }
   const age = props.nowMs - Date.parse(p.createdAt)
-  if (age < PING_LIVE_MS) return { t: p.speed != null ? `${Math.round(p.speed)} MPH` : 'MOVING', c: 'text-emerald-500' }
+  if (age < PING_LIVE_MS) return { t: p.speed != null ? `${Math.round(p.speed)} MPH` : 'MOVING', c: 'text-emerald-700 dark:text-emerald-400' }
   return { t: `LAST PING ${ageLabel(p.createdAt, props.nowMs)}`, c: 'text-ink-3' }
 })
 const reefer = computed(() => {
@@ -69,9 +69,9 @@ const expiredChips = computed(() => chips.value.filter((c) => c.level === 'expir
 const drvCls = computed(() => {
   const m = d.value.driveRemainingMin
   if (!d.value.hosKnown || m == null) return 'text-ink-3 bg-surface-3 border-line'
-  if (m <= 0) return 'text-red-500 bg-red-500/10 border-red-500/40'
-  if (m < 180) return 'text-amber-500 bg-amber-500/10 border-amber-500/30'
-  return 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30'
+  if (m <= 0) return 'text-red-700 dark:text-red-400 bg-red-500/10 border-red-500/40'
+  if (m < 180) return 'text-amber-700 dark:text-amber-400 bg-amber-500/10 border-amber-500/30'
+  return 'text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
 })
 // A driver whose legal hours were never imported must never look "legal":
 // the bar gets its own neutral state rather than silently falling through
@@ -124,16 +124,16 @@ const dotCls = computed(() => (d.value.status === 'active' || d.value.status ===
             <span :class="regExpired ? 'font-bold text-red-500' : 'text-ink-2'">{{ trailer ? `${trailer.unit} (${trailer.length ? trailer.length + ' ' : ''}${trailer.type})` : '— no trailer —' }}</span>
             <span>•</span>
             <span class="font-bold" :class="telemetry.c" data-testid="lane-telemetry">{{ telemetry.t }}</span>
-            <span v-if="reefer" class="font-bold text-cyan-500">{{ reefer }}</span>
+            <span v-if="reefer" class="font-bold text-cyan-700 dark:text-cyan-400">{{ reefer }}</span>
           </div>
           <div v-if="!compact" class="mt-1 flex items-center gap-1.5 overflow-hidden whitespace-nowrap font-mono text-[9px]">
             <span v-for="c in chips" :key="c.key" class="rounded border px-1" :class="c.cls" :data-testid="`chip-${c.key}`">{{ c.text }}</span>
-            <span v-if="d.hazmatEndorsed" class="rounded border border-violet-500/30 bg-violet-500/10 px-1 font-bold text-violet-500" data-testid="chip-HZ">☣ HAZMAT ✓</span>
-            <span v-if="fresh?.stale" class="rounded border border-amber-500/40 bg-amber-500/15 px-1 font-bold uppercase text-amber-500" :title="fresh.label" data-testid="lane-hos-stale">stale</span>
+            <span v-if="d.hazmatEndorsed" class="rounded border border-violet-500/30 bg-violet-500/10 px-1 font-bold text-violet-700 dark:text-violet-400" data-testid="chip-HZ">☣ HAZMAT ✓</span>
+            <span v-if="fresh?.stale" class="rounded border border-amber-500/40 bg-amber-500/15 px-1 font-bold uppercase text-amber-700 dark:text-amber-400" :title="fresh.label" data-testid="lane-hos-stale">stale</span>
           </div>
           <div v-else-if="expiredChips.length || fresh?.stale" class="mt-1 flex items-center gap-1.5 overflow-hidden whitespace-nowrap font-mono text-[9px]">
             <span v-for="c in expiredChips" :key="c.key" class="rounded border px-1" :class="c.cls" :data-testid="`chip-${c.key}`">{{ c.text }}</span>
-            <span v-if="fresh?.stale" class="rounded border border-amber-500/40 bg-amber-500/15 px-1 font-bold uppercase text-amber-500" :title="fresh.label" data-testid="lane-hos-stale">stale</span>
+            <span v-if="fresh?.stale" class="rounded border border-amber-500/40 bg-amber-500/15 px-1 font-bold uppercase text-amber-700 dark:text-amber-400" :title="fresh.label" data-testid="lane-hos-stale">stale</span>
           </div>
         </div>
       </div>
@@ -160,6 +160,6 @@ const dotCls = computed(() => (d.value.status === 'active' || d.value.status ===
       <span v-if="money.revenueCents" class="text-ink-2" data-testid="lane-money">{{ formatUsd(money.revenueCents) }} · <b v-if="marginPct != null" :class="marginPct >= 0 ? 'text-emerald-500' : 'text-red-500'">{{ marginPct }}% mgn</b><b v-else class="text-ink-3" title="No committed rate snapshot on this lane's legs">— mgn</b></span>
       <span v-else class="text-ink-3">no revenue</span>
     </div>
-    <span v-else-if="hosBad" class="mt-1.5 block whitespace-nowrap font-mono text-[9px] font-bold text-red-500" :title="hosTitle" data-testid="lane-hos">⚠</span>
+    <span v-else-if="hosBad" class="mt-1.5 block whitespace-nowrap font-mono text-[9px] font-bold text-red-700 dark:text-red-400" :title="hosTitle" data-testid="lane-hos">⚠</span>
   </div>
 </template>

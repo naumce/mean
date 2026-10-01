@@ -85,7 +85,7 @@ async function resetWorld(): Promise<void> {
     >
       {{ running ? `running · ${sim.state?.speed}x` : 'stopped' }}
     </span>
-    <span v-if="reseeding" class="text-amber-500" data-testid="sim-reseeding">reseeding…</span>
+    <span v-if="reseeding" class="text-amber-700 dark:text-amber-400" data-testid="sim-reseeding">reseeding…</span>
 
     <div class="ml-auto flex flex-wrap items-center gap-1.5">
       <button type="button" class="rounded border border-line px-2 py-1 hover:border-line-strong disabled:opacity-40" :disabled="sim.busy" data-testid="sim-tick-15" @click="tick(15)">+15 min</button>
@@ -97,7 +97,7 @@ async function resetWorld(): Promise<void> {
       <button type="button" class="rounded border border-line px-2 py-1 hover:border-line-strong disabled:opacity-40" :disabled="sim.busy" data-testid="sim-toggle-run" @click="toggleRun">
         {{ running ? 'Stop' : 'Start' }}
       </button>
-      <button type="button" class="rounded border border-red-500/40 px-2 py-1 text-red-500 hover:bg-red-500/10 disabled:opacity-40" :disabled="sim.busy" data-testid="sim-reset" @click="resetWorld">
+      <button type="button" class="rounded border border-red-500/40 px-2 py-1 text-red-700 dark:text-red-400 hover:bg-red-500/10 disabled:opacity-40" :disabled="sim.busy" data-testid="sim-reset" @click="resetWorld">
         Reset world
       </button>
     </div>

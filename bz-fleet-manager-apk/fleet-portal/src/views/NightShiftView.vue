@@ -287,7 +287,7 @@ onMounted(async () => {
     </p>
 
     <template v-else>
-    <p v-if="store.error" class="text-sm text-red-600" role="alert" data-testid="night-shift-error">
+    <p v-if="store.error" class="text-sm text-red-600 dark:text-red-400" role="alert" data-testid="night-shift-error">
       {{ store.error }}
     </p>
 
@@ -516,7 +516,7 @@ onMounted(async () => {
           </p>
         </fieldset>
 
-        <p v-if="formError" class="text-sm text-red-600" role="alert" data-testid="form-error">{{ formError }}</p>
+        <p v-if="formError" class="text-sm text-red-600 dark:text-red-400" role="alert" data-testid="form-error">{{ formError }}</p>
 
         <div class="flex justify-end gap-2 border-t border-line pt-4">
           <AppButton type="submit" :loading="isSubmitting" data-testid="save-policy">{{ isNew ? 'Create policy' : 'Save' }}</AppButton>

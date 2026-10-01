@@ -72,4 +72,30 @@ describe('theme tokens', () => {
     const found = files.flatMap(violationsFor)
     expect(found, `\n${found.length} violations:\n${found.join('\n')}\n`).toEqual([])
   })
+
+  it('coloured text and light chips have a dark-mode pair', () => {
+    const HUE = 'red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose'
+    const textRe = new RegExp(`^(?:hover:)?text-(?:${HUE})-[3-7]00$`)
+    const solidRe = new RegExp(`^bg-(?:${HUE})-[4-7]00$`)
+    const chipRe = new RegExp(`^bg-(?:${HUE})-(?:50|100|200)$`)
+    const strRe = /(["'`])((?:(?!\1).)*?)\1/g
+    const files = [...walk(SRC, '.vue'), ...walk(SRC, '.ts')]
+    const found: string[] = []
+    for (const file of files) {
+      const rel = relative(SRC, file).split(sep).join('/')
+      readFileSync(file, 'utf8').split(/\r?\n/).forEach((line, i) => {
+        for (const m of line.matchAll(strRe)) {
+          const toks = m[2].split(/\s+/).filter(Boolean)
+          const solid = toks.some((t) => solidRe.test(t))
+          const darkText = toks.some((t) => t.startsWith('dark:text-'))
+          const darkBg = toks.some((t) => t.startsWith('dark:bg-'))
+          for (const t of toks) {
+            if (textRe.test(t) && !solid && !darkText) found.push(`${rel}:${i + 1} ${t}`)
+            if (chipRe.test(t) && !darkBg) found.push(`${rel}:${i + 1} ${t}`)
+          }
+        }
+      })
+    }
+    expect(found, `\n${found.length} violations:\n${found.join('\n')}\n`).toEqual([])
+  })
 })

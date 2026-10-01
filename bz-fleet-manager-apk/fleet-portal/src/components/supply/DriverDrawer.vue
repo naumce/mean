@@ -75,7 +75,7 @@ async function copyLink(): Promise<void> {
       <button type="button" class="shrink-0 text-sm text-ink-3 hover:text-ink" data-testid="drawer-close" aria-label="Close" @click="close">✕</button>
     </div>
 
-    <p v-if="store.drawer.error" class="mx-4 mt-3 rounded border border-red-300 bg-red-50 p-2 text-xs text-red-700" data-testid="drawer-error">
+    <p v-if="store.drawer.error" class="mx-4 mt-3 rounded border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/40 p-2 text-xs text-red-700 dark:text-red-200" data-testid="drawer-error">
       {{ store.drawer.error }}
     </p>
     <p v-else-if="store.drawer.loading" class="mx-4 mt-3 text-xs text-ink-3">Loading…</p>

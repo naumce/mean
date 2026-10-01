@@ -38,7 +38,7 @@ onUnmounted(() => {
     </div>
 
     <p v-if="store.loading && !store.data" class="text-sm text-ink-2" data-testid="agents-loading">Loading…</p>
-    <p v-if="store.error" class="text-sm text-red-600" role="alert" data-testid="agents-error">{{ store.error }}</p>
+    <p v-if="store.error" class="text-sm text-red-600 dark:text-red-400" role="alert" data-testid="agents-error">{{ store.error }}</p>
 
     <template v-if="store.data">
       <div class="grid gap-4 md:grid-cols-2">

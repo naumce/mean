@@ -9,14 +9,14 @@ import { computed } from 'vue'
 // board's own `agentPill`/`agentLine` projection.
 const PILL_META: Record<string, { label: string; classes: string; fallback: string }> = {
   off: { label: '—', classes: 'text-ink-3', fallback: 'Not assigned yet, or shadow mode off and agent off for this load' },
-  watching: { label: 'Watching', classes: 'bg-emerald-500/15 text-emerald-600', fallback: 'Trip started; driver invited or tracking, nothing open' },
-  asked: { label: 'Asked', classes: 'bg-amber-500/15 text-amber-600', fallback: "A question is open on the driver's page" },
-  calling: { label: 'Calling', classes: 'bg-amber-500/15 text-amber-600', fallback: 'A voice rung is in progress or just happened' },
-  escalated: { label: 'Escalated', classes: 'bg-red-500/15 text-red-600', fallback: 'The dispatcher has been emailed (and called, if configured)' },
+  watching: { label: 'Watching', classes: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400', fallback: 'Trip started; driver invited or tracking, nothing open' },
+  asked: { label: 'Asked', classes: 'bg-amber-500/15 text-amber-600 dark:text-amber-400', fallback: "A question is open on the driver's page" },
+  calling: { label: 'Calling', classes: 'bg-amber-500/15 text-amber-600 dark:text-amber-400', fallback: 'A voice rung is in progress or just happened' },
+  escalated: { label: 'Escalated', classes: 'bg-red-500/15 text-red-600 dark:text-red-400', fallback: 'The dispatcher has been emailed (and called, if configured)' },
   delivered: { label: 'Delivered', classes: 'bg-emerald-500 text-white', fallback: 'Arrived; on time or late shown in the tooltip' },
-  attention: { label: 'Attention', classes: 'border border-red-500 text-red-600', fallback: "The agent could not start or continue (missing phone, unreadable appointment, route unusable)" },
-  shadow: { label: 'Shadow', classes: 'bg-blue-500/15 text-blue-600', fallback: 'The agent is watching but not allowed to talk' },
-  held: { label: 'Held', classes: 'bg-violet-500/15 text-violet-600', fallback: "A human holds it — the agent is watching but silent" },
+  attention: { label: 'Attention', classes: 'border border-red-500 text-red-600 dark:text-red-400', fallback: "The agent could not start or continue (missing phone, unreadable appointment, route unusable)" },
+  shadow: { label: 'Shadow', classes: 'bg-blue-500/15 text-blue-600 dark:text-blue-400', fallback: 'The agent is watching but not allowed to talk' },
+  held: { label: 'Held', classes: 'bg-violet-500/15 text-violet-600 dark:text-violet-400', fallback: "A human holds it — the agent is watching but silent" },
 }
 
 const props = defineProps<{

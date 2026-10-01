@@ -68,7 +68,7 @@ watch(() => props.id, refresh)
       </p>
     </div>
 
-    <p v-if="aiLab.error" class="text-sm text-red-600" role="alert">{{ aiLab.error }}</p>
+    <p v-if="aiLab.error" class="text-sm text-red-600 dark:text-red-400" role="alert">{{ aiLab.error }}</p>
 
     <ExperimentConfigCard
       v-if="aiLab.experiment"

@@ -5,14 +5,14 @@ export type ColorKey = 'emerald' | 'cyan' | 'amber' | 'violet' | 'blue' | 'slate
 
 /** Tailwind accent classes per palette key — identical in light and dark. */
 export const COLOR_CLASSES: Record<ColorKey, { av: string; dot: string; text: string }> = {
-  emerald: { av: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30', dot: 'bg-emerald-400', text: 'text-emerald-500' },
-  cyan: { av: 'bg-cyan-500/10 text-cyan-500 border-cyan-500/30', dot: 'bg-cyan-400', text: 'text-cyan-500' },
-  amber: { av: 'bg-amber-500/10 text-amber-500 border-amber-500/30', dot: 'bg-amber-400', text: 'text-amber-500' },
-  violet: { av: 'bg-violet-500/10 text-violet-500 border-violet-500/30', dot: 'bg-violet-400', text: 'text-violet-500' },
-  blue: { av: 'bg-blue-500/10 text-blue-500 border-blue-500/30', dot: 'bg-blue-400', text: 'text-blue-500' },
+  emerald: { av: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30', dot: 'bg-emerald-400', text: 'text-emerald-700 dark:text-emerald-400' },
+  cyan: { av: 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border-cyan-500/30', dot: 'bg-cyan-400', text: 'text-cyan-700 dark:text-cyan-400' },
+  amber: { av: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30', dot: 'bg-amber-400', text: 'text-amber-700 dark:text-amber-400' },
+  violet: { av: 'bg-violet-500/10 text-violet-700 dark:text-violet-400 border-violet-500/30', dot: 'bg-violet-400', text: 'text-violet-700 dark:text-violet-400' },
+  blue: { av: 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30', dot: 'bg-blue-400', text: 'text-blue-700 dark:text-blue-400' },
   slate: { av: 'bg-ink-3/10 text-ink-2 border-ink-3/30', dot: 'bg-ink-3', text: 'text-ink-2' },
-  purple: { av: 'bg-purple-500/10 text-purple-500 border-purple-500/30', dot: 'bg-purple-400', text: 'text-purple-500' },
-  red: { av: 'bg-red-500/10 text-red-500 border-red-500/30', dot: 'bg-red-500', text: 'text-red-500' },
+  purple: { av: 'bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/30', dot: 'bg-purple-400', text: 'text-purple-700 dark:text-purple-400' },
+  red: { av: 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/30', dot: 'bg-red-500', text: 'text-red-700 dark:text-red-400' },
 }
 const AVATAR_KEYS: ColorKey[] = ['emerald', 'cyan', 'amber', 'violet', 'blue', 'purple', 'slate', 'red']
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']

@@ -37,7 +37,7 @@ const SEG_OFF = 'rounded px-2 py-1 text-ink-3 hover:text-ink'
       <div>
         <div class="flex items-center gap-2 text-xs font-black tracking-tight text-ink">
           DISPATCH CONTROL TOWER
-          <span class="inline-flex items-center gap-1 rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 text-[9px] font-bold text-emerald-500"><span class="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> COCKPIT</span>
+          <span class="inline-flex items-center gap-1 rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 text-[9px] font-bold text-emerald-700 dark:text-emerald-400"><span class="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> COCKPIT</span>
         </div>
         <div class="font-mono text-[10px] text-ink-3">DISPATCHER: {{ (auth.dispatcher?.name ?? 'dispatcher').toUpperCase() }}</div>
       </div>
@@ -62,7 +62,7 @@ const SEG_OFF = 'rounded px-2 py-1 text-ink-3 hover:text-ink'
       <div class="flex items-center gap-1.5 rounded-lg border border-line bg-surface-3 px-2 py-1">
         <span class="text-[10px] font-bold uppercase text-ink-3">Zoom</span>
         <input type="range" min="10" max="72" :value="ck.pxPerHour" class="h-1 w-16 cursor-pointer accent-blue-500" data-testid="zoom" @input="ck.setZoom(Number(($event.target as HTMLInputElement).value))" />
-        <span class="text-[10px] font-bold text-blue-500">{{ ck.pxPerHour }}px/h</span>
+        <span class="text-[10px] font-bold text-blue-700 dark:text-blue-400">{{ ck.pxPerHour }}px/h</span>
       </div>
       <div class="flex items-center gap-1 rounded-lg border border-line bg-surface-3 p-0.5">
         <button type="button" class="rounded px-2 py-1 text-ink-3 hover:bg-surface hover:text-ink" data-testid="prev-day" @click="ck.shiftDays(-1)">◀</button>

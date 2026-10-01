@@ -50,8 +50,8 @@ const cardClass = computed(() => {
   return 'border-line bg-surface'
 })
 const labelClass = computed(() => {
-  if (props.step.kind === 'error') return 'text-red-600'
-  if (props.step.kind === 'nudge') return 'text-amber-600'
+  if (props.step.kind === 'error') return 'text-red-600 dark:text-red-400'
+  if (props.step.kind === 'nudge') return 'text-amber-600 dark:text-amber-400'
   return 'text-ink-3'
 })
 </script>
@@ -106,7 +106,7 @@ const labelClass = computed(() => {
         </span>
         <span
           v-if="toolResultPayload.truncated"
-          class="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-[10px] font-bold text-amber-800"
+          class="rounded bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 font-mono text-[10px] font-bold text-amber-800 dark:text-amber-200"
           data-testid="tool-result-truncated"
         >
           truncated {{ toolResultPayload.originalSize }}→{{ toolResultPayload.returnedSize }} B
@@ -122,7 +122,7 @@ const labelClass = computed(() => {
     </div>
 
     <div v-else-if="step.kind === 'error'" class="mt-2" data-testid="step-error">
-      <span class="font-mono text-[10px] font-bold text-red-600">{{ errorPayload.kind }}</span>
+      <span class="font-mono text-[10px] font-bold text-red-600 dark:text-red-400">{{ errorPayload.kind }}</span>
       <div class="text-red-700 dark:text-red-400">{{ errorPayload.message }}</div>
     </div>
   </div>

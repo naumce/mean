@@ -64,7 +64,7 @@ function formatDate(iso: string): string {
       </p>
     </div>
 
-    <p v-if="store.error" class="text-sm text-red-600" role="alert" data-testid="api-keys-error">{{ store.error }}</p>
+    <p v-if="store.error" class="text-sm text-red-600 dark:text-red-400" role="alert" data-testid="api-keys-error">{{ store.error }}</p>
 
     <!-- The key, shown once -->
     <div v-if="store.justCreatedKey" class="flex flex-col gap-2 rounded-lg border border-brand/40 bg-brand/5 p-3" data-testid="just-created-key">

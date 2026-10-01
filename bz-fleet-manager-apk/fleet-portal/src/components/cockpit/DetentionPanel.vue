@@ -34,7 +34,7 @@ onMounted(() => {
        collapsed into "no detention anywhere" — an empty list and a failed
        fetch mean opposite things (see stores/cockpit.ts's `detention`
        field doc), and only one of them is "nothing owed". -->
-  <div v-if="ck.detention.error" class="rounded-xl border border-line bg-surface p-3 font-mono text-[11px] text-red-500 shadow-xl" data-testid="detention-panel">
+  <div v-if="ck.detention.error" class="rounded-xl border border-line bg-surface p-3 font-mono text-[11px] text-red-700 dark:text-red-400 shadow-xl" data-testid="detention-panel">
     <span data-testid="detention-error">Could not load detention — {{ ck.detention.error }}</span>
   </div>
 
@@ -66,14 +66,14 @@ onMounted(() => {
           <div class="shrink-0 font-mono text-[10px] text-ink-3">{{ row.driverName }}</div>
         </div>
         <div class="mt-1 flex items-center gap-2">
-          <span class="font-mono text-sm font-bold text-emerald-500" data-testid="detention-billable">{{ row.claim!.billableMin }} min billable</span>
-          <span v-if="row.claim!.needsReview" class="rounded border border-amber-500/40 bg-amber-500/15 px-1.5 py-0.5 font-mono text-[9px] font-bold text-amber-500" data-testid="detention-review-marker">⚠ NEEDS REVIEW</span>
+          <span class="font-mono text-sm font-bold text-emerald-700 dark:text-emerald-400" data-testid="detention-billable">{{ row.claim!.billableMin }} min billable</span>
+          <span v-if="row.claim!.needsReview" class="rounded border border-amber-500/40 bg-amber-500/15 px-1.5 py-0.5 font-mono text-[9px] font-bold text-amber-700 dark:text-amber-400" data-testid="detention-review-marker">⚠ NEEDS REVIEW</span>
         </div>
         <div class="mt-1 font-mono text-[10px] text-ink-3" data-testid="detention-evidence">
           {{ row.claim!.evidence.pingCount }} pings · largest gap {{ row.claim!.evidence.maxGapMin }} min · departure {{ row.claim!.evidence.departureObserved ? 'observed' : 'not observed' }}
         </div>
         <!-- Verbatim, per Global Constraint 6 — see the script-block doc. -->
-        <ul v-if="row.claim!.needsReview" class="mt-1 list-disc pl-4 font-mono text-[10px] text-amber-500" data-testid="detention-review-reasons">
+        <ul v-if="row.claim!.needsReview" class="mt-1 list-disc pl-4 font-mono text-[10px] text-amber-700 dark:text-amber-400" data-testid="detention-review-reasons">
           <li v-for="reason in row.claim!.reviewReasons" :key="reason">{{ reason }}</li>
         </ul>
       </div>

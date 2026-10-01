@@ -236,7 +236,7 @@ function backTo(n: 1 | 2 | 3): void {
       </p>
     </div>
 
-    <p v-if="sheet.error" class="text-sm text-red-600" role="alert" data-testid="sheet-error">{{ sheet.error }}</p>
+    <p v-if="sheet.error" class="text-sm text-red-600 dark:text-red-400" role="alert" data-testid="sheet-error">{{ sheet.error }}</p>
 
     <!-- Connected summary -->
     <div v-if="!inWizard && sheet.binding" class="flex flex-col gap-3 rounded-xl border border-line bg-surface p-5" data-testid="sheet-summary">
@@ -246,11 +246,11 @@ function backTo(n: 1 | 2 | 3): void {
           <p class="text-xs text-ink-3">Tab: {{ sheet.binding.tabTitle }}<template v-if="sheet.binding.rowsPerLoad === 2"> — 2 rows per load</template></p>
           <p class="text-xs text-ink-3">Account: {{ sheet.binding.accountEmail }}</p>
           <p class="text-xs text-ink-3">Last sync: {{ sheet.binding.lastSyncAt ?? 'never' }}</p>
-          <p v-if="sheet.binding.lastError" class="text-xs text-red-600" data-testid="sheet-last-error">{{ sheet.binding.lastError }}</p>
+          <p v-if="sheet.binding.lastError" class="text-xs text-red-600 dark:text-red-400" data-testid="sheet-last-error">{{ sheet.binding.lastError }}</p>
         </div>
       </div>
 
-      <p v-if="!sheet.binding.agentSwitchCol" class="text-sm text-amber-700" data-testid="columns-not-installed">
+      <p v-if="!sheet.binding.agentSwitchCol" class="text-sm text-amber-700 dark:text-amber-300" data-testid="columns-not-installed">
         The Night Shift columns are not installed on this tab yet.
       </p>
 
@@ -261,7 +261,7 @@ function backTo(n: 1 | 2 | 3): void {
         <AppButton type="button" variant="ghost" data-testid="sync-now" :loading="sheet.loading" @click="onSyncNow">Sync now</AppButton>
         <AppButton type="button" variant="ghost" data-testid="re-map" @click="onRemap">Re-map</AppButton>
         <AppButton type="button" variant="ghost" data-testid="edit-contacts" @click="onEditContacts">Edit contacts</AppButton>
-        <span v-if="missingPhoneHint" class="text-xs text-amber-700" data-testid="missing-phone-hint">No dispatcher phone yet — the agent can't call you at night</span>
+        <span v-if="missingPhoneHint" class="text-xs text-amber-700 dark:text-amber-300" data-testid="missing-phone-hint">No dispatcher phone yet — the agent can't call you at night</span>
         <AppButton type="button" variant="danger" data-testid="disconnect" @click="showDisconnectConfirm = true">Disconnect</AppButton>
       </div>
 
@@ -276,7 +276,7 @@ function backTo(n: 1 | 2 | 3): void {
           <span class="font-medium text-ink-2">Dispatcher phone</span>
           <input id="edit-dispatcher-phone" v-model="contactPhone" type="tel" placeholder="+15551234567" class="rounded-md border border-line bg-surface-2 px-3 py-2 text-sm text-ink" />
         </label>
-        <p v-if="contactError" class="text-sm text-red-600" role="alert" data-testid="edit-contacts-error">{{ contactError }}</p>
+        <p v-if="contactError" class="text-sm text-red-600 dark:text-red-400" role="alert" data-testid="edit-contacts-error">{{ contactError }}</p>
         <div class="flex gap-2">
           <AppButton type="button" data-testid="save-contacts-edit" @click="onSaveContactsEdit">Save</AppButton>
           <AppButton type="button" variant="ghost" @click="editingContacts = false">Cancel</AppButton>
@@ -344,8 +344,8 @@ function backTo(n: 1 | 2 | 3): void {
               <tr v-for="key in SHEET_COLUMN_KEYS" :key="key" :class="isMissing(key) ? 'bg-red-50 dark:bg-red-950/30' : ''" :data-testid="`mapping-row-${key}`">
                 <td class="py-1 pr-3">
                   {{ KEY_LABELS[key] }}
-                  <span v-if="isRequired(key)" class="text-red-600" aria-label="required">*</span>
-                  <span v-if="isMissing(key)" class="ml-1 text-xs text-red-600" :data-testid="`missing-${key}`">missing</span>
+                  <span v-if="isRequired(key)" class="text-red-600 dark:text-red-400" aria-label="required">*</span>
+                  <span v-if="isMissing(key)" class="ml-1 text-xs text-red-600 dark:text-red-400" :data-testid="`missing-${key}`">missing</span>
                 </td>
                 <td class="py-1">
                   <select
@@ -375,7 +375,7 @@ function backTo(n: 1 | 2 | 3): void {
             </span>
           </label>
 
-          <p v-if="mappingError" class="text-sm text-red-600" role="alert" data-testid="mapping-error">{{ mappingError }}</p>
+          <p v-if="mappingError" class="text-sm text-red-600 dark:text-red-400" role="alert" data-testid="mapping-error">{{ mappingError }}</p>
 
           <AppButton type="button" class="self-start" :loading="sheet.loading" data-testid="save-mapping" @click="onSaveMapping">Continue</AppButton>
         </div>
@@ -396,7 +396,7 @@ function backTo(n: 1 | 2 | 3): void {
           </label>
           <p v-if="orgTimezone" class="text-xs text-ink-3">Time zone: {{ orgTimezone }}</p>
 
-          <p v-if="contactError" class="text-sm text-red-600" role="alert" data-testid="contacts-error">{{ contactError }}</p>
+          <p v-if="contactError" class="text-sm text-red-600 dark:text-red-400" role="alert" data-testid="contacts-error">{{ contactError }}</p>
 
           <AppButton type="button" class="self-start" data-testid="save-contacts" @click="onSaveContacts">Continue</AppButton>
         </div>

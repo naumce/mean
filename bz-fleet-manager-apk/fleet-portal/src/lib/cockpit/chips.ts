@@ -9,9 +9,9 @@ export interface Chip {
 }
 
 const CHIP_CLASS: Record<Chip['level'], string> = {
-  expired: 'bg-red-500/15 border-red-500/50 text-red-500 font-bold',
-  soon: 'bg-amber-500/15 border-amber-500/40 text-amber-500 font-bold',
-  ok: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500 font-bold',
+  expired: 'bg-red-500/15 border-red-500/50 text-red-700 dark:text-red-400 font-bold',
+  soon: 'bg-amber-500/15 border-amber-500/40 text-amber-700 dark:text-amber-400 font-bold',
+  ok: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400 font-bold',
   untracked: 'bg-surface-3 border-line text-ink-3',
 }
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -26,11 +26,11 @@ export function clockChip(prefix: string, iso: string | null | undefined, nowMs:
 }
 
 export const PILL_CLASSES: Record<PillColor, string> = {
-  emerald: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30',
-  blue: 'bg-blue-500/10 text-blue-500 border-blue-500/30',
-  amber: 'bg-amber-500/10 text-amber-500 border-amber-500/30',
-  red: 'bg-red-500/20 text-red-500 border-red-500/40',
+  emerald: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30',
+  blue: 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30',
+  amber: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30',
+  red: 'bg-red-500/20 text-red-700 dark:text-red-400 border-red-500/40',
   slate: 'bg-ink-3/10 text-ink-2 border-ink-3/30',
-  purple: 'bg-purple-500/10 text-purple-500 border-purple-500/30',
-  cyan: 'bg-cyan-500/10 text-cyan-500 border-cyan-500/30',
+  purple: 'bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/30',
+  cyan: 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border-cyan-500/30',
 }

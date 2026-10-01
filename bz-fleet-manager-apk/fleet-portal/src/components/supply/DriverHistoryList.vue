@@ -26,7 +26,7 @@ function completedLabel(iso: string | null): string {
             {{ row.loadRef }}
             <span
               v-if="row.late"
-              class="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700"
+              class="rounded bg-red-100 dark:bg-red-900/40 px-1.5 py-0.5 text-[10px] font-semibold text-red-700 dark:text-red-200"
               data-testid="history-late-chip"
             >
               late{{ row.lateMinutes != null ? ` ${row.lateMinutes}m` : '' }}

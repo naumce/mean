@@ -42,7 +42,7 @@ function driverLabel(driverId: string): string {
               {{ driverLabel(entry.driverId) }}
               <span
                 v-if="entry.driverId === chosenDriverId"
-                class="ml-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800"
+                class="ml-1 rounded-full bg-emerald-100 dark:bg-emerald-900/40 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800 dark:text-emerald-200"
                 data-testid="comparison-chosen-badge"
               >chosen</span>
             </td>

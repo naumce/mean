@@ -121,6 +121,6 @@ async function doSwitch(enabled: boolean, policyId?: string): Promise<void> {
       </div>
     </div>
 
-    <span v-if="error" data-agent-switch-error class="ml-1 text-[10px] text-red-500" role="alert">{{ error }}</span>
+    <span v-if="error" data-agent-switch-error class="ml-1 text-[10px] text-red-700 dark:text-red-400" role="alert">{{ error }}</span>
   </span>
 </template>

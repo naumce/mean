@@ -97,7 +97,7 @@ async function onReset(): Promise<void> {
         <button
           v-if="demo.available"
           type="button"
-          class="rounded-md border border-red-500/40 px-3 py-1.5 text-sm font-semibold text-red-500 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+          class="rounded-md border border-red-500/40 px-3 py-1.5 text-sm font-semibold text-red-700 dark:text-red-400 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
           :disabled="demo.busy"
           data-testid="demo-reset"
           @click="onReset"
@@ -112,11 +112,11 @@ async function onReset(): Promise<void> {
     </p>
 
     <template v-if="demo.available">
-      <p v-if="demo.error" class="text-sm text-red-600" role="alert" data-testid="demo-error">{{ demo.error }}</p>
+      <p v-if="demo.error" class="text-sm text-red-600 dark:text-red-400" role="alert" data-testid="demo-error">{{ demo.error }}</p>
 
       <div
         v-if="story?.stage === 'error'"
-        class="rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-600"
+        class="rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-600 dark:text-red-400"
         data-testid="demo-error-banner"
       >
         <p class="font-semibold" data-testid="demo-error-summary">The demo hit a problem. Press Reset Demo to start again.</p>

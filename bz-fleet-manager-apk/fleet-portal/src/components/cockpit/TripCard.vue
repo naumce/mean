@@ -103,14 +103,14 @@ const pingAge = computed(() =>
       <dd class="text-right" data-testid="trip-break">
         <template v-if="breakIn">{{ breakIn }}</template>
         <!-- NOT "0h": nobody imported this driver's hours. -->
-        <span v-else class="text-amber-400" title="HOS never imported for this driver">— HOS unknown</span>
+        <span v-else class="text-amber-700 dark:text-amber-400" title="HOS never imported for this driver">— HOS unknown</span>
       </dd>
 
       <dt class="text-muted">Position</dt>
       <dd class="text-right" data-testid="trip-ping">
         <template v-if="pingAge && !trip.positionStale">live · {{ pingAge }} ago</template>
-        <span v-else-if="pingAge" class="text-amber-400">stale · {{ pingAge }} ago</span>
-        <span v-else class="text-amber-400">never pinged</span>
+        <span v-else-if="pingAge" class="text-amber-700 dark:text-amber-400">stale · {{ pingAge }} ago</span>
+        <span v-else class="text-amber-700 dark:text-amber-400">never pinged</span>
       </dd>
     </dl>
 
@@ -119,16 +119,16 @@ const pingAge = computed(() =>
          location, and `denied` is a real answer rather than missing data. -->
     <div class="mt-2 text-[11px]" data-testid="trip-location-request">
       <template v-if="locationRequest?.status === 'pending'">
-        <span class="text-amber-400">Location requested — waiting on driver</span>
+        <span class="text-amber-700 dark:text-amber-400">Location requested — waiting on driver</span>
       </template>
       <template v-else-if="locationRequest?.status === 'denied'">
-        <span class="text-rose-400">Driver declined to share location</span>
+        <span class="text-rose-700 dark:text-rose-400">Driver declined to share location</span>
       </template>
       <template v-else-if="locationRequest?.status === 'expired'">
         <span class="text-muted">Location request expired — no answer</span>
       </template>
       <template v-else-if="locationRequest?.status === 'approved' && locationRequest.location">
-        <span class="text-emerald-400">
+        <span class="text-emerald-700 dark:text-emerald-400">
           Shared {{ locationRequest.location.latitude.toFixed(3) }}, {{ locationRequest.location.longitude.toFixed(3) }}
         </span>
       </template>

@@ -219,7 +219,7 @@ const cls = computed(() => {
              locked row (BrokerGrid.vue's `.bb-lock`). -->
         <span
           v-if="lockedBy"
-          class="rounded bg-violet-500/20 px-1 text-[9px] font-black text-violet-400"
+          class="rounded bg-violet-500/20 px-1 text-[9px] font-black text-violet-700 dark:text-violet-400"
           data-testid="tag-locked"
           :title="`${lockedBy} is editing this load on Their Board`"
         >✎ {{ lockedBy }}</span>
@@ -251,7 +251,7 @@ const cls = computed(() => {
           <span v-if="detentionClaim" class="rounded bg-rose-500/20 px-1 text-[9px] font-black text-rose-700 dark:text-rose-400" data-testid="tag-detention" :title="`${detentionClaim.billableMin} min billable`">⏱ DETENTION</span>
         </template>
       </span>
-      <span v-if="wide" class="whitespace-nowrap font-mono font-bold text-emerald-500" data-testid="brick-rate">
+      <span v-if="wide" class="whitespace-nowrap font-mono font-bold text-emerald-700 dark:text-emerald-400" data-testid="brick-rate">
         {{ formatUsd(load.revenueCents) }}<span v-if="rpm != null" class="text-ink-3"> (${{ rpm.toFixed(2) }}/mi)</span>
       </span>
     </div>

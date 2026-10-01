@@ -125,7 +125,7 @@ describe('NightShiftLinkView', () => {
   })
 
   // Final fix wave, minor: the header shows the sheet's LOAD#, not the uuid.
-  it('shows LOAD# from the timeline response in the header, falling back to the uuid only when there is none', async () => {
+  it('shows LOAD# from the timeline response in the header, falling back to Load + short id only when there is none', async () => {
     timelineMock.mockResolvedValue(agentState({ boardLoadNo: '145219' }))
     const wrapper = mountView({ loadId: 'load-42' })
     await flushPromises()
@@ -134,7 +134,7 @@ describe('NightShiftLinkView', () => {
     timelineMock.mockResolvedValue(agentState({ boardLoadNo: null }))
     const bare = mountView({ loadId: 'load-43' })
     await flushPromises()
-    expect(bare.find('[data-testid="drawer-load-no"]').text()).toBe('load-43')
+    expect(bare.find('[data-testid="drawer-load-no"]').text()).toBe('Load load-43')
   })
 
   it('renders the pill and the supervision buttons once the timeline resolves', async () => {

@@ -91,7 +91,7 @@ const homeBaseText = computed(() => {
         <span class="text-ink-2">{{ driveRemainingLabel(hos.driveRemainingMin) }}</span>
         <span
           v-if="hosStale"
-          class="ml-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800"
+          class="ml-1.5 rounded bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 dark:text-amber-200"
           data-testid="hos-stale-chip"
         >
           stale

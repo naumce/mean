@@ -73,7 +73,7 @@ function dispatch(row: SuggestRow): void {
           </div>
           <!-- Task 7/10: the demo scenario this load was seeded from, purely
                informational — the hint is the "why", never a ranking input. -->
-          <div v-if="scenario" class="mt-1 font-mono text-[10px] font-bold text-amber-500" :title="scenario.hint" data-testid="suggest-scenario">
+          <div v-if="scenario" class="mt-1 font-mono text-[10px] font-bold text-amber-700 dark:text-amber-400" :title="scenario.hint" data-testid="suggest-scenario">
             Scenario {{ scenario.code }}: {{ scenario.title }}
           </div>
         </div>
@@ -99,7 +99,7 @@ function dispatch(row: SuggestRow): void {
       </div>
 
       <!-- The engine could not even pick equipment. Stated, not blank. -->
-      <div v-else-if="result?.note" class="px-4 py-6 text-center font-mono text-xs text-amber-500" data-testid="suggest-note">
+      <div v-else-if="result?.note" class="px-4 py-6 text-center font-mono text-xs text-amber-700 dark:text-amber-400" data-testid="suggest-note">
         {{ result.note }}
       </div>
 
@@ -123,7 +123,7 @@ function dispatch(row: SuggestRow): void {
                   {{ row.driverName ?? row.driverId }}
                   <span
                     v-if="row.warnings.length"
-                    class="ml-1 text-amber-500"
+                    class="ml-1 text-amber-700 dark:text-amber-400"
                     :title="row.warnings.join('; ')"
                     data-testid="suggest-warning"
                   >⚠</span>
@@ -159,7 +159,7 @@ function dispatch(row: SuggestRow): void {
           </tbody>
         </table>
 
-        <div v-if="!feasible.length" class="py-4 text-center font-mono text-xs text-amber-500" data-testid="suggest-none-feasible">
+        <div v-if="!feasible.length" class="py-4 text-center font-mono text-xs text-amber-700 dark:text-amber-400" data-testid="suggest-none-feasible">
           No driver can legally take this load right now — every candidate is blocked below.
         </div>
 
@@ -184,7 +184,7 @@ function dispatch(row: SuggestRow): void {
                    brought — same component, same props as a feasible row. -->
               <CandidateContextCell v-if="row.context" :context="row.context" :tz="tz" />
             </div>
-            <span class="shrink-0 text-right font-mono text-[10px] text-red-500" data-testid="suggest-blocked-reason">
+            <span class="shrink-0 text-right font-mono text-[10px] text-red-700 dark:text-red-400" data-testid="suggest-blocked-reason">
               ✗ {{ row.blockedReason ?? 'blocked' }}
             </span>
           </div>

@@ -54,7 +54,7 @@ function onAct(): void {
 
     <p
       v-if="action?.kind === 'driver_reply' && !workerConfigured"
-      class="rounded-md bg-amber-500/10 px-3 py-2 text-sm text-amber-600"
+      class="rounded-md bg-amber-500/10 px-3 py-2 text-sm text-amber-600 dark:text-amber-400"
       data-testid="driver-channel-banner"
     >
       The driver channel is not connected on this server — the reply cannot be sent here.

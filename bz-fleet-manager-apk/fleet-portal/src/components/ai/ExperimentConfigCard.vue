@@ -119,7 +119,7 @@ function onSave(): void {
           class="rounded border border-line bg-surface-2 px-2 py-1 font-mono text-ink"
           :data-testid="`config-${field}`"
         />
-        <span v-if="errors[field]" class="text-[10px] text-red-600" role="alert">{{ errors[field] }}</span>
+        <span v-if="errors[field]" class="text-[10px] text-red-600 dark:text-red-400" role="alert">{{ errors[field] }}</span>
       </label>
     </div>
 
@@ -132,7 +132,7 @@ function onSave(): void {
       >
         {{ saving ? 'Saving…' : saveLabel }}
       </button>
-      <span v-if="hasErrors" class="text-[11px] text-red-600" data-testid="config-invalid">Fix the highlighted fields first.</span>
+      <span v-if="hasErrors" class="text-[11px] text-red-600 dark:text-red-400" data-testid="config-invalid">Fix the highlighted fields first.</span>
     </div>
   </form>
 </template>
