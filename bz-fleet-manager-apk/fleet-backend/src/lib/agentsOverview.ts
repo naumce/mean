@@ -5,6 +5,7 @@ import { DEFAULT_HARNESS_CONFIG, harnessEnabled } from "./aiHarness/config.js";
 import { checkOllama } from "./aiHarness/ollamaAdapter.js";
 import { runnerState } from "./aiHarness/runner.js";
 import { STANDARD_POLICY } from "./agentPolicies.js";
+import { displayLoadNo } from "./loadLabel.js";
 
 // AI Agents Surface (Task 3): the one read the "AI Agents" overview page
 // reads, shaped so dispatch's readiness (rules vs. model) and Night Shift's
@@ -180,17 +181,9 @@ function shadowFor(
   return chosen ? chosen.shadow : null;
 }
 
-/** `loads[].boardLoadNo`: the field name stays `boardLoadNo` (the portal
- *  type mirrors it verbatim) but its VALUE is the first non-empty of the
- *  load's own board number, its `orderRef`, then its `externalId` — most
- *  seeded/imported loads never got a board number, and showing a raw uuid
- *  instead of any of the ids the load actually carries is a live-data bug,
- *  not a fallback anyone reads intentionally. Precedence is fixed; do not
- *  reorder it. */
-function displayLoadNo(load: { boardLoadNo: string | null; orderRef: string | null; externalId: string | null }): string | null {
-  const candidates = [load.boardLoadNo, load.orderRef, load.externalId];
-  return candidates.find((v): v is string => typeof v === "string" && v.trim().length > 0) ?? null;
-}
+// `loads[].boardLoadNo`'s fallback (boardLoadNo -> orderRef -> externalId ->
+// null) now lives in lib/loadLabel.ts's `displayLoadNo`, shared with
+// agentTimeline.ts's GET /loads/:id/agent so both answer the same label.
 
 const ACTIVITY_PRIORITY: Record<string, number> = { attention: 0, escalated: 0, waiting_reply: 1 };
 

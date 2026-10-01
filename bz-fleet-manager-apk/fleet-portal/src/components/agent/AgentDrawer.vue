@@ -141,6 +141,13 @@ function close(): void {
 }
 
 // --- Header ------------------------------------------------------------
+// Render follow-up (2026-10-01): a deep link (or a refresh) can open this
+// drawer before — or without — the board's own row data resolving `loadNo`
+// as a prop, so the header must never fall back to the raw loadId/uuid.
+// Precedence: the caller's own `loadNo` prop, then the timeline response's
+// own `boardLoadNo` (lib/loadLabel.ts's displayLoadNo, backend-side), then a
+// short, honest "Load <first 8 chars>" rather than the full id.
+const headerLoadNo = computed(() => props.loadNo ?? agent.value?.boardLoadNo ?? `Load ${(props.loadId ?? '').slice(0, 8)}`)
 const policy = computed(() => agent.value?.policy ?? null)
 const shadowBadge = computed(() => (policy.value ? (policy.value.shadow ? 'Shadow' : 'Live') : null))
 const held = computed(() => agent.value?.pill === 'held')
@@ -386,7 +393,7 @@ function formatTime(atMs: number): string {
     <div class="flex items-start justify-between gap-2 border-b border-line px-4 py-3">
       <div class="min-w-0">
         <div class="flex flex-wrap items-center gap-2">
-          <b class="text-sm text-ink" data-testid="drawer-load-no">{{ loadNo || agent?.boardLoadNo || loadId }}</b>
+          <b class="text-sm text-ink" data-testid="drawer-load-no">{{ headerLoadNo }}</b>
           <span v-if="shadowBadge" class="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide" :class="shadowBadge === 'Shadow' ? 'bg-blue-500/15 text-blue-600 dark:text-blue-300' : 'bg-green-500/15 text-green-700 dark:text-green-300'" data-testid="drawer-shadow-badge">{{ shadowBadge }}</span>
           <span v-if="policy" class="rounded bg-surface-3 px-1.5 py-0.5 text-[10px] text-ink-3" data-testid="drawer-policy-name">{{ policy.name }}</span>
         </div>

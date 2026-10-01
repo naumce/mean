@@ -690,6 +690,25 @@ describe("GET /loads/:id/agent — the timeline", () => {
     expect(res.status).not.toBe(403);
   });
 
+  // Render follow-up (2026-10-01): `boardLoadNo` in this body is the DISPLAY
+  // label, not the raw column — it falls back the same way
+  // agentsOverview.ts's `loads[].boardLoadNo` always has (now via the shared
+  // lib/loadLabel.ts helper), so a load with no board number and no orderRef
+  // still answers something a dispatcher can read instead of a raw uuid.
+  it("boardLoadNo falls back to externalId when neither boardLoadNo nor orderRef is set", async () => {
+    const { org, auth } = await seedOrg();
+    await seedStandard(org.id);
+    const load = await seedLoad(org.id, {
+      agentEnabled: true, agentPill: "watching",
+      boardLoadNo: null, orderRef: null, externalId: "EXT-77",
+    });
+
+    const res = await request(app).get(`/api/dispatcher/loads/${load.id}/agent`).set("authorization", auth);
+
+    expect(res.status).toBe(200);
+    expect(res.body.boardLoadNo).toBe("EXT-77");
+  });
+
   // Task 2: `summary` (deriveAgentSummary, Task 1) added to the body so the
   // drawer and the AI Agents overview read the same plain-language state.
   it("adds a summary derived from the load's persisted agent state", async () => {

@@ -1,6 +1,7 @@
 import { prisma } from "../db.js";
 import { policyFor } from "./agentPolicies.js";
 import { deriveAgentSummary, type AgentSummary, type AgentSummaryEvent } from "./agentSummary.js";
+import { displayLoadNo } from "./loadLabel.js";
 
 /** One line of a load's Night Shift timeline, merging AgentUpdate and
  *  AgentEvent rows — same shape GET /loads/:id/agent has always answered
@@ -14,8 +15,10 @@ export interface AgentTimelineEntry {
 
 export interface AgentTimelineBody {
   enabled: boolean;
-  /** The board's LOAD# (null for a load that never carried one) — what a
-   *  header shows instead of the uuid (final fix wave, minor). */
+  /** The load's display label (lib/loadLabel.ts's `displayLoadNo`: boardLoadNo,
+   *  else orderRef, else externalId, else null) — what a header shows instead
+   *  of the uuid (final fix wave, minor; render follow-up extracted the
+   *  fallback so this never drifts from agentsOverview.ts's own). */
   boardLoadNo: string | null;
   policy: { id: string; name: string; [key: string]: unknown };
   pill: string;
@@ -75,5 +78,5 @@ export async function timelineFor(loadId: string, orgId: string | null): Promise
     attentionLine, events: summaryEvents, nowMs: Date.now(),
   });
 
-  return { enabled: load.agentEnabled, boardLoadNo: load.boardLoadNo, policy, pill: load.agentPill, line, timeline, summary };
+  return { enabled: load.agentEnabled, boardLoadNo: displayLoadNo(load), policy, pill: load.agentPill, line, timeline, summary };
 }

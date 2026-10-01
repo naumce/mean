@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter, type Router } from 'vue-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import DemoView from './DemoView.vue'
+import HowItWorksLinks from '../components/demo/HowItWorksLinks.vue'
 import { useDemoStore } from '../stores/demo'
 import type { DemoStage, DemoStageAction, DemoStory, DemoStoryResponse, PresenterStageView } from '../types/demo'
 
@@ -154,6 +155,24 @@ describe('DemoView', () => {
         data: { ...demoData({ stage: 'in_transit' }), links: { cockpitLoadId: null, aiRunId: null, driverId: null, agentTimelineLoadId: null } },
       })
       expect(wrapper.find('[data-testid="demo-view-agent"]').attributes('href')).toBe('/cockpit')
+    })
+  })
+
+  // Render follow-up (2026-10-01): HowItWorksLinks' "AI Lab run" copy needs
+  // to know whether the model or the dispatch rules made the
+  // recommendation — DemoView is the one place with the story, so it must
+  // pass that through rather than HowItWorksLinks guessing from aiRunId alone.
+  describe('recommendationSource passed to HowItWorksLinks', () => {
+    it("passes the story's recommendationSource through", async () => {
+      const { wrapper } = await mountView({ data: demoData({ recommendationSource: 'engine' }) })
+      const links = wrapper.findComponent(HowItWorksLinks)
+      expect(links.props('recommendationSource')).toBe('engine')
+    })
+
+    it('passes null when the story has not recommended anything yet', async () => {
+      const { wrapper } = await mountView({ data: demoData({ recommendationSource: null }) })
+      const links = wrapper.findComponent(HowItWorksLinks)
+      expect(links.props('recommendationSource')).toBeNull()
     })
   })
 

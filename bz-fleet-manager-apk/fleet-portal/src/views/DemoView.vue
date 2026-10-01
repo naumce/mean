@@ -153,6 +153,7 @@ async function onReset(): Promise<void> {
       <HowItWorksLinks
         :ai-run-id="demo.data?.links.aiRunId ?? null"
         :agent-timeline-load-id="demo.data?.links.agentTimelineLoadId ?? null"
+        :recommendation-source="demo.data?.story?.recommendationSource ?? null"
         :log="story?.log ?? []"
       />
     </template>

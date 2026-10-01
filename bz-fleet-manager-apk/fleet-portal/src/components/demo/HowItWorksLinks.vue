@@ -16,7 +16,20 @@ import type { DemoStoryLogEntry } from '../../types/demo'
 // of landing on the plain board. Before the demo has a load yet
 // (`agentTimelineLoadId` still null), it falls back to the plain /cockpit
 // route, same as before.
-defineProps<{ aiRunId: string | null; log: DemoStoryLogEntry[]; agentTimelineLoadId: string | null }>()
+// Render follow-up (2026-10-01): `recommendationSource` says whether the AI
+// model or the dispatch rules actually produced the recommendation on
+// screen — DemoView passes `demo.data?.story?.recommendationSource ?? null`.
+// Before this, a timed-out/unavailable model (source 'engine', no aiRunId
+// yet or a run that never finished) still read "AI Lab run (not started
+// yet)", implying nothing was ever asked. Presenter copy rule: no other line
+// here may use the words score/rank/ranking/engine/deterministic/scenario —
+// the prop VALUE 'engine' is fine, those words are not what the room reads.
+defineProps<{
+  aiRunId: string | null
+  log: DemoStoryLogEntry[]
+  agentTimelineLoadId: string | null
+  recommendationSource: 'ai' | 'engine' | null
+}>()
 
 const open = ref(false)
 const logOpen = ref(false)
@@ -43,8 +56,9 @@ function formatTime(atMs: number): string {
 
     <div v-if="open" class="flex flex-col gap-2 border-t border-line px-4 py-3 text-sm">
       <RouterLink v-if="aiRunId" :to="`/ai-lab/runs/${aiRunId}`" class="text-brand-ink hover:underline" data-testid="how-it-works-ai-run">
-        AI Lab run
+        AI Lab run<template v-if="recommendationSource === 'engine'"> — timed out; the dispatch rules made the recommendation</template>
       </RouterLink>
+      <span v-else-if="recommendationSource === 'engine'" class="text-ink-3" data-testid="how-it-works-ai-run-engine">No AI run — the dispatch rules made this recommendation.</span>
       <span v-else class="text-ink-3" data-testid="how-it-works-ai-run-pending">AI Lab run (not started yet)</span>
 
       <RouterLink to="/cockpit" class="text-brand-ink hover:underline" data-testid="how-it-works-cockpit">Control Tower</RouterLink>

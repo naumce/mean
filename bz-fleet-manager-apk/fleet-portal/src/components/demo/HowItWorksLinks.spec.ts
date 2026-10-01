@@ -20,9 +20,17 @@ async function testRouter(): Promise<Router> {
   return router
 }
 
-async function mountLinks(props: { aiRunId: string | null; log: DemoStoryLogEntry[]; agentTimelineLoadId?: string | null }) {
+async function mountLinks(props: {
+  aiRunId: string | null
+  log: DemoStoryLogEntry[]
+  agentTimelineLoadId?: string | null
+  recommendationSource?: 'ai' | 'engine' | null
+}) {
   const router = await testRouter()
-  return mount(HowItWorksLinks, { props: { agentTimelineLoadId: null, ...props }, global: { plugins: [router] } })
+  return mount(HowItWorksLinks, {
+    props: { agentTimelineLoadId: null, recommendationSource: null, ...props },
+    global: { plugins: [router] },
+  })
 }
 
 describe('HowItWorksLinks', () => {
@@ -65,6 +73,60 @@ describe('HowItWorksLinks', () => {
     await wrapper.find('[data-testid="how-it-works-toggle"]').trigger('click')
 
     expect(wrapper.find('[data-testid="how-it-works-timeline"]').attributes('href')).toBe('/cockpit')
+  })
+
+  // Render follow-up (2026-10-01): the "AI Lab run" line must say so, in
+  // plain language, when the dispatch rules — not the model — made the
+  // recommendation, rather than reading "not started yet" when a run never
+  // happened because the model timed out, or once it did.
+  describe('AI Lab run copy, by recommendationSource', () => {
+    it('shows the plain link with no caveat when aiRunId is present and the source is ai', async () => {
+      const wrapper = await mountLinks({ aiRunId: 'run-1', log: [], recommendationSource: 'ai' })
+      await wrapper.find('[data-testid="how-it-works-toggle"]').trigger('click')
+
+      const link = wrapper.get('[data-testid="how-it-works-ai-run"]')
+      expect(link.attributes('href')).toBe('/ai-lab/runs/run-1')
+      expect(link.text()).toBe('AI Lab run')
+    })
+
+    it('shows the link plus a timed-out caveat when aiRunId is present and the source is engine', async () => {
+      const wrapper = await mountLinks({ aiRunId: 'run-1', log: [], recommendationSource: 'engine' })
+      await wrapper.find('[data-testid="how-it-works-toggle"]').trigger('click')
+
+      const link = wrapper.get('[data-testid="how-it-works-ai-run"]')
+      expect(link.attributes('href')).toBe('/ai-lab/runs/run-1')
+      expect(link.text()).toBe('AI Lab run — timed out; the dispatch rules made the recommendation')
+    })
+
+    it('shows "No AI run" text, not a link, when there is no aiRunId and the source is engine', async () => {
+      const wrapper = await mountLinks({ aiRunId: null, log: [], recommendationSource: 'engine' })
+      await wrapper.find('[data-testid="how-it-works-toggle"]').trigger('click')
+
+      expect(wrapper.find('[data-testid="how-it-works-ai-run"]').exists()).toBe(false)
+      expect(wrapper.find('[data-testid="how-it-works-ai-run-pending"]').exists()).toBe(false)
+      expect(wrapper.get('[data-testid="how-it-works-ai-run-engine"]').text()).toBe('No AI run — the dispatch rules made this recommendation.')
+    })
+
+    it('keeps the existing "not started yet" placeholder when there is no aiRunId and no source yet', async () => {
+      const wrapper = await mountLinks({ aiRunId: null, log: [], recommendationSource: null })
+      await wrapper.find('[data-testid="how-it-works-toggle"]').trigger('click')
+
+      expect(wrapper.get('[data-testid="how-it-works-ai-run-pending"]').text()).toBe('AI Lab run (not started yet)')
+    })
+
+    // Presenter copy rule: none of score/rank/ranking/engine/deterministic/
+    // scenario may appear in rendered text — the prop VALUE 'engine' is fine,
+    // the words shown to the room are not.
+    it('never renders the forbidden words, for any recommendationSource', async () => {
+      const FORBIDDEN = /\b(score|rank|ranking|engine|deterministic|scenario)\b/i
+      for (const [aiRunId, recommendationSource] of [
+        ['run-1', 'ai'], ['run-1', 'engine'], [null, 'engine'], [null, null],
+      ] as const) {
+        const wrapper = await mountLinks({ aiRunId, log: [], recommendationSource })
+        await wrapper.find('[data-testid="how-it-works-toggle"]').trigger('click')
+        expect(wrapper.text()).not.toMatch(FORBIDDEN)
+      }
+    })
   })
 
   it('keeps the technical log collapsed until its own toggle is clicked', async () => {

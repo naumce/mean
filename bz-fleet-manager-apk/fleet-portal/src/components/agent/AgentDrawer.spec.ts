@@ -411,6 +411,29 @@ describe('AgentDrawer', () => {
     expect(store.agentFor).toHaveBeenCalledTimes(1)
   })
 
+  // Render follow-up (2026-10-01): a deep link (or refresh) can open the
+  // drawer before/without the board's own row data resolving loadNo — the
+  // header must never fall back to the raw loadId/uuid.
+  describe('the header load label (never the full id)', () => {
+    it('falls back to agent.boardLoadNo when no loadNo prop is given', async () => {
+      const store = createStoreStub({ agentFor: vi.fn().mockResolvedValue(agentState({ boardLoadNo: 'W-I-LATE' })) })
+      mockedUseNightShiftStore.mockReturnValue(store as unknown as ReturnType<typeof useNightShiftStore>)
+      const wrapper = mountDrawer({ loadNo: undefined })
+      await flushPromises()
+
+      expect(wrapper.get('[data-testid="drawer-load-no"]').text()).toBe('W-I-LATE')
+    })
+
+    it('shows a truncated "Load <id>" when neither loadNo nor boardLoadNo is known', async () => {
+      const store = createStoreStub({ agentFor: vi.fn().mockResolvedValue(agentState({ boardLoadNo: null })) })
+      mockedUseNightShiftStore.mockReturnValue(store as unknown as ReturnType<typeof useNightShiftStore>)
+      const wrapper = mountDrawer({ loadId: '12345678-abcd-ef00', loadNo: undefined })
+      await flushPromises()
+
+      expect(wrapper.get('[data-testid="drawer-load-no"]').text()).toBe('Load 12345678')
+    })
+  })
+
   it('emits close when the close button is clicked', async () => {
     const store = createStoreStub()
     mockedUseNightShiftStore.mockReturnValue(store as unknown as ReturnType<typeof useNightShiftStore>)
