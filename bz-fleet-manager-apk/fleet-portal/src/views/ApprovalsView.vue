@@ -77,16 +77,16 @@ onMounted(() => {
 <template>
   <div class="flex flex-col gap-8">
     <div>
-      <h1 class="text-xl font-semibold text-gray-900">Approvals</h1>
-      <p class="text-sm text-gray-500">Review trips and driver-submitted signs-proof awaiting your decision.</p>
+      <h1 class="text-xl font-semibold text-ink">Approvals</h1>
+      <p class="text-sm text-ink-2">Review trips and driver-submitted signs-proof awaiting your decision.</p>
     </div>
 
-    <p v-if="approvalsStore.error" class="text-sm text-red-600" role="alert">
+    <p v-if="approvalsStore.error" class="text-sm text-red-600 dark:text-red-400" role="alert">
       {{ approvalsStore.error }}
     </p>
 
     <div class="flex flex-col gap-2">
-      <h2 class="text-sm font-semibold text-gray-700">Trips awaiting approval</h2>
+      <h2 class="text-sm font-semibold text-ink-2">Trips awaiting approval</h2>
       <DataTable :columns="tripColumns" :rows="approvalsStore.pendingTrips" row-key="id">
         <template #cell-stops="{ row }">{{ (row as Trip).stops.length }}</template>
         <template #cell-status="{ row }">
@@ -96,14 +96,14 @@ onMounted(() => {
           <div class="flex gap-3">
             <button
               type="button"
-              class="text-sm font-medium text-primary-600 hover:text-primary-700"
+              class="text-sm font-medium text-brand-ink hover:underline"
               @click="handleApproveTrip(row as Trip)"
             >
               Approve
             </button>
             <button
               type="button"
-              class="text-sm font-medium text-red-600 hover:text-red-700"
+              class="text-sm font-medium text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
               @click="openRejectModal({ kind: 'trip', id: (row as Trip).id, label: (row as Trip).identifier })"
             >
               Reject
@@ -115,34 +115,34 @@ onMounted(() => {
     </div>
 
     <div class="flex flex-col gap-2">
-      <h2 class="text-sm font-semibold text-gray-700">Signs-proof pending</h2>
-      <div v-if="approvalsStore.pendingProofs.length === 0" class="rounded-lg border border-gray-200 bg-white p-6 text-center text-sm text-gray-500">
+      <h2 class="text-sm font-semibold text-ink-2">Signs-proof pending</h2>
+      <div v-if="approvalsStore.pendingProofs.length === 0" class="rounded-lg border border-line bg-surface p-6 text-center text-sm text-ink-3">
         No signs-proof is awaiting approval.
       </div>
       <ul v-else class="flex flex-col gap-2">
         <li
           v-for="proof in approvalsStore.pendingProofs"
           :key="proof.id"
-          class="flex items-center justify-between gap-4 rounded-lg border border-gray-200 bg-white p-4"
+          class="flex items-center justify-between gap-4 rounded-lg border border-line bg-surface p-4"
         >
           <div class="flex flex-col gap-1 text-sm">
-            <span class="font-medium text-gray-900">{{ proof.proofType }}</span>
-            <span class="text-gray-500">Trip {{ proof.tripId }}<template v-if="proof.stopId"> · Stop {{ proof.stopId }}</template></span>
-            <a :href="proof.fileUrl" target="_blank" rel="noopener noreferrer" class="text-primary-600 hover:text-primary-700">
+            <span class="font-medium text-ink">{{ proof.proofType }}</span>
+            <span class="text-ink-3">Trip {{ proof.tripId }}<template v-if="proof.stopId"> · Stop {{ proof.stopId }}</template></span>
+            <a :href="proof.fileUrl" target="_blank" rel="noopener noreferrer" class="text-brand-ink hover:underline">
               View proof
             </a>
           </div>
           <div class="flex gap-3">
             <button
               type="button"
-              class="text-sm font-medium text-primary-600 hover:text-primary-700"
+              class="text-sm font-medium text-brand-ink hover:underline"
               @click="handleApproveProof(proof)"
             >
               Approve
             </button>
             <button
               type="button"
-              class="text-sm font-medium text-red-600 hover:text-red-700"
+              class="text-sm font-medium text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
               @click="openRejectModal({ kind: 'proof', id: proof.id, label: proof.proofType })"
             >
               Reject
@@ -154,7 +154,7 @@ onMounted(() => {
 
     <Modal v-model:open="isRejectModalOpen">
       <template #header>
-        <h2 class="text-lg font-semibold text-gray-900">Reject {{ rejectTarget?.label }}</h2>
+        <h2 class="text-lg font-semibold text-ink">Reject {{ rejectTarget?.label }}</h2>
       </template>
 
       <form class="flex flex-col gap-4" @submit.prevent="handleRejectSubmit">
@@ -164,11 +164,11 @@ onMounted(() => {
             v-model="rejectReason"
             required
             rows="3"
-            class="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-primary-600 focus:outline-none focus:ring-1 focus:ring-primary-600"
+            class="rounded-md border border-line-strong px-3 py-2 text-sm text-ink focus:border-primary-600 focus:outline-none focus:ring-1 focus:ring-primary-600"
           />
         </FormField>
 
-        <p v-if="rejectError" class="text-sm text-red-600" role="alert">{{ rejectError }}</p>
+        <p v-if="rejectError" class="text-sm text-red-600 dark:text-red-400" role="alert">{{ rejectError }}</p>
 
         <div class="mt-2 flex justify-end gap-2">
           <AppButton type="button" variant="ghost" @click="isRejectModalOpen = false">Cancel</AppButton>

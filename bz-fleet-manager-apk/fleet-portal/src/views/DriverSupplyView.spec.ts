@@ -209,4 +209,32 @@ describe('DriverSupplyView', () => {
     await wrapper.findAll('[data-testid="driver-row"]')[0].trigger('click')
     expect(store.select).toHaveBeenCalledWith('d1')
   })
+
+  describe('simulation disclosure', () => {
+    const mountWithSim = (simOverrides: Record<string, unknown>) => {
+      const store = createDriverSupplyStoreStub()
+      mockedUseDriverSupplyStore.mockReturnValue(store as unknown as ReturnType<typeof useDriverSupplyStore>)
+      mockedUseSimStore.mockReturnValue(createSimStoreStub(simOverrides) as unknown as ReturnType<typeof useSimStore>)
+      return mount(DriverSupplyView, { global: { stubs: { SimControls: { template: '<div data-testid="sim-controls-stub" />' } } } })
+    }
+
+    it('is collapsed by default and opens on click', async () => {
+      const wrapper = mountWithSim({ available: true, state: { running: false } })
+      const button = wrapper.find('[data-testid="sim-disclosure"]')
+      expect(button.text()).toContain('Simulation controls')
+      expect(wrapper.find('[data-testid="sim-body"]').attributes('style')).toContain('display: none')
+      await button.trigger('click')
+      expect(wrapper.find('[data-testid="sim-body"]').attributes('style') ?? '').not.toContain('display: none')
+    })
+
+    it('is expanded automatically while the sim is running', () => {
+      const wrapper = mountWithSim({ available: true, state: { running: true } })
+      expect(wrapper.find('[data-testid="sim-body"]').attributes('style') ?? '').not.toContain('display: none')
+    })
+
+    it('is absent when the server has no simulation', () => {
+      const wrapper = mountWithSim({ available: false })
+      expect(wrapper.find('[data-testid="sim-disclosure"]').exists()).toBe(false)
+    })
+  })
 })

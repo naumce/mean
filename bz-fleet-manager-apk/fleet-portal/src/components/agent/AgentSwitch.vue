@@ -99,7 +99,7 @@ async function doSwitch(enabled: boolean, policyId?: string): Promise<void> {
       :title="disabled ? (disabledReason ?? 'Someone else is editing this load') : (load.agentEnabled ? 'Stop watching this load' : 'Start watching this load')"
       @click="onToggle"
     >
-      <span class="inline-block h-3 w-3 translate-x-0.5 rounded-full bg-white transition-transform" :class="load.agentEnabled ? 'translate-x-3.5' : ''" />
+      <span class="inline-block h-3 w-3 translate-x-0.5 rounded-full transition-transform" :class="[load.agentEnabled ? 'bg-surface translate-x-3.5' : 'bg-ink-3']" />
     </button>
 
     <div v-if="showPicker" data-agent-policy-picker class="absolute left-0 top-5 z-30 w-44 rounded border border-line bg-surface p-2 text-[11px] shadow-xl">

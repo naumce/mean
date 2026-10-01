@@ -7,8 +7,8 @@ defineProps<{ lane: BoardLane; trips: BoardTrip[]; config: BoardConfig }>()
 </script>
 
 <template>
-  <div :data-lane="lane.id" class="flex border-b border-gray-200">
-    <div class="w-40 shrink-0 border-r border-gray-200 px-3 py-2 text-sm font-medium text-gray-700">
+  <div :data-lane="lane.id" class="flex border-b border-line">
+    <div class="w-40 shrink-0 border-r border-line px-3 py-2 text-sm font-medium text-ink-2">
       {{ lane.name }}
     </div>
     <div class="relative h-14 flex-1" :style="{ width: `${config.boardWidthPx}px` }">

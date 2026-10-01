@@ -38,12 +38,11 @@ describe('DemoTimeShift', () => {
     expect(w.find('[data-testid="demo-shift-button"]').attributes('disabled')).toBeUndefined()
   })
 
-  it('disables the button when there is nothing to move, and says why', async () => {
-    // Offering an action that turns out to be a no-op reads as a broken button.
+  it('renders NOTHING when the scenario is already current (nothing to move)', async () => {
     probe.mockResolvedValue({ shifted: false, days: 0, reason: 'Already current — the scenario is less than a day old.' })
     const w = await mountIt()
-    expect(w.find('[data-testid="demo-current"]').text()).toMatch(/already current/i)
-    expect(w.find('[data-testid="demo-shift-button"]').attributes('disabled')).toBeDefined()
+    expect(w.find('[data-testid="demo-time-shift"]').exists()).toBe(false)
+    expect(w.find('[data-testid="demo-shift-button"]').exists()).toBe(false)
   })
 
   it('gets the singular right for one day', async () => {

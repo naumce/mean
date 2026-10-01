@@ -19,6 +19,7 @@ import {
   extractRoutes,
   focusPointsForLoad,
   mapboxToken,
+  mapStyleFor,
   pingsByDriver,
   positionedTrailers,
   STATUS_COLOR,
@@ -31,6 +32,7 @@ import {
 import { useCockpitStore } from '../../../stores/cockpit'
 import { useFleetStore } from '../../../stores/fleet'
 import { useLoadboardStore, type BoardStop, type LoadboardLane } from '../../../stores/loadboard'
+import { useThemeStore } from '../../../stores/theme'
 import { useTrackingStore } from '../../../stores/tracking'
 import MapPopup, { type MapPopupTarget } from '../MapPopup.vue'
 
@@ -60,6 +62,7 @@ const props = defineProps<{ nowMs: number }>()
 const lb = useLoadboardStore()
 const tracking = useTrackingStore()
 const cockpit = useCockpitStore()
+const theme = useThemeStore()
 const fleet = useFleetStore()
 
 /** A block/warn ring colour for a truck currently projected to miss its
@@ -993,49 +996,12 @@ function fitBoundsOnce(currentRoutes: RouteInfo[], currentActivity: DriverActivi
   m.fitBounds(bounds, { padding: 48, maxZoom: 12, duration: 0 })
 }
 
-function onLoad(): void {
-  loaded = true
-  const m = map
-  if (!m) return
-  // T2 Task 4 (follow-up): clicking the map background dismisses whatever
-  // popup is open — the behaviour every map product has and its absence
-  // reads as broken. mapbox-gl's own `click` event is the right hook for
-  // this specifically because it's canvas-only: a Marker's DOM element sits
-  // outside the canvas and never bubbles into it, so this never fires for a
-  // click on a truck/stop pin (which already has its own open/toggle/switch
-  // handling — see makeTruckMarker/makeStopMarker) or for a click on
-  // FleetMap's own chrome (header, legend, position-unknown list), which
-  // isn't part of the map at all. BrickPopover.vue, the board's equivalent
-  // popover, has no comparable click-based dismissal to mirror — it opens
-  // and closes on hover, not on click — so this is the natural analogue for
-  // a click-opened popup rather than a second competing pattern.
-  m.on('click', (e) => {
-    // A route hit takes priority over dismissal. Queried against the fat
-    // transparent hit layer, not the 3px drawn line — see ROUTES_HIT_LAYER_ID.
-    // Mapbox returns hits topmost-first, so where lanes overlap (Omaha-KC has
-    // several stacked) the one drawn on top is the one you get, which is the
-    // one the cursor appears to be over.
-    const hits = m.queryRenderedFeatures(e.point, { layers: [ROUTES_HIT_LAYER_ID] })
-    const loadId = hits.length ? ((hits[0] as { properties?: Record<string, unknown> | null }).properties?.loadId as string | undefined) : undefined
-    if (loadId) {
-      closePopup()
-      focusRoute(loadId)
-      return
-    }
-    closePopup()
-    clearRouteFocus()
-  })
-  // T2 "Map as Navigation", Task 9: re-run `sync()` once a zoom gesture
-  // settles, so clustering picks up. Zoom is Mapbox's own state, not a Vue
-  // reactive — the `watch` below only fires on OUR reactive data changing —
-  // so without this listener, zooming past CLUSTER_ZOOM_THRESHOLD with
-  // nothing else about the board changing would leave a cluster bubble
-  // sitting there stale instead of splitting back into individual markers.
-  // 'zoomend' (fires once per gesture) rather than 'zoom' (fires on every
-  // intermediate frame of one): the same "re-sync when it's actually needed,
-  // not on every possible frame" restraint the click listener above already
-  // applies.
-  m.on('zoomend', () => sync())
+/** The route source and its three layers. A `setStyle` (theme flip) wipes every
+ *  source and layer, so this is also re-run from `style.load`; it is a no-op
+ *  while the source exists, which keeps the first load from adding it twice.
+ *  Markers are DOM and survive a style swap untouched. */
+function addRouteLayers(m: MapboxMap): void {
+  if (m.getSource(ROUTES_SOURCE_ID)) return
   m.addSource(ROUTES_SOURCE_ID, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
   // Two layers off the one source, each filtered to its own half of the
   // split (see `sync`'s `part: 'done' | 'remaining'` on every feature) —
@@ -1080,11 +1046,71 @@ function onLoad(): void {
     layout: { 'line-join': 'round', 'line-cap': 'round' },
     paint: { 'line-width': HIT_LINE_WIDTH, 'line-opacity': 0, 'line-color': '#000000' },
   })
+}
+
+function onLoad(): void {
+  loaded = true
+  const m = map
+  if (!m) return
+  // T2 Task 4 (follow-up): clicking the map background dismisses whatever
+  // popup is open — the behaviour every map product has and its absence
+  // reads as broken. mapbox-gl's own `click` event is the right hook for
+  // this specifically because it's canvas-only: a Marker's DOM element sits
+  // outside the canvas and never bubbles into it, so this never fires for a
+  // click on a truck/stop pin (which already has its own open/toggle/switch
+  // handling — see makeTruckMarker/makeStopMarker) or for a click on
+  // FleetMap's own chrome (header, legend, position-unknown list), which
+  // isn't part of the map at all. BrickPopover.vue, the board's equivalent
+  // popover, has no comparable click-based dismissal to mirror — it opens
+  // and closes on hover, not on click — so this is the natural analogue for
+  // a click-opened popup rather than a second competing pattern.
+  m.on('click', (e) => {
+    // A route hit takes priority over dismissal. Queried against the fat
+    // transparent hit layer, not the 3px drawn line — see ROUTES_HIT_LAYER_ID.
+    // Mapbox returns hits topmost-first, so where lanes overlap (Omaha-KC has
+    // several stacked) the one drawn on top is the one you get, which is the
+    // one the cursor appears to be over.
+    const hits = m.queryRenderedFeatures(e.point, { layers: [ROUTES_HIT_LAYER_ID] })
+    const loadId = hits.length ? ((hits[0] as { properties?: Record<string, unknown> | null }).properties?.loadId as string | undefined) : undefined
+    if (loadId) {
+      closePopup()
+      focusRoute(loadId)
+      return
+    }
+    closePopup()
+    clearRouteFocus()
+  })
+  // T2 "Map as Navigation", Task 9: re-run `sync()` once a zoom gesture
+  // settles, so clustering picks up. Zoom is Mapbox's own state, not a Vue
+  // reactive — the `watch` below only fires on OUR reactive data changing —
+  // so without this listener, zooming past CLUSTER_ZOOM_THRESHOLD with
+  // nothing else about the board changing would leave a cluster bubble
+  // sitting there stale instead of splitting back into individual markers.
+  // 'zoomend' (fires once per gesture) rather than 'zoom' (fires on every
+  // intermediate frame of one): the same "re-sync when it's actually needed,
+  // not on every possible frame" restraint the click listener above already
+  // applies.
+  m.on('zoomend', () => sync())
+  addRouteLayers(m)
   // A cursor that changes is how a user learns something is clickable at all.
   m.on('mouseenter', ROUTES_HIT_LAYER_ID, () => { m.getCanvas().style.cursor = 'pointer' })
   m.on('mouseleave', ROUTES_HIT_LAYER_ID, () => { m.getCanvas().style.cursor = '' })
   sync()
 }
+
+// `style.load` also fires for the initial style, where onLoad owns the one-time
+// setup, so this only acts on later swaps (after the first `load`).
+function onStyleLoad(): void {
+  if (!map || !loaded) return
+  addRouteLayers(map)
+  sync()
+  applyRouteFocus(focusedRouteLoadId.value)
+}
+
+watch(
+  () => theme.isDark,
+  (dark) => map?.setStyle(mapStyleFor(dark), { diff: false } as Parameters<MapboxMap['setStyle']>[1]),
+)
 
 onMounted(() => {
   const token = mapboxToken()
@@ -1103,12 +1129,13 @@ onMounted(() => {
   void fleet.loadShops()
   map = new mapboxgl.Map({
     container: mapContainer.value,
-    style: 'mapbox://styles/mapbox/dark-v11',
+    style: mapStyleFor(theme.isDark),
     accessToken: token,
     center: [-96, 38],
     zoom: 3,
   })
   map.on('load', onLoad)
+  map.on('style.load', onStyleLoad)
 })
 
 onBeforeUnmount(() => {

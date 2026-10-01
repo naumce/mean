@@ -10,7 +10,7 @@ export const COLOR_CLASSES: Record<ColorKey, { av: string; dot: string; text: st
   amber: { av: 'bg-amber-500/10 text-amber-500 border-amber-500/30', dot: 'bg-amber-400', text: 'text-amber-500' },
   violet: { av: 'bg-violet-500/10 text-violet-500 border-violet-500/30', dot: 'bg-violet-400', text: 'text-violet-500' },
   blue: { av: 'bg-blue-500/10 text-blue-500 border-blue-500/30', dot: 'bg-blue-400', text: 'text-blue-500' },
-  slate: { av: 'bg-slate-500/10 text-slate-400 border-slate-500/30', dot: 'bg-slate-400', text: 'text-slate-400' },
+  slate: { av: 'bg-ink-3/10 text-ink-2 border-ink-3/30', dot: 'bg-ink-3', text: 'text-ink-2' },
   purple: { av: 'bg-purple-500/10 text-purple-500 border-purple-500/30', dot: 'bg-purple-400', text: 'text-purple-500' },
   red: { av: 'bg-red-500/10 text-red-500 border-red-500/30', dot: 'bg-red-500', text: 'text-red-500' },
 }

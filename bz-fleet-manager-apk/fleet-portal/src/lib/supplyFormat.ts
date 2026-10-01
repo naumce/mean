@@ -33,7 +33,7 @@ export const STATUS_CHIP_CLASS: Record<AvailabilityStatus, string> = {
   AVAILABLE: 'bg-emerald-100 text-emerald-800',
   AVAILABLE_SOON: 'bg-amber-100 text-amber-800',
   ON_LOAD: 'bg-blue-100 text-blue-800',
-  OFF_DUTY: 'bg-gray-100 text-gray-600',
+  OFF_DUTY: 'bg-surface-3 text-ink-2',
   UNAVAILABLE: 'bg-red-100 text-red-700',
 }
 

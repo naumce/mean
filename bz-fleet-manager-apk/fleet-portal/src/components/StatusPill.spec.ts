@@ -45,9 +45,9 @@ describe('StatusPill', () => {
     expect(wrapper.classes()).toEqual(expect.arrayContaining([expect.stringContaining('red')]))
   })
 
-  it('falls back to a gray color class for an unknown status', () => {
+  it('falls back to a neutral surface token class for an unknown status', () => {
     const wrapper = mount(StatusPill, { props: { status: 'mystery' } })
 
-    expect(wrapper.classes()).toEqual(expect.arrayContaining([expect.stringContaining('gray')]))
+    expect(wrapper.classes()).toEqual(expect.arrayContaining([expect.stringContaining('bg-surface-3')]))
   })
 })

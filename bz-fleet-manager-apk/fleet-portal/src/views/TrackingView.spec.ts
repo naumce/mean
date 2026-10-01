@@ -1,4 +1,5 @@
 import { mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useTrackingStore } from '../stores/tracking'
 import TrackingView from './TrackingView.vue'
@@ -34,6 +35,7 @@ const sampleLocation = {
 
 describe('TrackingView', () => {
   beforeEach(() => {
+    setActivePinia(createPinia())
     mockedUseTrackingStore.mockReset()
   })
 

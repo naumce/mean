@@ -69,28 +69,28 @@ const termsLabel = (r: NonNullable<CarrierStatementsResult['rows']>[number]): st
 </script>
 
 <template>
-  <div class="rounded-lg border border-gray-200 bg-white p-4" data-testid="carrier-statements">
+  <div class="rounded-lg border border-line bg-surface p-4" data-testid="carrier-statements">
     <div class="flex items-baseline justify-between">
-      <h2 class="text-sm font-semibold text-gray-900">Carrier statements</h2>
-      <span class="font-mono text-xs text-gray-500">what you invoice, this period</span>
+      <h2 class="text-sm font-semibold text-ink">Carrier statements</h2>
+      <span class="font-mono text-xs text-ink-3">what you invoice, this period</span>
     </div>
 
-    <div v-if="loading && !data" class="py-6 text-center text-xs text-gray-500" data-testid="statements-loading">
+    <div v-if="loading && !data" class="py-6 text-center text-xs text-ink-3" data-testid="statements-loading">
       Building statements…
     </div>
 
     <!-- An outage must never render as "nothing owed". -->
-    <div v-else-if="error && !data" class="py-6 text-center text-xs text-amber-600" data-testid="statements-error">
+    <div v-else-if="error && !data" class="py-6 text-center text-xs text-amber-600 dark:text-amber-400" data-testid="statements-error">
       {{ error }}
     </div>
 
     <template v-else-if="data">
-      <div v-if="error" class="mt-2 rounded bg-amber-50 px-2 py-1 text-[11px] text-amber-700" data-testid="statements-stale">
+      <div v-if="error" class="mt-2 rounded bg-amber-50 px-2 py-1 text-[11px] text-amber-700 dark:bg-amber-900/30 dark:text-amber-200" data-testid="statements-stale">
         {{ error }} — showing the last figures loaded.
       </div>
 
       <table class="mt-3 w-full text-left text-xs">
-        <thead class="text-[10px] uppercase tracking-wide text-gray-500">
+        <thead class="text-[10px] uppercase tracking-wide text-ink-3">
           <tr>
             <th class="pb-2 pr-2">Carrier</th>
             <th class="pb-2 pr-2">Terms</th>
@@ -103,30 +103,30 @@ const termsLabel = (r: NonNullable<CarrierStatementsResult['rows']>[number]): st
           <tr
             v-for="r in data.rows"
             :key="r.carrierId"
-            class="border-t border-gray-100"
+            class="border-t border-line"
             :data-statement-row="r.carrierId"
           >
-            <td class="py-2 pr-2 font-semibold text-gray-900">{{ r.carrierName }}</td>
-            <td class="py-2 pr-2" :class="r.terms.model ? 'text-gray-600' : 'text-amber-600'">
+            <td class="py-2 pr-2 font-semibold text-ink">{{ r.carrierName }}</td>
+            <td class="py-2 pr-2" :class="r.terms.model ? 'text-ink-2' : 'text-amber-600 dark:text-amber-400'">
               {{ termsLabel(r) }}
             </td>
-            <td class="py-2 pr-2 text-right font-mono text-gray-600">
+            <td class="py-2 pr-2 text-right font-mono text-ink-2">
               {{ r.statement.billedLoadCount }}
-              <span v-if="r.terms.model === 'per_truck_week'" class="text-gray-400">
+              <span v-if="r.terms.model === 'per_truck_week'" class="text-ink-3">
                 · {{ r.truckWeeks }} tw
               </span>
             </td>
-            <td class="py-2 pr-2 text-right font-mono text-gray-600">
+            <td class="py-2 pr-2 text-right font-mono text-ink-2">
               <template v-if="r.statement.basisCents">{{ formatUsd(r.statement.basisCents) }}</template>
-              <span v-else class="text-gray-400">—</span>
+              <span v-else class="text-ink-3">—</span>
             </td>
-            <td class="py-2 text-right font-mono font-bold" :class="r.terms.model ? 'text-emerald-700' : 'text-gray-400'">
+            <td class="py-2 text-right font-mono font-bold" :class="r.terms.model ? 'text-emerald-700 dark:text-emerald-300' : 'text-ink-3'">
               <!-- No terms means NOTHING TO BILL, which is not $0 owed. -->
               <template v-if="r.terms.model">{{ formatUsd(r.statement.totalCents) }}</template>
               <span v-else data-testid="statement-no-terms">not billable</span>
               <span
                 v-if="r.terms.model && !r.statement.complete"
-                class="ml-1 text-amber-600"
+                class="ml-1 text-amber-600 dark:text-amber-400"
                 :title="r.statement.unbillable.map((u) => u.reason).join('; ')"
                 data-testid="statement-incomplete"
               >⚠</span>
@@ -140,7 +140,7 @@ const termsLabel = (r: NonNullable<CarrierStatementsResult['rows']>[number]): st
       <div
         v-for="r in data.rows.filter((x) => x.terms.model && !x.statement.complete)"
         :key="`u-${r.carrierId}`"
-        class="mt-2 rounded bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800"
+        class="mt-2 rounded bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800 dark:bg-amber-900/30 dark:text-amber-200"
         data-testid="statement-unbillable"
       >
         <span class="font-semibold">{{ r.carrierName }}:</span>
@@ -148,16 +148,16 @@ const termsLabel = (r: NonNullable<CarrierStatementsResult['rows']>[number]): st
         {{ [...new Set(r.statement.unbillable.map((u) => u.reason))].join('; ') }}
       </div>
 
-      <div class="mt-3 flex items-baseline justify-between border-t border-gray-200 pt-2">
-        <span class="text-xs font-semibold text-gray-900">Total invoiceable</span>
-        <span class="font-mono text-sm font-bold text-emerald-700" data-testid="statements-total">
+      <div class="mt-3 flex items-baseline justify-between border-t border-line pt-2">
+        <span class="text-xs font-semibold text-ink">Total invoiceable</span>
+        <span class="font-mono text-sm font-bold text-emerald-700 dark:text-emerald-300" data-testid="statements-total">
           {{ formatUsd(grandTotalCents) }}
         </span>
       </div>
 
       <!-- Own trucks: there is nobody to invoice, so this is never folded into
            the total above. -->
-      <div v-if="data.ownFleet.loadCount" class="mt-2 text-[11px] text-gray-500" data-testid="statements-own-fleet">
+      <div v-if="data.ownFleet.loadCount" class="mt-2 text-[11px] text-ink-3" data-testid="statements-own-fleet">
         Plus {{ data.ownFleet.loadCount }} load(s) on your own trucks
         ({{ formatUsd(data.ownFleet.linehaulCents) }} linehaul) — no carrier to invoice.
       </div>

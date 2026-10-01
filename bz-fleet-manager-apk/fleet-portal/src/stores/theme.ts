@@ -9,23 +9,13 @@ interface ThemeState {
   systemDark: boolean
 }
 
-/** First-run default is DARK, not `system`.
- *
- *  The cockpit was designed dark-first and its accent palette does not yet meet
- *  AA in light mode — equipment chips measure 1.70–2.84:1 and the REG EXPIRED
- *  compliance chip 2.97:1, which are exactly the badges a dispatcher must be
- *  able to read at a glance. Defaulting to `system` meant a light-mode machine
- *  landed on the unfinished palette with no warning.
- *
- *  This is a default, not a lock: the header toggle still cycles
- *  dark → light → system, and an explicit choice persists. Revert this to
- *  `'system'` once the S5 contrast pass lands. */
+/** First-run default is `system`; a stored explicit choice always wins. */
 function readStoredMode(): ThemeMode {
   try {
     const v = localStorage.getItem(THEME_STORAGE_KEY)
-    return isThemeMode(v) ? v : 'dark'
+    return isThemeMode(v) ? v : 'system'
   } catch {
-    return 'dark'
+    return 'system'
   }
 }
 

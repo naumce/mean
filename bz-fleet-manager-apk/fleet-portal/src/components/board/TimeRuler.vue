@@ -49,8 +49,8 @@ const dayMarks = computed(() => {
 </script>
 
 <template>
-  <div class="flex border-b border-gray-300 bg-gray-50">
-    <div class="w-40 shrink-0 border-r border-gray-200" />
+  <div class="flex border-b border-line-strong bg-surface-2">
+    <div class="w-40 shrink-0 border-r border-line" />
     <div
       class="relative shrink-0"
       :class="dayMarks.length ? 'h-12' : 'h-8'"
@@ -60,7 +60,7 @@ const dayMarks = computed(() => {
         v-for="day in dayMarks"
         :key="`day-${day.left}`"
         data-testid="day-mark"
-        class="absolute top-0.5 border-l border-gray-300 pl-1 text-[10px] font-semibold text-gray-600"
+        class="absolute top-0.5 border-l border-line-strong pl-1 text-[10px] font-semibold text-ink-2"
         :style="{ left: `${day.left}px` }"
       >
         {{ day.label }}
@@ -68,7 +68,7 @@ const dayMarks = computed(() => {
       <span
         v-for="hr in hours"
         :key="hr.left"
-        class="absolute text-[10px] text-gray-400"
+        class="absolute text-[10px] text-ink-3"
         :class="dayMarks.length ? 'top-5' : 'top-1'"
         :style="{ left: `${hr.left}px` }"
       >

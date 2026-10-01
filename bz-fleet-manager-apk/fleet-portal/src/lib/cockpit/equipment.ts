@@ -3,12 +3,12 @@ export const EQUIP_ICON: Record<string, string> = {
   DryVan: '📦', Reefer: '❄', Flatbed: '▤', StepDeck: '⬍', Tanker: '⬤', Intermodal: '▭',
 }
 export const EQUIP_CLASSES: Record<string, string> = {
-  DryVan: 'bg-blue-500/20 text-blue-500',
-  Reefer: 'bg-cyan-500/20 text-cyan-500',
-  Flatbed: 'bg-amber-500/20 text-amber-500',
-  StepDeck: 'bg-purple-500/20 text-purple-500',
-  Tanker: 'bg-yellow-500/20 text-yellow-600',
-  Intermodal: 'bg-teal-500/20 text-teal-500',
+  DryVan: 'bg-blue-500/20 text-blue-700 dark:text-blue-400',
+  Reefer: 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-400',
+  Flatbed: 'bg-amber-500/20 text-amber-700 dark:text-amber-400',
+  StepDeck: 'bg-purple-500/20 text-purple-700 dark:text-purple-400',
+  Tanker: 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-500',
+  Intermodal: 'bg-teal-500/20 text-teal-700 dark:text-teal-400',
 }
 export const EQUIP_TYPES = Object.keys(EQUIP_ICON)
 

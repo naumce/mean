@@ -44,15 +44,15 @@ onBeforeUnmount(() => {
   <div class="flex flex-col gap-6">
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-xl font-semibold text-gray-900">Live Tracking</h1>
-        <p class="text-sm text-gray-500">Latest reported location for each active driver.</p>
+        <h1 class="text-xl font-semibold text-ink">Live Tracking</h1>
+        <p class="text-sm text-ink-2">Latest reported location for each active driver.</p>
       </div>
-      <span class="rounded-full bg-primary-50 px-3 py-1 text-sm font-medium text-primary-700">
+      <span class="rounded-full bg-brand-wash px-3 py-1 text-sm font-medium text-brand-ink">
         {{ activeDriverCount }} active driver{{ activeDriverCount === 1 ? '' : 's' }}
       </span>
     </div>
 
-    <p v-if="trackingStore.error" class="text-sm text-red-600" role="alert">
+    <p v-if="trackingStore.error" class="text-sm text-red-600 dark:text-red-400" role="alert">
       {{ trackingStore.error }}
     </p>
 

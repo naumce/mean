@@ -20,7 +20,7 @@ const lb = useLoadboardStore()
       <div>
         <div class="mb-1.5 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-ink-3">🚛 Bobtail tractors <span class="rounded-full bg-surface-3 px-1.5 font-mono text-ink-2">{{ lb.yard.tractors.length }}</span></div>
         <div class="flex flex-wrap gap-1.5">
-          <span v-for="t in lb.yard.tractors" :key="t.id" class="inline-flex cursor-grab items-center gap-2 rounded-lg border border-line bg-surface-3 px-2 py-1.5 text-[11px] active:cursor-grabbing" data-res="tractor" :data-rid="t.id"><span class="grid h-5 w-5 place-items-center rounded bg-slate-500/30 text-[10px]">🚛</span><span><span class="font-mono font-bold text-ink">#{{ t.unit }}</span> <span class="text-[10px] text-ink-3">{{ t.make ?? '' }}</span></span></span>
+          <span v-for="t in lb.yard.tractors" :key="t.id" class="inline-flex cursor-grab items-center gap-2 rounded-lg border border-line bg-surface-3 px-2 py-1.5 text-[11px] active:cursor-grabbing" data-res="tractor" :data-rid="t.id"><span class="grid h-5 w-5 place-items-center rounded bg-ink-3/30 text-[10px]">🚛</span><span><span class="font-mono font-bold text-ink">#{{ t.unit }}</span> <span class="text-[10px] text-ink-3">{{ t.make ?? '' }}</span></span></span>
           <span v-if="!lb.yard.tractors.length" class="font-mono text-[10px] text-ink-3">none</span>
         </div>
       </div>

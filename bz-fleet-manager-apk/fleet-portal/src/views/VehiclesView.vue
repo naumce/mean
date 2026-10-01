@@ -123,13 +123,13 @@ onMounted(() => {
   <div class="flex flex-col gap-6">
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-xl font-semibold text-gray-900">Vehicles</h1>
-        <p class="text-sm text-gray-500">Manage the vehicles in your fleet.</p>
+        <h1 class="text-xl font-semibold text-ink">Vehicles</h1>
+        <p class="text-sm text-ink-2">Manage the vehicles in your fleet.</p>
       </div>
       <AppButton type="button" @click="openCreateModal">Add vehicle</AppButton>
     </div>
 
-    <p v-if="vehiclesStore.error" class="text-sm text-red-600" role="alert">
+    <p v-if="vehiclesStore.error" class="text-sm text-red-600 dark:text-red-400" role="alert">
       {{ vehiclesStore.error }}
     </p>
 
@@ -140,14 +140,14 @@ onMounted(() => {
         <div class="flex gap-3">
           <button
             type="button"
-            class="text-sm font-medium text-primary-600 hover:text-primary-700"
+            class="text-sm font-medium text-brand-ink hover:underline"
             @click="openEditModal(row as Vehicle)"
           >
             Edit
           </button>
           <button
             type="button"
-            class="text-sm font-medium text-primary-600 hover:text-primary-700"
+            class="text-sm font-medium text-brand-ink hover:underline"
             @click="openAssignModal(row as Vehicle)"
           >
             Assign
@@ -159,7 +159,7 @@ onMounted(() => {
 
     <Modal v-model:open="isFormModalOpen">
       <template #header>
-        <h2 class="text-lg font-semibold text-gray-900">{{ formModalTitle }}</h2>
+        <h2 class="text-lg font-semibold text-ink">{{ formModalTitle }}</h2>
       </template>
 
       <form class="flex flex-col gap-4" @submit.prevent="handleFormSubmit">
@@ -169,7 +169,7 @@ onMounted(() => {
             v-model="form.plate"
             type="text"
             required
-            class="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-primary-600 focus:outline-none focus:ring-1 focus:ring-primary-600"
+            class="rounded-md border border-line-strong px-3 py-2 text-sm text-ink focus:border-primary-600 focus:outline-none focus:ring-1 focus:ring-primary-600"
           />
         </FormField>
         <FormField id="vehicle-model" label="Model">
@@ -177,11 +177,11 @@ onMounted(() => {
             id="vehicle-model"
             v-model="form.model"
             type="text"
-            class="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-primary-600 focus:outline-none focus:ring-1 focus:ring-primary-600"
+            class="rounded-md border border-line-strong px-3 py-2 text-sm text-ink focus:border-primary-600 focus:outline-none focus:ring-1 focus:ring-primary-600"
           />
         </FormField>
 
-        <p v-if="formError" class="text-sm text-red-600" role="alert">{{ formError }}</p>
+        <p v-if="formError" class="text-sm text-red-600 dark:text-red-400" role="alert">{{ formError }}</p>
 
         <div class="mt-2 flex justify-end gap-2">
           <AppButton type="button" variant="ghost" @click="isFormModalOpen = false">Cancel</AppButton>
@@ -192,7 +192,7 @@ onMounted(() => {
 
     <Modal v-model:open="isAssignModalOpen">
       <template #header>
-        <h2 class="text-lg font-semibold text-gray-900">
+        <h2 class="text-lg font-semibold text-ink">
           Assign driver — {{ assigningVehicle?.plate }}
         </h2>
       </template>
@@ -203,7 +203,7 @@ onMounted(() => {
             id="vehicle-driver"
             v-model="selectedDriverId"
             required
-            class="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-primary-600 focus:outline-none focus:ring-1 focus:ring-primary-600"
+            class="rounded-md border border-line-strong px-3 py-2 text-sm text-ink focus:border-primary-600 focus:outline-none focus:ring-1 focus:ring-primary-600"
           >
             <option value="" disabled>Select a driver</option>
             <option v-for="driver in driversStore.items" :key="driver.id" :value="driver.id">
@@ -212,7 +212,7 @@ onMounted(() => {
           </select>
         </FormField>
 
-        <p v-if="assignError" class="text-sm text-red-600" role="alert">{{ assignError }}</p>
+        <p v-if="assignError" class="text-sm text-red-600 dark:text-red-400" role="alert">{{ assignError }}</p>
 
         <div class="mt-2 flex justify-end gap-2">
           <AppButton type="button" variant="ghost" @click="isAssignModalOpen = false">Cancel</AppButton>

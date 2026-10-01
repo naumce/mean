@@ -102,7 +102,7 @@ export function runStatusLabel(status: RunStatus): string {
 }
 
 export const RUN_STATUS_CLASSES: Record<RunStatus, string> = {
-  queued: 'bg-gray-100 text-gray-700',
+  queued: 'bg-surface-3 text-ink-2',
   running: 'bg-blue-100 text-blue-800',
   proposed: 'bg-emerald-100 text-emerald-800',
   incomplete: 'bg-amber-100 text-amber-800',

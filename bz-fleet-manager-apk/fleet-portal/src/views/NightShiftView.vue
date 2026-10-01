@@ -436,7 +436,7 @@ onMounted(async () => {
               :class="form.customerEmailOn ? 'bg-brand' : 'bg-surface-3'"
               @click="form.customerEmailOn = !form.customerEmailOn"
             >
-              <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform" :class="form.customerEmailOn ? 'translate-x-4' : 'translate-x-1'" />
+              <span class="inline-block h-3.5 w-3.5 transform rounded-full transition-transform" :class="form.customerEmailOn ? 'bg-surface translate-x-4' : 'bg-ink-3 translate-x-1'" />
             </button>
             <span class="text-ink-2">Also email the customer a status update</span>
           </label>
@@ -482,7 +482,7 @@ onMounted(async () => {
               :class="form.bossCallOn ? 'bg-brand' : 'bg-surface-3'"
               @click="form.bossCallOn = !form.bossCallOn"
             >
-              <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform" :class="form.bossCallOn ? 'translate-x-4' : 'translate-x-1'" />
+              <span class="inline-block h-3.5 w-3.5 transform rounded-full transition-transform" :class="form.bossCallOn ? 'bg-surface translate-x-4' : 'bg-ink-3 translate-x-1'" />
             </button>
             <span class="text-ink-2">Allow a boss call when the agent can't reach the driver</span>
           </label>

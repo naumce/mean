@@ -11,7 +11,7 @@ const props = withDefaults(
 
 const variantClasses: Record<'primary' | 'ghost' | 'danger', string> = {
   primary: 'bg-primary-600 text-white hover:bg-primary-700',
-  ghost: 'border border-gray-300 text-gray-700 hover:bg-gray-100',
+  ghost: 'border border-line-strong text-ink-2 hover:bg-surface-2',
   danger: 'bg-red-600 text-white hover:bg-red-700',
 }
 </script>

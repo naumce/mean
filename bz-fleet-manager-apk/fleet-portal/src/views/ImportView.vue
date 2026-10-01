@@ -92,8 +92,8 @@ onMounted(() => importer.loadWebhookKey())
 <template>
   <div class="flex flex-col gap-4">
     <div>
-      <h1 class="text-xl font-semibold text-gray-900">Data import</h1>
-      <p class="text-sm text-gray-500">
+      <h1 class="text-xl font-semibold text-ink">Data import</h1>
+      <p class="text-sm text-ink-2">
         Paste a CSV export from your TMS / ELD. Good rows import; bad rows come back with reasons.
       </p>
     </div>
@@ -104,7 +104,7 @@ onMounted(() => importer.loadWebhookKey())
         :key="e"
         type="button"
         class="rounded-md px-3 py-1.5 text-sm font-medium capitalize"
-        :class="entity === e ? 'bg-primary-600 text-white' : 'border border-gray-300 text-gray-700 hover:bg-gray-50'"
+        :class="entity === e ? 'bg-primary-600 text-white' : 'border border-line-strong text-ink-2 hover:bg-surface-2'"
         :data-entity="e"
         @click="pick(e)"
       >
@@ -112,7 +112,7 @@ onMounted(() => importer.loadWebhookKey())
       </button>
     </div>
 
-    <div class="rounded-md bg-gray-50 p-2 text-xs text-gray-500">
+    <div class="rounded-md bg-surface-2 p-2 text-xs text-ink-3">
       Columns: <code class="break-all">{{ TEMPLATES[entity] }}</code>
       — or paste any CSV and use <span class="font-medium">Preview &amp; map</span>.
     </div>
@@ -120,7 +120,7 @@ onMounted(() => importer.loadWebhookKey())
     <textarea
       v-model="csv"
       rows="10"
-      class="w-full rounded-md border border-gray-300 p-2 font-mono text-xs"
+      class="w-full rounded-md border border-line-strong p-2 font-mono text-xs"
       :placeholder="`${TEMPLATES[entity]}\n…paste rows here…`"
       data-testid="csv-input"
     ></textarea>
@@ -128,7 +128,7 @@ onMounted(() => importer.loadWebhookKey())
     <div class="flex items-center gap-2">
       <button
         type="button"
-        class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+        class="rounded-md border border-line-strong px-4 py-2 text-sm font-medium text-ink-2 hover:bg-surface-2 disabled:opacity-50"
         :disabled="!csv.trim()"
         data-testid="preview-btn"
         @click="preview"
@@ -147,7 +147,7 @@ onMounted(() => importer.loadWebhookKey())
       <button
         v-if="mapperOpen"
         type="button"
-        class="text-sm text-gray-500 hover:text-gray-700"
+        class="text-sm text-ink-3 hover:text-ink-2"
         data-testid="close-mapper"
         @click="closeMapper"
       >
@@ -164,14 +164,14 @@ onMounted(() => importer.loadWebhookKey())
       @update="mapping = $event"
     />
 
-    <div v-if="mapperOpen && previewColumns.length" class="overflow-x-auto rounded-lg border border-gray-200" data-testid="mapped-preview">
+    <div v-if="mapperOpen && previewColumns.length" class="overflow-x-auto rounded-lg border border-line" data-testid="mapped-preview">
       <table class="w-full text-left text-xs">
-        <thead class="bg-gray-50 text-gray-500">
+        <thead class="bg-surface-2 text-ink-3">
           <tr>
             <th v-for="col in previewColumns" :key="col" class="px-3 py-2 font-medium">{{ col }}</th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-gray-100 text-gray-800">
+        <tbody class="divide-y divide-line text-ink">
           <tr v-for="(row, i) in mappedPreview" :key="i">
             <td v-for="col in previewColumns" :key="col" class="px-3 py-1.5">{{ row[col] ?? '' }}</td>
           </tr>
@@ -179,13 +179,13 @@ onMounted(() => importer.loadWebhookKey())
       </table>
     </div>
 
-    <p v-if="importer.error" class="text-sm text-red-600" role="alert">{{ importer.error }}</p>
+    <p v-if="importer.error" class="text-sm text-red-600 dark:text-red-400" role="alert">{{ importer.error }}</p>
 
-    <div class="rounded-lg border border-gray-200 p-4" data-testid="webhook-card">
+    <div class="rounded-lg border border-line p-4" data-testid="webhook-card">
       <div class="flex items-center justify-between gap-4">
         <div>
-          <p class="text-sm font-medium text-gray-800">Push ingest (webhook)</p>
-          <p class="text-xs text-gray-500">
+          <p class="text-sm font-medium text-ink">Push ingest (webhook)</p>
+          <p class="text-xs text-ink-3">
             Let your TMS push loads continuously to
             <code class="font-mono">{{ importer.webhookUrl ?? '/api/webhooks/loads' }}</code>
             with an <code class="font-mono">x-api-key</code> header.
@@ -193,7 +193,7 @@ onMounted(() => importer.loadWebhookKey())
         </div>
         <button
           type="button"
-          class="shrink-0 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          class="shrink-0 rounded-md border border-line-strong px-3 py-1.5 text-sm font-medium text-ink-2 hover:bg-surface-2 disabled:opacity-50"
           :disabled="importer.webhookBusy"
           data-testid="webhook-generate"
           @click="importer.generateWebhookKey()"
@@ -203,21 +203,21 @@ onMounted(() => importer.loadWebhookKey())
       </div>
 
       <div v-if="importer.webhookKey" class="mt-3 flex flex-col gap-2">
-        <p class="text-xs text-amber-600">Rotating invalidates the previous key immediately.</p>
-        <code class="break-all rounded bg-gray-50 p-2 font-mono text-xs text-gray-800" data-testid="webhook-key">{{
+        <p class="text-xs text-amber-600 dark:text-amber-400">Rotating invalidates the previous key immediately.</p>
+        <code class="break-all rounded bg-surface-2 p-2 font-mono text-xs text-ink" data-testid="webhook-key">{{
           importer.webhookKey
         }}</code>
-        <pre class="overflow-x-auto rounded bg-gray-900 p-3 font-mono text-[11px] leading-relaxed text-gray-100">{{ curlExample }}</pre>
+        <pre class="overflow-x-auto rounded bg-surface-3 p-3 font-mono text-[11px] leading-relaxed text-ink">{{ curlExample }}</pre>
       </div>
     </div>
 
-    <div v-if="importer.report" class="rounded-lg border border-gray-200 p-4" data-testid="import-report">
-      <p class="text-sm font-medium text-emerald-700">✓ {{ importer.report.imported }} rows imported</p>
+    <div v-if="importer.report" class="rounded-lg border border-line p-4" data-testid="import-report">
+      <p class="text-sm font-medium text-emerald-700 dark:text-emerald-400">✓ {{ importer.report.imported }} rows imported</p>
       <div v-if="importer.report.errors.length" class="mt-2">
-        <p class="text-sm font-medium text-red-600">{{ importer.report.errors.length }} rows rejected:</p>
-        <ul class="mt-1 space-y-0.5 text-sm text-gray-700">
+        <p class="text-sm font-medium text-red-600 dark:text-red-400">{{ importer.report.errors.length }} rows rejected:</p>
+        <ul class="mt-1 space-y-0.5 text-sm text-ink-2">
           <li v-for="err in importer.report.errors" :key="err.row">
-            <span class="font-mono text-xs text-gray-400">row {{ err.row }}</span> — {{ err.error }}
+            <span class="font-mono text-xs text-ink-3">row {{ err.row }}</span> — {{ err.error }}
           </li>
         </ul>
       </div>

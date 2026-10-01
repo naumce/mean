@@ -94,7 +94,7 @@ const telemetry = computed(() =>
   <div v-else class="rounded-xl border border-line bg-surface p-3 shadow-2xl">
     <div class="flex items-center justify-between border-b border-line pb-2 text-xs">
       <div class="font-bold text-ink">🗺️ GPS Telemetry Radar <span class="font-mono text-[10px] font-normal text-ink-3">schematic · {{ routes.length }} legs in view · real tiles arrive with the live-map increment</span></div>
-      <div class="flex gap-3 font-mono text-[10px] text-ink-3"><span class="flex items-center gap-1"><span class="inline-block h-[3px] w-3 rounded bg-s-assigned" />Assigned</span><span class="flex items-center gap-1"><span class="inline-block h-[3px] w-3 rounded bg-s-tendered" />Tendered</span><span class="flex items-center gap-1"><span class="inline-block h-[3px] w-3 rounded bg-s-progress" />Rolling</span><span class="flex items-center gap-1"><span class="inline-block h-[3px] w-3 rounded bg-s-completed" />Delivered</span><span class="flex items-center gap-1"><span class="inline-block h-3 w-3 rounded-sm bg-slate-400" />Idle unit</span></div>
+      <div class="flex gap-3 font-mono text-[10px] text-ink-3"><span class="flex items-center gap-1"><span class="inline-block h-[3px] w-3 rounded bg-s-assigned" />Assigned</span><span class="flex items-center gap-1"><span class="inline-block h-[3px] w-3 rounded bg-s-tendered" />Tendered</span><span class="flex items-center gap-1"><span class="inline-block h-[3px] w-3 rounded bg-s-progress" />Rolling</span><span class="flex items-center gap-1"><span class="inline-block h-[3px] w-3 rounded bg-s-completed" />Delivered</span><span class="flex items-center gap-1"><span class="inline-block h-3 w-3 rounded-sm bg-ink-3" />Idle unit</span></div>
     </div>
     <svg :viewBox="`0 0 ${MW} ${MH}`" class="mt-2 block w-full rounded-lg bg-surface-3">
       <template v-for="r in routes" :key="r.load.id">
@@ -111,8 +111,8 @@ const telemetry = computed(() =>
         <text :x="curve(r).x2 + 6" :y="curve(r).y2 + 3" class="fill-ink-3 text-[10px]">{{ cityOf(r.b.address) }}</text>
       </template>
       <g v-for="entry in drivers" :key="entry.d.id" :data-driver="entry.d.id">
-        <rect :x="px(entry.pos.lng) - 7" :y="py(entry.pos.lat) - 7" width="14" height="14" rx="3" class="fill-slate-400" opacity=".9" />
-        <text :x="px(entry.pos.lng)" :y="py(entry.pos.lat) + 3.5" text-anchor="middle" class="fill-slate-900 font-mono text-[8px] font-extrabold">{{ initials(entry.d.name) }}</text>
+        <rect :x="px(entry.pos.lng) - 7" :y="py(entry.pos.lat) - 7" width="14" height="14" rx="3" class="fill-ink-3" opacity=".9" />
+        <text :x="px(entry.pos.lng)" :y="py(entry.pos.lat) + 3.5" text-anchor="middle" class="fill-bg font-mono text-[8px] font-extrabold">{{ initials(entry.d.name) }}</text>
         <text :x="px(entry.pos.lng) + 10" :y="py(entry.pos.lat) + 3" class="fill-ink-3 text-[10px]">{{ entry.d.lastCity ?? '' }}</text>
       </g>
     </svg>

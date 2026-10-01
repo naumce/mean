@@ -34,17 +34,17 @@ onMounted(loadOverview)
 <template>
   <div class="flex flex-col gap-6">
     <div>
-      <h1 class="text-xl font-semibold text-gray-900">Dashboard</h1>
-      <p class="text-sm text-gray-500">Trip status at a glance.</p>
+      <h1 class="text-xl font-semibold text-ink">Dashboard</h1>
+      <p class="text-sm text-ink-2">Trip status at a glance.</p>
     </div>
 
-    <div v-if="isLoading" class="text-sm text-gray-500">Loading overview…</div>
+    <div v-if="isLoading" class="text-sm text-ink-3">Loading overview…</div>
 
-    <div v-else-if="errorMessage" class="rounded-lg border border-gray-200 bg-white p-6 text-center">
-      <p class="text-sm text-gray-600">{{ errorMessage }}</p>
+    <div v-else-if="errorMessage" class="rounded-lg border border-line bg-surface p-6 text-center">
+      <p class="text-sm text-ink-2">{{ errorMessage }}</p>
       <button
         type="button"
-        class="mt-3 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100"
+        class="mt-3 rounded-md border border-line-strong px-3 py-1.5 text-sm font-medium text-ink-2 hover:bg-surface-3"
         @click="loadOverview"
       >
         Retry
@@ -55,14 +55,14 @@ onMounted(loadOverview)
       <div
         v-for="(count, status) in counts"
         :key="status"
-        class="rounded-lg border border-gray-200 bg-white p-4"
+        class="rounded-lg border border-line bg-surface p-4"
       >
-        <p class="text-sm font-medium text-gray-500">{{ formatStatusLabel(status) }}</p>
-        <p class="mt-1 text-2xl font-semibold text-gray-900">{{ count }}</p>
+        <p class="text-sm font-medium text-ink-3">{{ formatStatusLabel(status) }}</p>
+        <p class="mt-1 text-2xl font-semibold text-ink">{{ count }}</p>
       </div>
     </div>
 
-    <div v-else class="rounded-lg border border-gray-200 bg-white p-6 text-center text-sm text-gray-500">
+    <div v-else class="rounded-lg border border-line bg-surface p-6 text-center text-sm text-ink-3">
       No trips yet — status counts will appear here once trips are created.
     </div>
   </div>

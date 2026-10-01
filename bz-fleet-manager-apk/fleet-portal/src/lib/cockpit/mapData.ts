@@ -458,6 +458,12 @@ export function mapboxToken(): string | undefined {
   return trimmed
 }
 
+/** The Mapbox basemap for the current theme — one place, so the cockpit map
+ *  and the standalone LiveMap can never disagree about which style is "dark". */
+export function mapStyleFor(isDark: boolean): string {
+  return isDark ? 'mapbox://styles/mapbox/dark-v11' : 'mapbox://styles/mapbox/light-v11'
+}
+
 /** T3 Break and Rest Planning, Task 8: one mandatory HOS break point, placed
  *  and ready to hand to a marker/popup. Everything a `BreakPlanEntry`
  *  carries, flattened onto `loadId` and with `at` narrowed to a real

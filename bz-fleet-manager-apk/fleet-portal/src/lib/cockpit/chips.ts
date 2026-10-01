@@ -30,7 +30,7 @@ export const PILL_CLASSES: Record<PillColor, string> = {
   blue: 'bg-blue-500/10 text-blue-500 border-blue-500/30',
   amber: 'bg-amber-500/10 text-amber-500 border-amber-500/30',
   red: 'bg-red-500/20 text-red-500 border-red-500/40',
-  slate: 'bg-slate-500/10 text-slate-400 border-slate-500/30',
+  slate: 'bg-ink-3/10 text-ink-2 border-ink-3/30',
   purple: 'bg-purple-500/10 text-purple-500 border-purple-500/30',
   cyan: 'bg-cyan-500/10 text-cyan-500 border-cyan-500/30',
 }

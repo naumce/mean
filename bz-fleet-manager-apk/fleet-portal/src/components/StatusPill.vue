@@ -5,15 +5,15 @@
 const props = defineProps<{ status: string }>()
 
 const STATUS_STYLES: Record<string, string> = {
-  pending: 'bg-amber-100 text-amber-800',
-  assigned: 'bg-blue-100 text-blue-800',
+  pending: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200',
+  assigned: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200',
   in_progress: 'bg-blue-600 text-white',
-  completed: 'bg-emerald-100 text-emerald-800',
-  rejected: 'bg-red-100 text-red-800',
-  cancelled: 'bg-red-100 text-red-800',
+  completed: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200',
+  rejected: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200',
+  cancelled: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200',
 }
 
-const DEFAULT_STYLE = 'bg-gray-100 text-gray-700'
+const DEFAULT_STYLE = 'bg-surface-3 text-ink-2'
 
 function formatLabel(status: string): string {
   return status

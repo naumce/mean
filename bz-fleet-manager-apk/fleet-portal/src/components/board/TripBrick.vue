@@ -21,13 +21,13 @@ const style = computed(() => {
 <template>
   <div
     :data-trip="trip.id"
-    class="absolute top-1 h-12 overflow-hidden rounded-md border border-primary-600 bg-primary-50 px-2 py-1 text-xs shadow-sm"
+    class="absolute top-1 h-12 overflow-hidden rounded-md border border-brand bg-brand-wash px-2 py-1 text-xs shadow-sm"
     :style="style"
   >
     <div class="flex items-center gap-1">
-      <span class="font-semibold text-primary-700">{{ trip.identifier }}</span>
+      <span class="font-semibold text-brand-ink">{{ trip.identifier }}</span>
       <StatusPill :status="trip.status" />
     </div>
-    <div class="text-gray-500">{{ trip.stopCount }} stops</div>
+    <div class="text-ink-2">{{ trip.stopCount }} stops</div>
   </div>
 </template>

@@ -11,27 +11,27 @@ defineProps<{
 </script>
 
 <template>
-  <div class="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-    <table class="min-w-full divide-y divide-gray-200 text-sm">
-      <thead class="sticky top-0 bg-gray-50">
+  <div class="overflow-x-auto rounded-lg border border-line bg-surface">
+    <table class="min-w-full divide-y divide-line text-sm">
+      <thead class="sticky top-0 bg-surface-2">
         <tr>
           <th
             v-for="column in columns"
             :key="column.key"
             scope="col"
-            class="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500"
+            class="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-3"
           >
             {{ column.label }}
           </th>
         </tr>
       </thead>
-      <tbody v-if="rows.length > 0" class="divide-y divide-gray-100">
+      <tbody v-if="rows.length > 0" class="divide-y divide-line">
         <tr
           v-for="(row, index) in rows"
           :key="rowKey ? String(row[rowKey]) : index"
-          :class="index % 2 === 1 ? 'bg-gray-50' : 'bg-white'"
+          :class="index % 2 === 1 ? 'bg-surface-2' : 'bg-surface'"
         >
-          <td v-for="column in columns" :key="column.key" class="px-4 py-2 text-gray-700">
+          <td v-for="column in columns" :key="column.key" class="px-4 py-2 text-ink-2">
             <slot :name="`cell-${column.key}`" :row="row" :value="row[column.key]">
               {{ row[column.key] }}
             </slot>
@@ -39,7 +39,7 @@ defineProps<{
         </tr>
       </tbody>
     </table>
-    <div v-if="rows.length === 0" class="p-6 text-center text-sm text-gray-500">
+    <div v-if="rows.length === 0" class="p-6 text-center text-sm text-ink-3">
       <slot name="empty">No data yet.</slot>
     </div>
   </div>

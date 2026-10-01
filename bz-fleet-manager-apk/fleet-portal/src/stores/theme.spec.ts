@@ -23,14 +23,20 @@ describe('theme store', () => {
     __resetThemeMedia()
   })
 
-  // First run defaults to DARK, not `system`: the cockpit's accent palette does
-  // not yet meet AA in light mode, so a light-mode machine would otherwise land
-  // on the unfinished look with no warning. Revert once the contrast pass lands.
-  it('defaults to dark on first run, regardless of the OS preference', () => {
-    stubMatchMedia(false) // OS says light — the default must still be dark
+  it('defaults to system on first run and follows the OS preference', () => {
+    stubMatchMedia(false)
     const store = useThemeStore()
     store.init()
-    expect(store.mode).toBe('dark')
+    expect(store.mode).toBe('system')
+    expect(store.resolved).toBe('light')
+    expect(document.documentElement.classList.contains('dark')).toBe(false)
+  })
+
+  it('first run with a dark OS resolves dark', () => {
+    stubMatchMedia(true)
+    const store = useThemeStore()
+    store.init()
+    expect(store.mode).toBe('system')
     expect(store.resolved).toBe('dark')
     expect(document.documentElement.classList.contains('dark')).toBe(true)
   })
@@ -61,7 +67,7 @@ describe('theme store', () => {
     expect(useThemeStore().mode).toBe('dark')
     setActivePinia(createPinia())
     localStorage.setItem(THEME_STORAGE_KEY, 'neon')
-    expect(useThemeStore().mode).toBe('dark') // garbage falls back to the default
+    expect(useThemeStore().mode).toBe('system') // garbage falls back to the default
   })
 
   it('re-applies when the OS preference changes while in system mode', () => {
@@ -78,6 +84,7 @@ describe('theme store', () => {
   it('survives a missing matchMedia (older jsdom / SSR)', () => {
     const store = useThemeStore()
     expect(() => store.init()).not.toThrow()
-    expect(store.resolved).toBe('dark') // the default no longer depends on matchMedia
+    expect(store.mode).toBe('system')
+    expect(store.resolved).toBe('light') // no matchMedia: system resolves light
   })
 })

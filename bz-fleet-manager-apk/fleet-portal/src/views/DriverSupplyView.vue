@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import DriverDrawer from '../components/supply/DriverDrawer.vue'
 import DriverSupplyRow from '../components/supply/DriverSupplyRow.vue'
 import FleetMap from '../components/tracking/FleetMap.vue'
@@ -19,6 +19,11 @@ import type { AvailabilityStatus } from '../types/supply'
 const store = useDriverSupplyStore()
 const auth = useAuthStore()
 const sim = useSimStore()
+
+// Simulation controls sit behind a collapsed disclosure; a running sim opens it
+// automatically until the user makes their own choice by clicking.
+const simChoice = ref<boolean | null>(null)
+const simOpen = computed(() => simChoice.value ?? sim.state?.running === true)
 
 // Task 10: a sim tick moves trucks/loads server-side without this view's own
 // 30s poll knowing to hurry up — reload the moment one lands.
@@ -81,9 +86,21 @@ onBeforeUnmount(() => {
       </p>
     </div>
 
-    <p v-if="store.error" class="text-sm text-red-600" role="alert">{{ store.error }}</p>
+    <p v-if="store.error" class="text-sm text-red-600 dark:text-red-400" role="alert">{{ store.error }}</p>
 
-    <SimControls />
+    <div v-if="sim.available !== false" data-testid="sim-section">
+      <button
+        type="button"
+        class="flex items-center gap-1.5 text-xs font-semibold text-ink-2 hover:text-ink"
+        :aria-expanded="simOpen"
+        data-testid="sim-disclosure"
+        @click="simChoice = !simOpen"
+      >
+        <span aria-hidden="true">{{ simOpen ? '▾' : '▸' }}</span>
+        Simulation controls
+      </button>
+      <div v-show="simOpen" class="mt-2" data-testid="sim-body"><SimControls /></div>
+    </div>
 
     <FleetMap :locations="store.mapLocations" :marker-color="markerColor" />
 

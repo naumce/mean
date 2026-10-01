@@ -153,13 +153,13 @@ onMounted(() => {
   <div class="flex flex-col gap-6">
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-xl font-semibold text-gray-900">Trips</h1>
-        <p class="text-sm text-gray-500">Dispatch and track trips across your fleet.</p>
+        <h1 class="text-xl font-semibold text-ink">Trips</h1>
+        <p class="text-sm text-ink-2">Dispatch and track trips across your fleet.</p>
       </div>
       <div class="flex items-center gap-3">
         <select
           v-model="statusFilter"
-          class="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 focus:border-primary-600 focus:outline-none focus:ring-1 focus:ring-primary-600"
+          class="rounded-md border border-line-strong px-3 py-1.5 text-sm text-ink-2 focus:border-primary-600 focus:outline-none focus:ring-1 focus:ring-primary-600"
           @change="handleStatusFilterChange"
         >
           <option value="">All statuses</option>
@@ -171,17 +171,17 @@ onMounted(() => {
       </div>
     </div>
 
-    <p v-if="tripsStore.error" class="text-sm text-red-600" role="alert">
+    <p v-if="tripsStore.error" class="text-sm text-red-600 dark:text-red-400" role="alert">
       {{ tripsStore.error }}
     </p>
 
     <div v-for="group in groupedTrips" :key="group.status" class="flex flex-col gap-2" :data-status-group="group.status">
-      <h2 class="text-sm font-semibold text-gray-700">{{ formatStatusLabel(group.status) }}</h2>
+      <h2 class="text-sm font-semibold text-ink-2">{{ formatStatusLabel(group.status) }}</h2>
       <DataTable :columns="columns" :rows="group.trips" row-key="id">
         <template #cell-identifier="{ row }">
           <RouterLink
             :to="{ name: 'trip-detail', params: { id: (row as Trip).id } }"
-            class="font-medium text-primary-600 hover:text-primary-700"
+            class="font-medium text-brand-ink hover:underline"
           >
             {{ (row as Trip).identifier }}
           </RouterLink>
@@ -194,7 +194,7 @@ onMounted(() => {
         <template #cell-actions="{ row }">
           <button
             type="button"
-            class="text-sm font-medium text-primary-600 hover:text-primary-700"
+            class="text-sm font-medium text-brand-ink hover:underline"
             @click="openAssignModal(row as Trip)"
           >
             Assign
@@ -206,7 +206,7 @@ onMounted(() => {
 
     <Modal v-model:open="isCreateModalOpen">
       <template #header>
-        <h2 class="text-lg font-semibold text-gray-900">Create trip</h2>
+        <h2 class="text-lg font-semibold text-ink">Create trip</h2>
       </template>
 
       <form class="flex flex-col gap-4" @submit.prevent="handleCreateSubmit">
@@ -216,14 +216,14 @@ onMounted(() => {
             v-model="form.identifier"
             type="text"
             required
-            class="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-primary-600 focus:outline-none focus:ring-1 focus:ring-primary-600"
+            class="rounded-md border border-line-strong px-3 py-2 text-sm text-ink focus:border-primary-600 focus:outline-none focus:ring-1 focus:ring-primary-600"
           />
         </FormField>
 
         <div class="flex flex-col gap-2">
           <div class="flex items-center justify-between">
-            <span class="text-sm font-medium text-gray-700">Stops</span>
-            <button type="button" class="text-sm font-medium text-primary-600 hover:text-primary-700" @click="addStopRow">
+            <span class="text-sm font-medium text-ink-2">Stops</span>
+            <button type="button" class="text-sm font-medium text-brand-ink hover:underline" @click="addStopRow">
               Add stop
             </button>
           </div>
@@ -240,7 +240,7 @@ onMounted(() => {
                 type="number"
                 min="1"
                 required
-                class="w-16 rounded-md border border-gray-300 px-2 py-2 text-sm text-gray-900 focus:border-primary-600 focus:outline-none focus:ring-1 focus:ring-primary-600"
+                class="w-16 rounded-md border border-line-strong px-2 py-2 text-sm text-ink focus:border-primary-600 focus:outline-none focus:ring-1 focus:ring-primary-600"
               />
             </FormField>
             <FormField :id="`trip-stop-address-${index}`" label="Address" class="flex-1">
@@ -249,12 +249,12 @@ onMounted(() => {
                 v-model="stop.address"
                 type="text"
                 required
-                class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-primary-600 focus:outline-none focus:ring-1 focus:ring-primary-600"
+                class="w-full rounded-md border border-line-strong px-3 py-2 text-sm text-ink focus:border-primary-600 focus:outline-none focus:ring-1 focus:ring-primary-600"
               />
             </FormField>
             <button
               type="button"
-              class="mb-2 text-sm font-medium text-red-600 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+              class="mb-2 text-sm font-medium text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
               :disabled="stopRows.length <= 1"
               @click="removeStopRow(index)"
             >
@@ -265,10 +265,10 @@ onMounted(() => {
 
         <div class="flex flex-col gap-2">
           <div class="flex items-center justify-between">
-            <span class="text-sm font-medium text-gray-700">Checklist items (optional)</span>
+            <span class="text-sm font-medium text-ink-2">Checklist items (optional)</span>
             <button
               type="button"
-              class="text-sm font-medium text-primary-600 hover:text-primary-700"
+              class="text-sm font-medium text-brand-ink hover:underline"
               @click="addChecklistRow"
             >
               Add checklist item
@@ -285,15 +285,15 @@ onMounted(() => {
               v-model="item.label"
               type="text"
               placeholder="Label"
-              class="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-primary-600 focus:outline-none focus:ring-1 focus:ring-primary-600"
+              class="flex-1 rounded-md border border-line-strong px-3 py-2 text-sm text-ink focus:border-primary-600 focus:outline-none focus:ring-1 focus:ring-primary-600"
             />
-            <label class="flex items-center gap-1 text-sm text-gray-700">
+            <label class="flex items-center gap-1 text-sm text-ink-2">
               <input :id="`trip-checklist-required-${index}`" v-model="item.required" type="checkbox" />
               Required
             </label>
             <button
               type="button"
-              class="text-sm font-medium text-red-600 hover:text-red-700"
+              class="text-sm font-medium text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
               @click="removeChecklistRow(index)"
             >
               Remove
@@ -301,7 +301,7 @@ onMounted(() => {
           </div>
         </div>
 
-        <p v-if="formError" class="text-sm text-red-600" role="alert">{{ formError }}</p>
+        <p v-if="formError" class="text-sm text-red-600 dark:text-red-400" role="alert">{{ formError }}</p>
 
         <div class="mt-2 flex justify-end gap-2">
           <AppButton type="button" variant="ghost" @click="isCreateModalOpen = false">Cancel</AppButton>
@@ -312,7 +312,7 @@ onMounted(() => {
 
     <Modal v-model:open="isAssignModalOpen">
       <template #header>
-        <h2 class="text-lg font-semibold text-gray-900">
+        <h2 class="text-lg font-semibold text-ink">
           Assign driver — {{ assigningTrip?.identifier }}
         </h2>
       </template>
@@ -323,7 +323,7 @@ onMounted(() => {
             id="trip-driver"
             v-model="selectedDriverId"
             required
-            class="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-primary-600 focus:outline-none focus:ring-1 focus:ring-primary-600"
+            class="rounded-md border border-line-strong px-3 py-2 text-sm text-ink focus:border-primary-600 focus:outline-none focus:ring-1 focus:ring-primary-600"
           >
             <option value="" disabled>Select a driver</option>
             <option v-for="driver in driversStore.items" :key="driver.id" :value="driver.id">
@@ -332,7 +332,7 @@ onMounted(() => {
           </select>
         </FormField>
 
-        <p v-if="assignError" class="text-sm text-red-600" role="alert">{{ assignError }}</p>
+        <p v-if="assignError" class="text-sm text-red-600 dark:text-red-400" role="alert">{{ assignError }}</p>
 
         <div class="mt-2 flex justify-end gap-2">
           <AppButton type="button" variant="ghost" @click="isAssignModalOpen = false">Cancel</AppButton>

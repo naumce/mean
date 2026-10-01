@@ -240,15 +240,15 @@ const cls = computed(() => {
           <span v-if="wide && load.brokerName" class="rounded bg-surface-3 px-1 text-[9px] text-ink-2">{{ load.brokerName }}</span>
           <span v-if="load.hazmatClass" class="rounded border border-haz/40 bg-haz/20 px-1 text-[9px] font-black text-haz" data-testid="tag-haz">⬧ HAZMAT {{ load.hazmatClass }}</span>
           <span v-if="conflict" class="rounded bg-conflict/30 px-1 text-[9px] font-black text-conflict" data-testid="tag-conflict">⚠ CONFLICT</span>
-          <span v-if="mismatch" class="rounded bg-amber-500 px-1 text-[9px] font-black text-slate-950" data-testid="tag-mismatch">≠ {{ equipLabel(load.requiredEquip) }}</span>
-          <span v-if="hazIssue" class="rounded bg-amber-500 px-1 text-[9px] font-black text-slate-950" data-testid="tag-hazissue">NO HZ ENDT</span>
-          <span v-if="regExpired" class="rounded bg-red-500 px-1 text-[9px] font-black text-white" data-testid="tag-reg">REG EXP</span>
+          <span v-if="mismatch" class="rounded bg-amber-500 px-1 text-[9px] font-black text-amber-950" data-testid="tag-mismatch">≠ {{ equipLabel(load.requiredEquip) }}</span>
+          <span v-if="hazIssue" class="rounded bg-amber-500 px-1 text-[9px] font-black text-amber-950" data-testid="tag-hazissue">NO HZ ENDT</span>
+          <span v-if="regExpired" class="rounded bg-red-600 px-1 text-[9px] font-black text-white" data-testid="tag-reg">REG EXP</span>
           <span v-if="risk === 'block'" class="rounded bg-red-600 px-1 text-[9px] font-black text-white" data-testid="tag-late">⏰ LATE</span>
           <span v-if="status === 'tendered'" class="rounded bg-s-tendered px-1 text-[9px] font-black text-white" data-testid="tag-tendered">⏳ TENDERED</span>
-          <span v-if="spotted" class="rounded bg-yellow-400 px-1 text-[9px] font-black text-slate-950" data-testid="tag-spotted">SPOTTED</span>
-          <span v-if="hasBreak" class="rounded bg-amber-500/20 px-1 text-[9px] font-black text-amber-500" data-testid="tag-break" :title="breakTooltip">⬡ BREAK</span>
-          <span v-if="fuelAdvice" class="rounded bg-sky-500/20 px-1 text-[9px] font-black text-sky-500" data-testid="tag-fuel" :title="`Cheaper fuel at ${fuelAdvice.atLabel} (${fuelAdvice.state}) vs ${fuelAdvice.vsLabel}`">⛽ {{ formatUsd(fuelAdvice.savingCents) }}</span>
-          <span v-if="detentionClaim" class="rounded bg-rose-500/20 px-1 text-[9px] font-black text-rose-500" data-testid="tag-detention" :title="`${detentionClaim.billableMin} min billable`">⏱ DETENTION</span>
+          <span v-if="spotted" class="rounded bg-yellow-400 px-1 text-[9px] font-black text-yellow-950" data-testid="tag-spotted">SPOTTED</span>
+          <span v-if="hasBreak" class="rounded bg-amber-500/20 px-1 text-[9px] font-black text-amber-700 dark:text-amber-400" data-testid="tag-break" :title="breakTooltip">⬡ BREAK</span>
+          <span v-if="fuelAdvice" class="rounded bg-sky-500/20 px-1 text-[9px] font-black text-sky-700 dark:text-sky-400" data-testid="tag-fuel" :title="`Cheaper fuel at ${fuelAdvice.atLabel} (${fuelAdvice.state}) vs ${fuelAdvice.vsLabel}`">⛽ {{ formatUsd(fuelAdvice.savingCents) }}</span>
+          <span v-if="detentionClaim" class="rounded bg-rose-500/20 px-1 text-[9px] font-black text-rose-700 dark:text-rose-400" data-testid="tag-detention" :title="`${detentionClaim.billableMin} min billable`">⏱ DETENTION</span>
         </template>
       </span>
       <span v-if="wide" class="whitespace-nowrap font-mono font-bold text-emerald-500" data-testid="brick-rate">

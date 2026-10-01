@@ -30,12 +30,12 @@ function onPick(columnIndex: number, value: string): void {
 </script>
 
 <template>
-  <div class="rounded-lg border border-gray-200" data-testid="field-mapper">
-    <div class="border-b border-gray-200 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-700">
+  <div class="rounded-lg border border-line" data-testid="field-mapper">
+    <div class="border-b border-line bg-surface-2 px-4 py-2 text-sm font-medium text-ink-2">
       Map your columns
     </div>
 
-    <div class="divide-y divide-gray-100">
+    <div class="divide-y divide-line">
       <div
         v-for="(header, i) in headers"
         :key="`${i}-${header}`"
@@ -43,11 +43,11 @@ function onPick(columnIndex: number, value: string): void {
         :data-map-row="i"
       >
         <div class="w-1/2 min-w-0">
-          <p class="truncate text-sm font-medium text-gray-800">{{ header }}</p>
-          <p class="truncate text-xs text-gray-400">e.g. {{ samples[i] || '—' }}</p>
+          <p class="truncate text-sm font-medium text-ink">{{ header }}</p>
+          <p class="truncate text-xs text-ink-3">e.g. {{ samples[i] || '—' }}</p>
         </div>
         <select
-          class="w-1/2 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900"
+          class="w-1/2 rounded-md border border-line-strong bg-surface px-2 py-1.5 text-sm text-ink"
           :value="mapping[i] ?? ''"
           :data-map-select="i"
           @change="onPick(i, ($event.target as HTMLSelectElement).value)"
@@ -62,7 +62,7 @@ function onPick(columnIndex: number, value: string): void {
 
     <p
       v-if="missing.length"
-      class="border-t border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-700"
+      class="border-t border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200"
       data-testid="missing-required"
     >
       Still unmapped (required): {{ missing.map((f) => f.label).join(', ') }}

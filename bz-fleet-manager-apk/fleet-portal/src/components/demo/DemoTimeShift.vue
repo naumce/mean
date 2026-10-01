@@ -12,6 +12,11 @@ import { fetchDemoShiftPlan, runDemoShift, type DemoShiftPlan } from '../../lib/
 // Renders NOTHING unless the server has demo mode on. The probe is the gate:
 // the endpoint 404s on a normal server, so there is no second "is this a demo"
 // flag in the portal to drift out of sync with the backend.
+//
+// Also renders nothing when the scenario is already current (nothing to move):
+// a permanently disabled button is noise. A just-finished action's result line
+// keeps the box visible (even after a no-op shift, which re-probes) until the
+// component remounts, so the dispatcher can read why nothing moved.
 
 const plan = ref<DemoShiftPlan | null>(null)
 const running = ref(false)
@@ -48,7 +53,7 @@ async function shift(): Promise<void> {
 </script>
 
 <template>
-  <div v-if="plan" class="rounded-lg border border-line bg-surface-2 p-3" data-testid="demo-time-shift">
+  <div v-if="plan && (plan.shifted || result)" class="rounded-lg border border-line bg-surface-2 p-3" data-testid="demo-time-shift">
     <p class="text-xs font-semibold text-ink-2">Demo data</p>
 
     <p v-if="plan.shifted" class="mt-1 text-xs leading-relaxed text-ink-3" data-testid="demo-stale">

@@ -168,6 +168,17 @@ const mocks = vi.hoisted(() => {
     fitBounds(bounds: FakeBounds, opts: unknown): void {
       this.fitBoundsCall = { bounds, opts }
     }
+    /** Every style passed to setStyle. Like the real library, a style swap
+     *  discards all sources and layers until `style.load` fires again. */
+    styles: string[] = []
+    styleOpts: unknown[] = []
+    setStyle(style: string, opts?: unknown): void {
+      this.styles.push(style)
+      this.styleOpts.push(opts)
+      this.sources.clear()
+      this.layers = []
+      this.paint = {} // re-added layers come back with their declared paint
+    }
     remove(): void {
       this.removed = true
     }
@@ -197,6 +208,7 @@ import { useCarriersStore, type Carrier } from '../../../stores/carriers'
 import { useCockpitStore } from '../../../stores/cockpit'
 import { useFleetStore, type ServiceShop } from '../../../stores/fleet'
 import { useLoadboardStore, type BoardLoad, type BoardTrailer } from '../../../stores/loadboard'
+import { useThemeStore } from '../../../stores/theme'
 import { useTrackingStore } from '../../../stores/tracking'
 import FleetMap from './FleetMap.vue'
 
@@ -255,6 +267,7 @@ describe('FleetMap', () => {
 
   beforeEach(() => {
     setActivePinia(createPinia())
+    useThemeStore().setMode('dark')
     vi.stubEnv('VITE_MAPBOX_TOKEN', 'pk.testtoken')
     mocks.maps.length = 0
     mocks.markers.length = 0
@@ -284,6 +297,28 @@ describe('FleetMap', () => {
     expect(mocks.maps).toHaveLength(1)
     expect(mocks.maps[0].opts.style).toBe('mapbox://styles/mapbox/dark-v11')
     expect(mocks.maps[0].opts.accessToken).toBe('pk.testtoken')
+  })
+
+  it('swaps the basemap when the theme flips and re-adds the route source and layers on style.load', async () => {
+    wrapper = mount(FleetMap, { props: { nowMs: NOW } })
+    const map = mocks.maps[0]
+    const layerIds = map.layers.map((l) => l.id)
+    expect(layerIds.length).toBeGreaterThan(0)
+    const markersBefore = mocks.markers.filter((m) => !m.removed).length
+
+    useThemeStore().setMode('light')
+    await nextTick()
+    expect(map.styles).toEqual(['mapbox://styles/mapbox/light-v11'])
+    expect(map.styleOpts).toEqual([{ diff: false }])
+    expect(map.layers).toHaveLength(0) // wiped by the style swap, as in mapbox-gl
+
+    map.fire('style.load')
+    expect(map.layers.map((l) => l.id)).toEqual(layerIds)
+    expect(map.sources.size).toBe(1)
+    expect(mocks.markers.filter((m) => !m.removed)).toHaveLength(markersBefore)
+
+    map.fire('style.load') // a repeat must not add the layers twice
+    expect(map.layers).toHaveLength(layerIds.length)
   })
 
   // Regression: every marker on this map was inert.
@@ -1533,6 +1568,19 @@ describe('FleetMap', () => {
       const paint = mocks.maps[0].paint['fleet-map-routes-remaining']
       // A plain number, not a case expression: nothing is singled out.
       expect(typeof paint['line-opacity']).toBe('number')
+    })
+
+    it('keeps the focus dimming across a theme flip (style.load re-applies it)', async () => {
+      wrapper = mount(FleetMap, { props: { nowMs: NOW } })
+      stageHit('l1')
+      await clickMap()
+      useThemeStore().setMode('light')
+      await nextTick()
+      expect(mocks.maps[0].paint['fleet-map-routes-remaining']).toBeUndefined()
+      mocks.maps[0].fire('style.load')
+      const paint = mocks.maps[0].paint['fleet-map-routes-remaining']
+      expect(JSON.stringify(paint['line-opacity'])).toContain('l1')
+      expect(JSON.stringify(paint['line-width'])).toContain('case')
     })
 
     it('shows a pointer cursor over a route, so it reads as clickable at all', () => {
