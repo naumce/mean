@@ -389,4 +389,15 @@ describe('connectRealtime', () => {
     s.connectRealtime()
     expect(vi.mocked(subscribe).mock.calls.length).toBe(callsAfterFirst)
   })
+
+  it('checkDelete returns the server split, and sets error (returning null) when the check fails', async () => {
+    const s = useBrokerBoardStore()
+    const split = { deletable: [{ id: 'l1', label: 'A' }], blocked: [{ id: 'l2', label: 'B', reason: 'Delivered — kept as history' }] }
+    mockedPost.mockResolvedValueOnce({ data: split })
+    expect(await s.checkDelete(['l1', 'l2'])).toEqual(split)
+    expect(mockedPost).toHaveBeenLastCalledWith('/dispatcher/broker-board/loads/delete-check', { ids: ['l1', 'l2'] })
+    mockedPost.mockRejectedValueOnce({ response: { status: 404, data: { error: 'One or more loads were not found' } } })
+    expect(await s.checkDelete(['x'])).toBeNull()
+    expect(s.error).toBeTruthy()
+  })
 })

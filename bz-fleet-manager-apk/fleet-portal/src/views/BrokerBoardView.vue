@@ -10,7 +10,7 @@ import type { BoardCellPaste, BoardLoad, BoardViewState } from '../lib/api'
 import { triggerBlobDownload } from '../lib/download'
 import { useSheetStore } from '../nightshift/stores/sheet'
 import { useAuthStore } from '../stores/auth'
-import { useBrokerBoardStore } from '../stores/brokerBoard'
+import { useBrokerBoardStore, type DeleteCheck } from '../stores/brokerBoard'
 import { useLoadLocksStore } from '../stores/loadLocks'
 
 // Their board (spec §4): the sheet they use today, backed by our loads.
@@ -129,8 +129,21 @@ async function onDuplicate() { await store.duplicate(store.selectedIds); if (!st
  *  how a board loses a load nobody meant to touch. */
 function onDeleteRows(ids: string[]) {
   store.selectedIds = ids
-  confirmingDelete.value = true
+  void startDelete()
 }
+
+// Delete opens the dialog first (loading), then asks the server which of the
+// selected loads it will and won't delete — the dispatcher sees both lists.
+const deleteCheck = ref<DeleteCheck | null>(null)
+async function startDelete() {
+  deleteCheck.value = null
+  confirmingDelete.value = true
+  const result = await store.checkDelete([...store.selectedIds])
+  if (!confirmingDelete.value) return
+  if (!result) { confirmingDelete.value = false; return }
+  deleteCheck.value = result
+}
+function closeDelete() { confirmingDelete.value = false; deleteCheck.value = null }
 
 /** Setting the UPDATE cell for a whole selection is a paste of one column —
  *  the same all-or-nothing endpoint, so twenty loads either all say DELIVERED
@@ -217,7 +230,6 @@ watch(look, (v) => { try { localStorage.setItem(LOOK_KEY, v) } catch { /* privat
 
 // LOAD#, else BOL#, else the internal order number — never the bare id
 // unless nothing else is on the row (decisions log, Task 5).
-const selectedLabels = computed(() => store.loads.filter((l) => store.selectedIds.includes(l.id)).map((l) => l.bottom?.loadNo || l.top.bol || l.top.loadNo || l.id.slice(0, 8)))
 // NIT 9: a selection survives a search (deliberately — see BulkBar), so the
 // bar has to say how much of it is currently off screen. The grid publishes
 // the ids the search/filters leave visible; everything selected that is not
@@ -236,7 +248,15 @@ const hiddenSelected = computed(() => {
 // (as the brief's reference code did) fed back through the grid's
 // update:selectedIds emit and wiped a REFUSED action's selection too,
 // undoing finding 1's fix at one remove.
-async function onDelete() { confirmingDelete.value = false; await store.remove(store.selectedIds); if (!store.error) grid.value?.clearSelection() }
+// The grid can only clear its whole selection, so after a successful delete
+// the blocked loads leave the selection too (they are still on the board).
+async function onDelete() {
+  const ids = (deleteCheck.value?.deletable ?? []).map((d) => d.id)
+  closeDelete()
+  if (ids.length === 0) return
+  await store.remove(ids)
+  if (!store.error) grid.value?.clearSelection()
+}
 async function onArchive(archived: boolean) { await store.archive(store.selectedIds, archived); if (!store.error) grid.value?.clearSelection() }
 async function onToggleArchived(ev: Event) { store.showArchived = (ev.target as HTMLInputElement).checked; await store.load() }
 
@@ -343,7 +363,7 @@ const agentDrawerLoadNo = computed(() => {
       <button type="button" data-take-theirs class="rounded border border-amber-400 px-2 py-0.5 font-semibold hover:bg-amber-100" @click="resolve(entry.loadId, 'theirs')">Take theirs</button>
     </div>
     <p v-if="store.notice" class="rounded border border-green-300 bg-green-50 p-2 text-sm text-green-800 dark:border-green-500 dark:bg-green-950/40 dark:text-green-300">{{ store.notice }}</p>
-    <BulkBar :count="store.selectedIds.length" :hidden="hiddenSelected" :busy="store.busy" @archive="onArchive(true)" @unarchive="onArchive(false)" @delete="confirmingDelete = true" @export="store.exportSelected(store.selectedIds)" @duplicate="onDuplicate" @set-update="onSetUpdate" @clear="grid?.clearSelection()" />
+    <BulkBar :count="store.selectedIds.length" :hidden="hiddenSelected" :busy="store.busy" @archive="onArchive(true)" @unarchive="onArchive(false)" @delete="startDelete" @export="store.exportSelected(store.selectedIds)" @duplicate="onDuplicate" @set-update="onSetUpdate" @clear="grid?.clearSelection()" />
 
     <p v-if="store.loading && store.loads.length === 0" class="text-sm text-ink-2">Loading your board…</p>
     <div v-else-if="!store.error && store.loads.length === 0" class="rounded border border-dashed border-line p-8 text-center">
@@ -359,7 +379,7 @@ const agentDrawerLoadNo = computed(() => {
          the empty state above rather than showing a grid with nothing in it. -->
     <BrokerGrid v-else-if="store.loads.length > 0" ref="grid" :layout="store.layout" :loads="store.loads" :search="search" :show-filters="showFilters" :status-filter="statusFilter" :view="store.view" :group-by="groupBy" :look="look" :locks="loadLocks.theirs" @update:selected-ids="store.selectedIds = $event" @edit="onEdit" @paste="onPaste" @view="onView" @notice="onNotice" @delete-rows="onDeleteRows" @edit-start="onEditStart" @edit-end="onEditEnd" @open-agent="agentDrawerLoadId = $event" />
 
-    <ConfirmDelete v-if="confirmingDelete" :labels="selectedLabels" @confirm="onDelete" @cancel="confirmingDelete = false" />
+    <ConfirmDelete v-if="confirmingDelete" :loading="deleteCheck === null" :deletable="deleteCheck?.deletable ?? []" :blocked="deleteCheck?.blocked ?? []" :count="store.selectedIds.length" @confirm="onDelete" @cancel="closeDelete" />
     <!-- The dialog stays open after an import so the counts can be read; the dispatcher closes it. -->
     <BrokerImportDialog v-if="importing" @close="importing = false" />
 

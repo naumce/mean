@@ -70,6 +70,11 @@ async function exportErrorMessage(e: unknown): Promise<string> {
 
 // Their board: the org's layout and the loads as row pairs. Read-only in
 // slice 1; cell edits arrive in slice 2 and go through this store.
+export interface DeleteCheck {
+  deletable: { id: string; label: string }[]
+  blocked: { id: string; label: string; reason: string }[]
+}
+
 export const useBrokerBoardStore = defineStore('brokerBoard', {
   state: () => ({
     layout: [] as BoardColumn[],
@@ -165,6 +170,18 @@ export const useBrokerBoardStore = defineStore('brokerBoard', {
         const { data } = await api.post<{ updated: number }>('/dispatcher/broker-board/loads/archive', { ids, archived })
         return `${data.updated} ${data.updated === 1 ? 'load' : 'loads'} ${archived ? 'archived' : 'unarchived'}`
       })
+    },
+    /** What a Delete would do, per load — read-only. Null (with `error` set)
+     *  when the check itself could not be answered. */
+    async checkDelete(ids: string[]): Promise<DeleteCheck | null> {
+      this.error = null
+      try {
+        const { data } = await api.post<DeleteCheck>('/dispatcher/broker-board/loads/delete-check', { ids })
+        return data
+      } catch (e) {
+        this.error = boardErrorMessage(e, 'Could not check those loads')
+        return null
+      }
     },
     async remove(ids: string[]) {
       await this.bulk(async () => {

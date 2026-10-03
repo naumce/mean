@@ -206,6 +206,69 @@ describe("bulk actions when the database misbehaves", () => {
   });
 });
 
+async function giveAssignment(orgId: string, loadId: string, email: string) {
+  const driver = await prisma.driver.create({ data: { email, passwordHash: "x", name: "D", orgId } });
+  await prisma.assignment.create({ data: { orgId, loadId, driverId: driver.id, plannedStart: new Date(), plannedEnd: new Date(), deadheadMi: 0, loadedMi: 0, marginCents: 0, savedMi: 0, driveMin: 0, onDutyMin: 0, tookBreak: false, status: "assigned" } });
+}
+const giveTrip = (loadId: string, n: string) =>
+  prisma.agentTrip.create({ data: { id: `trip-${n}`, loadRef: n, loadId, driverToken: `tok-${n}`, brief: {} } });
+
+describe("delete-check and delete with history", () => {
+  beforeEach(resetDb);
+  const CHECK = "/api/dispatcher/broker-board/loads/delete-check";
+  const DEL = "/api/dispatcher/broker-board/loads/delete";
+
+  it("splits a mixed set into deletable and blocked with exact reasons", async () => {
+    const { org, auth, loads } = await setup();
+    await prisma.load.update({ where: { id: loads[1].id }, data: { status: "delivered" } });
+    await giveAssignment(org.id, loads[2].id, "chk@x.com");
+    await giveTrip(loads[3].id, "a");
+    const r = await request(app).post(CHECK).set(auth).send({ ids: loads.slice(0, 4).map((l) => l.id) });
+    expect(r.status).toBe(200);
+    expect(r.body.deletable.map((d: { id: string }) => d.id)).toEqual([loads[0].id]);
+    const reasons = Object.fromEntries(r.body.blocked.map((b: { id: string; reason: string }) => [b.id, b.reason]));
+    expect(reasons[loads[1].id]).toBe("Delivered — kept as history");
+    expect(reasons[loads[2].id]).toBe("Assigned to a driver or in progress");
+    expect(reasons[loads[3].id]).toBe("Night Shift tracked it — kept as history");
+    expect(await prisma.load.count()).toBe(5);
+  });
+
+  it("delete-check 404s on a foreign id and never shows another org's load", async () => {
+    const { auth, loads } = await setup();
+    const other = await prisma.org.create({ data: { name: "Other", timezone: "America/Los_Angeles" } });
+    await confirmImport(other.id, brokerWorkbook());
+    const foreign = await prisma.load.findFirstOrThrow({ where: { orgId: other.id } });
+    const r = await request(app).post(CHECK).set(auth).send({ ids: [loads[0].id, foreign.id] });
+    expect(r.status).toBe(404);
+    const ok = await request(app).post(CHECK).set(auth).send({ ids: [loads[0].id] });
+    expect(ok.body.deletable).toHaveLength(1);
+    expect(JSON.stringify(ok.body)).not.toContain(foreign.id);
+  });
+
+  it("delete of a set holding a Night Shift tracked load is a 409 naming it, not a 500", async () => {
+    const { auth, loads } = await setup();
+    await giveTrip(loads[0].id, "b");
+    const r = await request(app).post(DEL).set(auth).send({ ids: [loads[0].id, loads[1].id] });
+    expect(r.status).toBe(409);
+    expect(r.body.error).toMatch(/Night Shift tracked it/);
+    expect(r.body.blocked.map((b: { id: string }) => b.id)).toEqual([loads[0].id]);
+    expect(await prisma.load.count()).toBe(5);
+    expect(await prisma.agentTrip.count({ where: { loadId: loads[0].id } })).toBe(1);
+  });
+
+  it("delete of only deletable ids succeeds", async () => {
+    const { auth, loads } = await setup();
+    await giveTrip(loads[0].id, "c");
+    const ids = [loads[1].id, loads[2].id];
+    const r = await request(app).post(DEL).set(auth).send({ ids });
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual({ deleted: 2 });
+    expect(await prisma.load.count({ where: { id: { in: ids } } })).toBe(0);
+  });
+});
+
+// Keep last-run: the race test below restores a spy on prisma.load.findMany,
+// which leaves that delegate method missing for later tests in this file.
 describe("bulk delete", () => {
   beforeEach(resetDb);
 
@@ -227,7 +290,10 @@ describe("bulk delete", () => {
     await prisma.assignment.create({ data: { orgId: org.id, loadId: loads[0].id, driverId: driver.id, plannedStart: new Date(), plannedEnd: new Date(), deadheadMi: 0, loadedMi: 0, marginCents: 0, savedMi: 0, driveMin: 0, onDutyMin: 0, tookBreak: false, status: "assigned" } });
     const r = await request(app).post("/api/dispatcher/broker-board/loads/delete").set(auth).send({ ids: [loads[0].id, loads[1].id] });
     expect(r.status).toBe(409);
+    expect(r.body.error).toMatch(/^Some loads can't be deleted: /);
     expect(r.body.error).toMatch(/145205/);
+    expect(r.body.error).toMatch(/Assigned to a driver or in progress/);
+    expect(r.body.blocked).toHaveLength(1);
     expect(await prisma.load.count()).toBe(5);
   });
 

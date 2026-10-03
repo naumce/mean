@@ -42,6 +42,18 @@ const loads = [
   { id: 'l2', line: 2, top: { bol: '0500005', customer: 'ACME FOODS', pickupCity: 'Henderson, NV', deliveryCity: 'Denver, CO', rate: '$3,100.00', loadNo: '2026-35100-00', appt: 'PU: 07/15 - tbd' }, bottom: null, pill: { state: 'attention', text: "can't read PU appointment: \"PU: 07/15 - tbd\"" }, agentLine: null, status: 'open', boardLine: 1, version: 0 },
 ]
 
+// Delete now asks the server first. Answers delete-check from `ids` (all
+// deletable unless named in `blocked`), routed by URL so the delete POST that
+// follows can still be queued with mockResolvedValueOnce/mockRejectedValueOnce.
+function stubDeleteCheck(blocked: { id: string; label: string; reason: string }[] = []) {
+  mockedPost.mockImplementationOnce(async (_url: string, body?: unknown) => {
+    const ids = (body as { ids: string[] }).ids
+    const label = (id: string) => (id === 'l1' ? '145205' : id === 'l2' ? '2026-35100-00' : id)
+    const blockedIds = new Set(blocked.map((b) => b.id))
+    return { data: { deletable: ids.filter((i) => !blockedIds.has(i)).map((id) => ({ id, label: label(id) })), blocked } }
+  })
+}
+
 describe('BrokerBoardView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -124,7 +136,9 @@ describe('BrokerBoardView', () => {
     await w.find('tbody input[type="checkbox"]').setValue(true)
     await flushPromises()
     expect(w.find('[data-bulk]').text()).toContain('1 load selected')
+    stubDeleteCheck()
     await w.find('button[data-action="delete"]').trigger('click')
+    await flushPromises()
     expect(w.find('[role="dialog"]').text()).toContain('145205')
     await w.find('[role="dialog"] button[data-cancel]').trigger('click')
     expect(w.find('[role="dialog"]').exists()).toBe(false)
@@ -135,12 +149,15 @@ describe('BrokerBoardView', () => {
 
   it('keeps the grid mounted and the selection visible when a bulk delete is refused', async () => {
     mockedGet.mockResolvedValue({ data: { layout, loads } })
-    mockedPost.mockRejectedValueOnce({ response: { status: 409, data: { error: "These loads can't be deleted while assigned or in progress: 145205" } } })
+    mockedPost.mockReset()
     const w = mount(BrokerBoardView, { global: { stubs: { RouterLink: true } } })
     await flushPromises()
     await w.find('tbody input[type="checkbox"]').setValue(true)
     await flushPromises()
+    stubDeleteCheck()
     await w.find('button[data-action="delete"]').trigger('click')
+    await flushPromises()
+    mockedPost.mockRejectedValueOnce({ response: { status: 409, data: { error: "These loads can't be deleted while assigned or in progress: 145205" } } })
     await w.find('[role="dialog"] button[data-confirm]').trigger('click')
     await flushPromises()
     expect(w.text()).toContain("These loads can't be deleted while assigned or in progress: 145205")
@@ -176,7 +193,9 @@ describe('BrokerBoardView', () => {
     await flushPromises()
     expect(w.find('[data-bulk]').text()).toContain('2 loads selected')
     expect(useBrokerBoardStore().selectedIds).toEqual(['l1', 'l2'])
+    stubDeleteCheck()
     await w.find('button[data-action="delete"]').trigger('click')
+    await flushPromises()
     const dialog = w.find('[role="dialog"]').text()
     expect(dialog).toContain('2 loads')
     expect(dialog).not.toContain('0500009')
@@ -184,6 +203,23 @@ describe('BrokerBoardView', () => {
     await w.find('[role="dialog"] button[data-confirm]').trigger('click')
     await flushPromises()
     expect(mockedPost).toHaveBeenLastCalledWith('/dispatcher/broker-board/loads/delete', { ids: ['l1', 'l2'] })
+  })
+
+  it('Delete checks first, then removes ONLY the deletable ids', async () => {
+    mockedGet.mockResolvedValue({ data: { layout, loads } })
+    const w = mount(BrokerBoardView, { global: { stubs: { RouterLink: true } } })
+    await flushPromises()
+    await w.find('thead input[type="checkbox"]').setValue(true)
+    await flushPromises()
+    stubDeleteCheck([{ id: 'l2', label: '2026-35100-00', reason: 'Delivered — kept as history' }])
+    await w.find('button[data-action="delete"]').trigger('click')
+    await flushPromises()
+    expect(mockedPost).toHaveBeenCalledWith('/dispatcher/broker-board/loads/delete-check', { ids: ['l1', 'l2'] })
+    expect(w.find('[data-testid="delete-blocked"]').text()).toContain('Delivered — kept as history')
+    mockedPost.mockResolvedValueOnce({ data: { deleted: 1 } })
+    await w.find('[role="dialog"] button[data-confirm]').trigger('click')
+    await flushPromises()
+    expect(mockedPost).toHaveBeenLastCalledWith('/dispatcher/broker-board/loads/delete', { ids: ['l1'] })
   })
 
   // B2: the record's refusal reaches the dispatcher instead of being dropped

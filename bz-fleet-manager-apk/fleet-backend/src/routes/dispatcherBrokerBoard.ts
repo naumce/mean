@@ -8,6 +8,7 @@ import { actorOf } from "../lib/actor.js";
 import { applyLoadChange, LoadNotFound, nextAtMs, rulesFor, StaleVersion, type LoadPatch } from "../lib/loadWriter.js";
 import { acquireLoadLock, assertWritable, LoadLocked, LockTargetGone, releaseLoadLock } from "../lib/loadLocks.js";
 import { parseApptText } from "../lib/apptText.js";
+import { classifyForDelete, LOAD_LABEL } from "../lib/brokerBoard/deleteEligibility.js";
 import { matchRule } from "../lib/updateVocabulary.js";
 import { planCellWrite } from "../lib/boardCellWrite.js";
 import { layoutFor, type BoardColumn, type BoardColumnKey } from "../lib/boardLayout.js";
@@ -664,13 +665,6 @@ const validationMessage = (err: z.ZodError): string =>
 const idsSchema = z.object({ ids: z.array(z.string().min(1)).min(1).max(500, TOO_MANY_IDS) });
 const archiveSchema = idsSchema.extend({ archived: z.boolean() });
 
-// Final review finding 11: `externalId` may carry the internal `board:`
-// prefix when a TMS fleet load already owns the sheet's LOAD# — a refusal has
-// to name the number the dispatcher typed, never our key. `boardLoadNo`
-// returns "" for a null externalId, so `||` (not `??`) falls through.
-const LOAD_LABEL = (l: { externalId: string | null; bolNumber: string | null; orderRef: string | null; id: string }): string =>
-  boardLoadNo(l.externalId) || l.bolNumber || l.orderRef || l.id.slice(0, 8);
-
 /** The org's loads for a list of ids, or null when any id is not the org's
  *  (or does not exist at all) — org scoping is on the query itself, not a
  *  post-fetch JS check, so a foreign id is simply never returned. */
@@ -830,16 +824,29 @@ dispatcherBrokerBoardRouter.post("/broker-board/loads/archive", asyncRoute(async
   }
 }));
 
+dispatcherBrokerBoardRouter.post("/broker-board/loads/delete-check", asyncRoute(async (req, res) => {
+  const orgId = req.orgScope;
+  if (!orgId) return res.status(400).json({ error: "The broker board requires an org-scoped dispatcher account" });
+  const parsed = idsSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: validationMessage(parsed.error) });
+  const verdict = await classifyForDelete(prisma, orgId, parsed.data.ids);
+  if (!verdict) return res.status(404).json({ error: "One or more loads were not found" });
+  res.json(verdict);
+}));
+
 dispatcherBrokerBoardRouter.post("/broker-board/loads/delete", asyncRoute(async (req, res) => {
   const orgId = req.orgScope;
   if (!orgId) return res.status(400).json({ error: "The broker board requires an org-scoped dispatcher account" });
   const parsed = idsSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: validationMessage(parsed.error) });
   const ids = [...new Set(parsed.data.ids)];
-  const loads = await ownedLoads(orgId, ids);
-  if (!loads) return res.status(404).json({ error: "One or more loads were not found" });
-  const blocked = loads.filter((l) => l.assignment !== null || !["open", "archived", "canceled"].includes(l.status));
-  if (blocked.length) return res.status(409).json({ error: `These loads can't be deleted while assigned or in progress: ${blocked.map(LOAD_LABEL).join(", ")}` });
+  const verdict = await classifyForDelete(prisma, orgId, ids);
+  if (!verdict) return res.status(404).json({ error: "One or more loads were not found" });
+  if (verdict.blocked.length) {
+    const list = verdict.blocked.map((b) => `${b.label} (${b.reason})`).join(", ");
+    return res.status(409).json({ error: `Some loads can't be deleted: ${list}`, blocked: verdict.blocked });
+  }
+  const preDelete = await prisma.load.findMany({ where: { id: { in: ids }, orgId }, select: { id: true, version: true } });
   const actor = await actorOf(req);
   try {
     const deleted = await prisma.$transaction(async (tx) => {
@@ -854,7 +861,7 @@ dispatcherBrokerBoardRouter.post("/broker-board/loads/delete", asyncRoute(async 
       // aborts (throw rolls back the transaction) rather than deleting the
       // ids that are still eligible and silently skipping the rest.
       const stillEligible = await tx.load.findMany({
-        where: { id: { in: ids }, orgId, status: { in: ["open", "archived", "canceled"] }, assignment: { is: null } },
+        where: { id: { in: ids }, orgId, status: { in: ["open", "archived", "canceled"] }, assignment: { is: null }, agentTrips: { none: {} } },
         select: { id: true },
       });
       if (stillEligible.length !== ids.length) throw new StaleLoadsError();
@@ -869,7 +876,7 @@ dispatcherBrokerBoardRouter.post("/broker-board/loads/delete", asyncRoute(async 
     // A4 Task 1: the row is gone, so there is no "after" version to report —
     // `loads` is the pre-delete snapshot (ownedLoads, above) and is the last
     // version this record ever held.
-    emitLoadsChanged(orgId, loads.map((l) => ({ loadId: l.id, version: l.version, fields: ["deleted"] })));
+    emitLoadsChanged(orgId, preDelete.map((l) => ({ loadId: l.id, version: l.version, fields: ["deleted"] })));
     res.json({ deleted });
   } catch (e) {
     if (e instanceof LoadLocked) return res.status(409).json({ error: "LOAD_LOCKED", lock: e.lock, message: e.message });
